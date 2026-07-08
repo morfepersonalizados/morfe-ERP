@@ -366,6 +366,13 @@ function setSyncStatus(status, msg) {
 function showLoading() { document.getElementById('loading-bar')?.classList.add('show'); }
 function hideLoading() { document.getElementById('loading-bar')?.classList.remove('show'); }
 
+// Controla quais tabelas têm sincronização em andamento — usado pra não deixar
+// o pull automático sobrescrever uma tabela que acabou de ser alterada localmente
+let _tabelasComSyncPendente = new Set();
+// Fila de promessas por tabela — garante que dois salvamentos na MESMA tabela
+// nunca cheguem juntos no Google Sheets (evita um sobrescrever o outro)
+let _syncChainPorTabela = {};
+
 async function sincronizarSheets() {
   if (_isSyncing) return;
   if (!SHEETS_API_URL || SHEETS_API_URL === 'COLE_URL_DO_APPS_SCRIPT_AQUI') {
@@ -387,6 +394,9 @@ async function sincronizarSheets() {
 
     if (data.ok && data.dados) {
       Object.keys(data.dados).forEach(tabela => {
+        // Não sobrescreve uma tabela que está com alteração local em andamento —
+        // evita perder uma edição que ainda não confirmou no Google
+        if (_tabelasComSyncPendente.has(tabela)) return;
         if (DB[tabela] !== undefined) DB[tabela] = data.dados[tabela] || [];
       });
       // Config vem como array de 1 item
@@ -432,6 +442,30 @@ async function enviarParaSheets(acao, tabela, dados, id) {
   } catch(e) { throw e; }
 }
 
+// Envia pro Sheets em segundo plano, SEM travar quem chamou.
+// Enfileira por tabela: duas gravações na mesma tabela nunca disputam ao mesmo tempo.
+let _contadorPendentePorTabela = {};
+function enviarParaSheetsBackground(acao, tabela, dados, id) {
+  _tabelasComSyncPendente.add(tabela);
+  _contadorPendentePorTabela[tabela] = (_contadorPendentePorTabela[tabela] || 0) + 1;
+
+  const anterior = _syncChainPorTabela[tabela] || Promise.resolve();
+  const atual = anterior
+    .catch(() => {}) // não deixa um erro anterior travar a fila desta tabela
+    .then(() => enviarParaSheets(acao, tabela, dados, id));
+
+  _syncChainPorTabela[tabela] = atual.catch(() => {});
+
+  atual.finally(() => {
+    _contadorPendentePorTabela[tabela] = Math.max(0, (_contadorPendentePorTabela[tabela] || 1) - 1);
+    if (_contadorPendentePorTabela[tabela] === 0) {
+      _tabelasComSyncPendente.delete(tabela);
+    }
+  });
+
+  return atual;
+}
+
 async function salvarItem(tabela, obj) {
   const arr = DB[tabela];
   const idx = arr.findIndex(x => x.id === obj.id);
@@ -439,14 +473,16 @@ async function salvarItem(tabela, obj) {
   salvarLocal();
   setSyncStatus('ok', '✅ Salvo');
 
-  try {
-    await enviarParaSheets('upsert', tabela, obj);
-    setSyncStatus('ok', '✅ Sincronizado');
-  } catch(e) {
+  // Sincroniza em segundo plano — NÃO trava a interface esperando o Google responder
+  enviarParaSheetsBackground('upsert', tabela, obj).then(ok => {
+    if (ok) setSyncStatus('ok', '✅ Sincronizado');
+    else throw new Error('Sheets retornou erro');
+  }).catch(() => {
     _pendingQueue.push({ acao: 'upsert', tabela, dados: obj });
     salvarLocal();
     setSyncStatus('error', '📴 Salvo local');
-  }
+  });
+
   return true;
 }
 
@@ -457,14 +493,15 @@ async function excluirItem_db(tabela, id) {
   salvarLocal();
   setSyncStatus('ok', '✅ Excluído');
 
-  try {
-    await enviarParaSheets('excluir', tabela, null, id);
-    setSyncStatus('ok', '✅ Sincronizado');
-  } catch(e) {
+  enviarParaSheetsBackground('excluir', tabela, null, id).then(ok => {
+    if (ok) setSyncStatus('ok', '✅ Sincronizado');
+    else throw new Error('Sheets retornou erro');
+  }).catch(() => {
     _pendingQueue.push({ acao: 'excluir', tabela, id });
     salvarLocal();
     setSyncStatus('error', '📴 Excluído local');
-  }
+  });
+
   return true;
 }
 
