@@ -526,6 +526,8 @@ const getProd = id => getItem(DB.produtos, id);
 const getCli = id => getItem(DB.clientes, id);
 const getForn = id => getItem(DB.fornecedores, id);
 const nomeProd = id => getProd(id)?.nome || id || '—';
+// Ordena uma lista por um campo de nome, respeitando acentos do português (não muda o array original)
+const ordNome = (arr, campo='nome') => [...(arr||[])].sort((a,b) => String(a?.[campo]||'').localeCompare(String(b?.[campo]||''), 'pt-BR', {sensitivity:'base'}));
 const nomeCli = id => getCli(id)?.nome || id || '—';
 const nomeForn = id => getForn(id)?.nome || id || '—';
 
@@ -535,7 +537,7 @@ function getCategorias() {
   return ['Caneca','Azulejo','Camiseta','Almofada','Quadro','Chaveiro','Mouse Pad','Squeeze','Bolsa','Porta Retrato','Outros'];
 }
 function getCatOpts(sel='') {
-  return getCategorias().map(c => `<option value="${c}" ${sel===c?'selected':''}>${c}</option>`).join('');
+  return ordNome(getCategorias().map(c=>({nome:c}))).map(o => `<option value="${o.nome}" ${sel===o.nome?'selected':''}>${o.nome}</option>`).join('');
 }
 
 function toast(msg, tipo='success') {
@@ -593,16 +595,14 @@ function sselHTML(id, options, selectedValue, placeholder, onChangeJS){
   const labelEsc=(sel?sel.label:'').replace(/"/g,'&quot;');
   return `<div style="position:relative">
     <input type="text" id="${id}_txt" placeholder="🔍 ${placeholder}" value="${labelEsc}" autocomplete="off"
-      oninput="sselInput('${id}')" onfocus="sselInput('${id}')"
+      oninput="sselInput('${id}')" onfocus="this.select();sselShowAll('${id}')"
       style="width:100%;padding:8px 10px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:14px;background:white">
     <input type="hidden" id="${id}_val" value="${selectedValue||''}">
     <div id="${id}_drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--azul-claro);border-top:none;border-radius:0 0 8px 8px;max-height:230px;overflow-y:auto;z-index:300;box-shadow:0 10px 24px rgba(0,0,0,0.18)"></div>
   </div>`;
 }
-function sselInput(id){
-  const txt=(document.getElementById(id+'_txt')?.value||'').toLowerCase().trim();
-  const opts=_sselData[id]||[];
-  const filtered=txt?opts.filter(o=>o.label.toLowerCase().includes(txt)):opts;
+// Renderiza a lista de opções filtrada (ou completa) dentro do dropdown
+function sselRenderLista(id, filtered){
   const drop=document.getElementById(id+'_drop');
   if(!drop) return;
   if(filtered.length===0){
@@ -611,6 +611,17 @@ function sselInput(id){
     drop.innerHTML=filtered.slice(0,60).map(o=>`<div onclick="sselPick('${id}','${String(o.value).replace(/'/g,"\\'")}')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--cinza-claro)" onmouseover="this.style.background='#EBF4FF'" onmouseout="this.style.background='white'">${o.label}</div>`).join('');
   }
   drop.style.display='block';
+}
+// Ao FOCAR no campo: sempre mostra a lista inteira (ordenada), ignora o texto já preenchido
+function sselShowAll(id){
+  sselRenderLista(id, _sselData[id]||[]);
+}
+// Ao DIGITAR: filtra pelo texto atual
+function sselInput(id){
+  const txt=(document.getElementById(id+'_txt')?.value||'').toLowerCase().trim();
+  const opts=_sselData[id]||[];
+  const filtered=txt?opts.filter(o=>o.label.toLowerCase().includes(txt)):opts;
+  sselRenderLista(id, filtered);
 }
 function sselPick(id, value){
   const opts=_sselData[id]||[];
@@ -959,7 +970,7 @@ SECTIONS.produtos = () => `
         <thead><tr><th>SKU</th><th>Categoria</th><th>Nome</th><th>Preço</th><th>Custo</th><th>Margem</th><th>Status</th><th>Ações</th></tr></thead>
         <tbody>
           ${DB.produtos.length===0?`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum produto. Clique em + Novo.</td></tr>`:
-          DB.produtos.map(p=>`<tr>
+          ordNome(DB.produtos).map(p=>`<tr>
             <td><span class="badge badge-info">${p.sku||'—'}</span></td>
             <td>${p.categoria||'—'}</td>
             <td class="fw-bold">${p.nome}</td>
@@ -1019,7 +1030,7 @@ SECTIONS.clientes = () => `
         <thead><tr><th>Nome</th><th>Telefone</th><th>Cidade</th><th>Total Compras</th><th>Pedidos</th><th>Ações</th></tr></thead>
         <tbody>
           ${DB.clientes.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum cliente cadastrado.</td></tr>`:
-          DB.clientes.map(c=>{
+          ordNome(DB.clientes).map(c=>{
             const vs=DB.vendas.filter(v=>v.cliente===c.id);
             return`<tr>
               <td class="fw-bold">${c.nome}</td>
@@ -1065,7 +1076,7 @@ SECTIONS.fornecedores = () => `
     <div class="tbl-wrap"><table>
       <thead><tr><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Categoria</th><th>Ações</th></tr></thead>
       <tbody>${DB.fornecedores.length===0?`<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum fornecedor.</td></tr>`:
-      DB.fornecedores.map(f=>`<tr><td class="fw-bold">${f.nome}</td><td>${f.telefone||'—'}</td><td>${f.email||'—'}</td><td><span class="badge badge-info">${f.categoria||'—'}</span></td>
+      ordNome(DB.fornecedores).map(f=>`<tr><td class="fw-bold">${f.nome}</td><td>${f.telefone||'—'}</td><td>${f.email||'—'}</td><td><span class="badge badge-info">${f.categoria||'—'}</span></td>
         <td class="td-actions"><button class="btn btn-primary btn-xs" onclick="editarForn('${f.id}')">✏️</button><button class="btn btn-danger btn-xs" onclick="excluirItem('fornecedores','${f.id}')">🗑️</button></td>
       </tr>`).join('')}</tbody>
     </table></div>
@@ -1104,7 +1115,7 @@ SECTIONS.materias = () => {
     <div class="tbl-wrap"><table id="t-mp">
       <thead><tr><th>Nome</th><th>Unid.</th><th>Fornecedor</th><th>Qtd Comprada</th><th>Valor Pago</th><th>Custo Un.</th><th>Estoque</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody>${DB.materias.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum insumo cadastrado. Ex: fita térmica, papel sublimático, tintas...</td></tr>`:
-      DB.materias.map(m=>{const[sc,sl]=stMP(m);return`<tr>
+      ordNome(DB.materias).map(m=>{const[sc,sl]=stMP(m);return`<tr>
         <td class="fw-bold">${m.nome}</td><td>${m.unidade||'un'}</td><td>${nomeForn(m.fornecedor)}</td>
         <td class="text-center text-muted">${m.qtd_comprada?m.qtd_comprada+' '+(m.unidade||'un'):'—'}</td>
         <td class="text-center text-muted">${m.valor_comprado?R$(m.valor_comprado):'—'}</td>
@@ -1124,7 +1135,7 @@ SECTIONS.materias = () => {
 function novaMP(){openModal('➕ Novo Insumo',formMP(),()=>salvarMP());}
 function editarMP(id){openModal('✏️ Editar Insumo',formMP(getItem(DB.materias,id)),()=>salvarMP(id));}
 function formMP(m={}){
-  const fo=DB.fornecedores.map(f=>`<option value="${f.id}" ${m.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');
+  const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${m.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');
   const un=m.unidade||'un';
   const unOpts=UNIDADES_MP.map(u=>`<option value="${u}" ${un===u?'selected':''}>${u}</option>`).join('');
   const custoInicial = m.custo || (m.qtd_comprada&&m.valor_comprado ? (m.valor_comprado/m.qtd_comprada) : 0);
@@ -1224,8 +1235,8 @@ SECTIONS.vendas = () => `
 function novaVenda(){openModal('➕ Nova Venda',formVenda(),()=>salvarVenda());}
 function editarVenda(id){openModal('✏️ Editar Venda',formVenda(getItem(DB.vendas,id)),()=>salvarVenda(id));}
 function formVenda(v={}){
-  const coArr=DB.clientes.map(c=>({value:c.id,label:c.nome}));
-  const poArr=DB.produtos.filter(p=>p.status==='Ativo').map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
+  const coArr=ordNome(DB.clientes).map(c=>({value:c.id,label:c.nome}));
+  const poArr=ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
   return`<div class="form-grid">
     <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-vdata" type="date" value="${v.data||new Date().toISOString().slice(0,10)}"></div>
     <div class="form-group"><label class="form-label">Cliente</label>${sselHTML('f-vcli', coArr, v.cliente||'', 'Buscar cliente...', '')}</div>
@@ -1395,7 +1406,7 @@ function novoPedidoOrc(){
 function verPedidoOrc(id){const p=getItem(DB.pedidos,id);if(!p)return;window._pedTemp=JSON.parse(JSON.stringify(p));abrirFormPedido(id);}
 
 function pedItemRow(it,i){
-  const prodOpts=[{value:'',label:'— Livre —'},...DB.produtos.filter(p=>p.status==='Ativo').map(p=>({value:p.id,label:p.nome})),...(DB.kits||[]).map(k=>({value:'KIT:'+k.id,label:'[KIT] '+k.nome}))];
+  const prodOpts=[{value:'',label:'— Livre —'},...ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:p.nome})),...ordNome(DB.kits||[]).map(k=>({value:'KIT:'+k.id,label:'[KIT] '+k.nome}))];
   const c=itemCalc(it);
   const temDesc=(it.desc_tipo&&it.desc_tipo!=='nenhum'&&(+it.desc_valor||0)>0);
   const varInfo=(it.prod&&!String(it.prod).startsWith('KIT:'))?getVariantesDoProduto(it.prod):null;
@@ -1425,7 +1436,7 @@ function pedItemRow(it,i){
 
 function abrirFormPedido(editId){
   const pd=window._pedTemp;
-  const cliOpts=[{value:'',label:'— Cliente não cadastrado —'},...DB.clientes.map(c=>({value:c.id,label:c.nome}))];
+  const cliOpts=[{value:'',label:'— Cliente não cadastrado —'},...ordNome(DB.clientes).map(c=>({value:c.id,label:c.nome}))];
   const renderItens=()=>(pd.itens||[]).map((it,i)=>pedItemRow(it,i)).join('');
   const calc=pedidoCalc(pd);
 
@@ -1824,7 +1835,7 @@ SECTIONS.compras = () => `
 
 function novaCompra(){openModal('➕ Nova Compra',formCompra(),()=>salvarCompra());}
 function editarCompra(id){openModal('✏️ Editar',formCompra(getItem(DB.compras,id)),()=>salvarCompra(id));}
-function formCompra(c={}){const fo=DB.fornecedores.map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');return`<div class="form-grid">
+function formCompra(c={}){const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');return`<div class="form-grid">
   <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-cdata" type="date" value="${c.data||new Date().toISOString().slice(0,10)}"></div>
   <div class="form-group"><label class="form-label">Fornecedor</label><select class="form-select" id="f-cforn"><option value="">—</option>${fo}</select></div>
   <div class="form-group full"><label class="form-label">Produto/MP</label><input class="form-input" id="f-cprod" value="${c.produto||''}"></div>
@@ -1865,7 +1876,7 @@ SECTIONS.producao = () => `
 
 function novaProd(){openModal('➕ Nova Ordem',formProd(),()=>salvarProd());}
 function editarProd(id){openModal('✏️ Editar',formProd(getItem(DB.producao,id)),()=>salvarProd(id));}
-function formProd(p={}){const co=DB.clientes.map(c=>`<option value="${c.id}" ${p.cliente===c.id?'selected':''}>${c.nome}</option>`).join('');const so=['Aguardando arte','Aguardando pagamento','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('');return`<div class="form-grid">
+function formProd(p={}){const co=ordNome(DB.clientes).map(c=>`<option value="${c.id}" ${p.cliente===c.id?'selected':''}>${c.nome}</option>`).join('');const so=['Aguardando arte','Aguardando pagamento','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('');return`<div class="form-grid">
   <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-pdata" type="date" value="${p.data||new Date().toISOString().slice(0,10)}"></div>
   <div class="form-group"><label class="form-label">Cliente</label><select class="form-select" id="f-pcli"><option value="">—</option>${co}</select></div>
   <div class="form-group full"><label class="form-label">Produto</label><input class="form-input" id="f-pprod" value="${p.produto||''}"></div>
@@ -1907,7 +1918,7 @@ SECTIONS.areceber = () => `
 
 function novoAR(){openModal('➕ A Receber',formAR(),()=>salvarAR());}
 function editarAR(id){openModal('✏️ Editar',formAR(getItem(DB.areceber,id)),()=>salvarAR(id));}
-function formAR(x={}){const co=DB.clientes.map(c=>`<option value="${c.id}" ${x.cliente===c.id?'selected':''}>${c.nome}</option>`).join('');return`<div class="form-grid">
+function formAR(x={}){const co=ordNome(DB.clientes).map(c=>`<option value="${c.id}" ${x.cliente===c.id?'selected':''}>${c.nome}</option>`).join('');return`<div class="form-grid">
   <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-ard" type="date" value="${x.data||new Date().toISOString().slice(0,10)}"></div>
   <div class="form-group"><label class="form-label">Cliente</label><select class="form-select" id="f-arcli"><option value="">—</option>${co}</select></div>
   <div class="form-group full"><label class="form-label">Descrição</label><input class="form-input" id="f-ardesc" value="${x.descricao||''}"></div>
@@ -2173,7 +2184,7 @@ SECTIONS.fichas = () => `
         <th>Preço Sugerido</th><th>Preço Praticado</th><th>Markup Apl.</th><th>Status</th><th>Margem</th><th></th>
       </tr></thead>
       <tbody>${DB.produtos.length===0?`<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--cinza-med)">Cadastre produtos primeiro.</td></tr>`:
-      DB.produtos.map(p=>{
+      ordNome(DB.produtos).map(p=>{
         const c=calcFichaCompleta(p.id);
         return`<tr>
           <td class="fw-bold" style="white-space:nowrap">${p.nome}${getVariantesDoProduto(p.id)?' <span title="Tem variantes (cor, tamanho, modelo...)">🔀</span>':''}</td>
@@ -2199,7 +2210,7 @@ SECTIONS.fichas = () => `
     <div class="panel">
       <div class="panel-header"><span class="panel-title">📦 Produtos</span></div>
       <div>${DB.produtos.length===0?`<div class="empty-state"><div class="empty-icon">📦</div>Cadastre produtos primeiro</div>`:
-        DB.produtos.map(p=>{
+        ordNome(DB.produtos).map(p=>{
           const temFicha=DB.fichas.some(f=>f.produto===p.id);
           const custo=DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>{const mp=getItem(DB.materias,f.mp);return s+(+f.qtd||0)*(+(mp?.custo)||0);},0);
           return`<div onclick="selFicha('${p.id}')" id="ftc-${p.id}" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--cinza-claro);display:flex;justify-content:space-between;align-items:center">
@@ -2298,7 +2309,7 @@ async function updQtdFicha(fichaId,prodId,novaQtd){
   await salvarItem('fichas',f);renderFichaDetalhe(prodId);
 }
 function addInsFicha(prodId){
-  const mpOpts=DB.materias.map(m=>({value:m.id,label:`${m.nome} — ${R$(m.custo)}/${m.unidade}`}));
+  const mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} — ${R$(m.custo)}/${m.unidade}`}));
   openModal('➕ Adicionar Insumo',
     `<div class="form-grid cols-1">
       <div class="form-group"><label class="form-label">Insumo</label>${sselHTML('fi-mp', mpOpts, '', 'Buscar insumo...', '')}</div>
@@ -2348,13 +2359,29 @@ function gerenciarVariantes(fichaId, prodId){
     async()=>{
       const fRef=getItem(DB.fichas, window._varTemp.fichaId);
       if(!fRef)return;
-      fRef.variantes=window._varTemp.variantes.filter(v=>v.nome&&v.mp);
+      const todas=window._varTemp.variantes;
+      const completas=todas.filter(v=>v.nome&&v.mp);
+      const incompletas=todas.filter(v=>!(v.nome&&v.mp));
+      if(incompletas.length>0){
+        const detalhes=incompletas.map(v=>{
+          if(!v.nome&&!v.mp) return 'uma linha em branco';
+          if(!v.mp) return `"${v.nome}" — sem insumo selecionado (busca e clica numa opção da lista)`;
+          return 'uma linha sem nome';
+        }).join('; ');
+        toast(`⚠️ Não salvou: ${detalhes}. Corrige e salva de novo.`,'error');
+        return; // não fecha o modal — deixa o usuário corrigir
+      }
+      if(completas.length===0){
+        toast('Adicione pelo menos uma variante com nome e insumo','error');
+        return;
+      }
+      fRef.variantes=completas;
       await salvarItem('fichas', fRef);
-      toast('Variantes salvas!');closeModal();renderFichaDetalhe(window._varTemp.prodId);
+      toast(`✅ ${completas.length} variante(s) salva(s)!`);closeModal();renderFichaDetalhe(window._varTemp.prodId);
     },'💾 Salvar Variantes');
 }
 function renderVarRows(){
-  const mpOptsArr=DB.materias.map(m=>({value:m.id,label:m.nome}));
+  const mpOptsArr=ordNome(DB.materias).map(m=>({value:m.id,label:m.nome}));
   return window._varTemp.variantes.map((v,i)=>`
     <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
       <input type="text" placeholder="Nome (ex: Azul, G, Modelo B...)" value="${v.nome||''}" oninput="window._varTemp.variantes[${i}].nome=this.value" style="flex:1;padding:8px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:13px">
@@ -2389,7 +2416,7 @@ SECTIONS.kits = () => `
     <div style="padding:16px">
       ${DB.kits.length===0?`<div class="empty-state"><div class="empty-icon">🎁</div>Nenhum kit criado.</div>`:
       `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
-        ${DB.kits.map(k=>{
+        ${ordNome(DB.kits).map(k=>{
           const semDesc=(k.itens||[]).reduce((s,i)=>{const p=getProd(i.prod);return s+(+(p?.preco)||0)*(+i.qtd||1);},0);
           const custoTotal=(k.itens||[]).reduce((s,i)=>{const p=getProd(i.prod);return s+(+(p?.custo)||0)*(+i.qtd||1);},0);
           const lucro=(+k.preco_venda||0)-custoTotal;
@@ -2421,7 +2448,7 @@ SECTIONS.kits = () => `
 function novoKit(){abrirFormKit();}
 function editarKit(id){abrirFormKit(id);}
 function kitItemRow(it,i){
-  const prodOpts=DB.produtos.map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
+  const prodOpts=ordNome(DB.produtos).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
   return `<tr style="background:${i%2===0?'#F0FFF4':'white'}">
     <td style="padding:4px;min-width:150px">${sselHTML(`kitprod${i}`, prodOpts, it.prod, 'Buscar produto...', `onKitProd(${i}, value)`)}</td>
     <td style="padding:4px;width:75px"><input type="number" min="1" value="${it.qtd||1}" oninput="window._kitTemp.itens[${i}].qtd=+this.value;recalcKit()" style="width:65px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
@@ -2505,7 +2532,7 @@ SECTIONS.consignados = () => {
     <div style="padding:16px">
       ${DB.consignados.length===0?`<div class="empty-state"><div class="empty-icon">🤝</div>Nenhum ponto de consignação cadastrado.</div>`:
       `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
-        ${DB.consignados.map(c=>{
+        ${ordNome(DB.consignados).map(c=>{
           const pecas=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0),0);
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
           const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
@@ -2570,7 +2597,7 @@ function abrirFormCSG(editId=null){
 }
 
 function addItemCSG(consigId){
-  const poArr=DB.produtos.filter(p=>p.status==='Ativo').map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
+  const poArr=ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
   openModal('📦 Adicionar Produto ao Consignado',
     `<div class="form-grid">
       <div class="form-group full"><label class="form-label">Produto</label>${sselHTML('ci-p', poArr, '', 'Buscar produto...', 'autoPrecoCSG(value)')}</div>
@@ -2673,7 +2700,7 @@ SECTIONS.precificacao = () => `
       <div class="panel-header"><span class="panel-title">🧮 Calculadora de Preço</span></div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
         <div class="form-group"><label class="form-label">Produto Cadastrado (opcional)</label>
-          ${sselHTML('pc-prod', DB.produtos.map(p=>({value:p.id,label:p.nome})), '', 'Buscar produto ou digitar manualmente...', 'autoPrecoPC(value)')}</div>
+          ${sselHTML('pc-prod', ordNome(DB.produtos).map(p=>({value:p.id,label:p.nome})), '', 'Buscar produto ou digitar manualmente...', 'autoPrecoPC(value)')}</div>
         <div class="form-group"><label class="form-label">Custo do Produto (R$)</label><input class="form-input" id="pc-custo" type="number" step="0.01" placeholder="0,00" oninput="calcPC()"></div>
         <div class="form-group"><label class="form-label">Custo Embalagem (R$)</label><input class="form-input" id="pc-emb" type="number" step="0.01" value="1.00" oninput="calcPC()"></div>
         <div class="form-group"><label class="form-label">Forma de Pagamento</label>
@@ -2807,7 +2834,7 @@ SECTIONS.config = () => {
     </div>
     <div style="padding:16px">
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-        ${cats.map((c,i)=>`
+        ${cats.map((c,i)=>({c,i})).sort((a,b)=>a.c.localeCompare(b.c,'pt-BR',{sensitivity:'base'})).map(({c,i})=>`
           <div style="display:inline-flex;align-items:center;gap:6px;background:var(--cinza-ultra);border:1.5px solid var(--cinza-claro);border-radius:20px;padding:8px 12px">
             <span style="font-size:13px;font-weight:600">${c}</span>
             <button onclick="editarCategoria(${i},'${c.replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer;color:var(--azul-claro);font-size:14px;padding:0 2px;line-height:1" title="Editar">✏️</button>
