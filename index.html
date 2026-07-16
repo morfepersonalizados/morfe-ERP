@@ -423,7 +423,13 @@ async function processarFila() {
   _pendingQueue = [];
   salvarLocal();
   for (const op of fila) {
-    try { await enviarParaSheets(op.acao, op.tabela, op.dados, op.id); }
+    try {
+      if (op.acao === 'ajustar_estoque') {
+        await enviarAjusteEstoque(op.dados.itens);
+      } else {
+        await enviarParaSheets(op.acao, op.tabela, op.dados, op.id);
+      }
+    }
     catch(e) { _pendingQueue.push(op); }
   }
   salvarLocal();
@@ -530,6 +536,42 @@ const nomeProd = id => getProd(id)?.nome || id || '—';
 const ordNome = (arr, campo='nome') => [...(arr||[])].sort((a,b) => String(a?.[campo]||'').localeCompare(String(b?.[campo]||''), 'pt-BR', {sensitivity:'base'}));
 const nomeCli = id => getCli(id)?.nome || id || '—';
 const nomeForn = id => getForn(id)?.nome || id || '—';
+
+// ═══════════════════════════════════════════════════════════════
+// VENDAS EFETIVAS — combina a tabela Vendas COM os itens dos Pedidos
+// (exceto cancelados), pra Dashboard/DRE/Metas/Relatórios refletirem
+// o faturamento real, não só o que foi digitado manualmente em Vendas.
+// ═══════════════════════════════════════════════════════════════
+function custoItemPedido(it){
+  if(!it.prod) return 0; // item livre — sem produto vinculado, custo desconhecido
+  if(String(it.prod).startsWith('KIT:')){
+    const kit=getItem(DB.kits, it.prod.replace('KIT:',''));
+    if(!kit) return 0;
+    return (kit.itens||[]).reduce((s,ki)=>s+(+(getProd(ki.prod)?.custo)||0)*(+ki.qtd||1),0);
+  }
+  return +(getProd(it.prod)?.custo)||0;
+}
+function todasVendasEfetivas(){
+  const deVendas=DB.vendas.map(v=>({
+    data:v.data, cliente:v.cliente, produto:v.produto, qtd:+v.qtd||0, valorTotal:(+v.qtd||0)*(+v.preco||0),
+    custoTotal:(+v.qtd||0)*custoItemPedido({prod:v.produto}), status:v.status, origem:'venda', id:v.id
+  }));
+  const dePedidos=[];
+  DB.pedidos.forEach(p=>{
+    if(p.status==='Cancelado') return; // pedido cancelado não conta como venda
+    (p.itens||[]).forEach(it=>{
+      const c=itemCalc(it);
+      if(c.tot<=0 && (+it.qtd||0)<=0) return;
+      const ehKit=it.prod && String(it.prod).startsWith('KIT:');
+      dePedidos.push({
+        data:p.data, cliente:p.cliente, produto:ehKit||!it.prod?null:it.prod, qtd:+it.qtd||1, valorTotal:c.tot,
+        custoTotal:custoItemPedido(it)*(+it.qtd||1), status:p.status, origem:'pedido', id:p.id
+      });
+    });
+  });
+  return [...deVendas, ...dePedidos];
+}
+
 
 function getCategorias() {
   const c = DB.config?.categorias;
@@ -765,19 +807,20 @@ function metricasFinanceiras(){
   const inicioSemana=new Date(hoje); inicioSemana.setDate(hoje.getDate()-hoje.getDay());
   const inicioSemanaStr=inicioSemana.toISOString().slice(0,10);
 
-  const vendasMes=DB.vendas.filter(v=>{const d=new Date(v.data);return d.getMonth()+1===mes&&d.getFullYear()===ano;});
-  const receitaMes=vendasMes.reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
-  const cpvMes=vendasMes.reduce((s,v)=>{const p=getProd(v.produto);return s+(+v.qtd||0)*(+(p?.custo)||0);},0);
+  const efetivas=todasVendasEfetivas();
+  const vendasMes=efetivas.filter(v=>{const d=new Date(v.data);return d.getMonth()+1===mes&&d.getFullYear()===ano;});
+  const receitaMes=vendasMes.reduce((s,v)=>s+v.valorTotal,0);
+  const cpvMes=vendasMes.reduce((s,v)=>s+v.custoTotal,0);
   const mcMes=receitaMes-cpvMes;
 
-  const receitaHoje=DB.vendas.filter(v=>v.data===hojeStr).reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
-  const receitaSemana=DB.vendas.filter(v=>v.data>=inicioSemanaStr).reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
+  const receitaHoje=efetivas.filter(v=>v.data===hojeStr).reduce((s,v)=>s+v.valorTotal,0);
+  const receitaSemana=efetivas.filter(v=>v.data>=inicioSemanaStr).reduce((s,v)=>s+v.valorTotal,0);
 
   const metaMensal=+(DB.config?.meta_mensal||5000);
   const metaSemanal=metaMensal/4.3;
   const metaDiaria=metaMensal/30;
 
-  const ticketMedio=DB.vendas.length?DB.vendas.reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0)/DB.vendas.length:0;
+  const ticketMedio=efetivas.length?efetivas.reduce((s,v)=>s+v.valorTotal,0)/efetivas.length:0;
 
   const faltaMes=Math.max(0,metaMensal-receitaMes);
   const pedidosParaMeta=ticketMedio>0?Math.ceil(faltaMes/ticketMedio):0;
@@ -810,29 +853,30 @@ function metricasFinanceiras(){
 }
 
 SECTIONS.dashboard = () => {
-  const totalVendas = DB.vendas.reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
-  const totalLucro = DB.vendas.reduce((s,v)=>{const p=getProd(v.produto);return s+(+v.qtd||0)*(+v.preco||0)-(+v.qtd||0)*(+(p?.custo)||0);},0);
+  const efetivas = todasVendasEfetivas();
+  const totalVendas = efetivas.reduce((s,v)=>s+v.valorTotal,0);
+  const totalLucro = efetivas.reduce((s,v)=>s+v.valorTotal-v.custoTotal,0);
   const mes = new Date().getMonth()+1, ano = new Date().getFullYear();
-  const vendaMes = DB.vendas.filter(v=>{const d=new Date(v.data);return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
+  const vendaMes = efetivas.filter(v=>{const d=new Date(v.data);return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
   const meta = +(DB.config?.meta_mensal||5000);
   const pctMeta = meta ? (vendaMes/meta*100).toFixed(0) : 0;
   const aReceber = DB.areceber.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
   const aPagar = DB.apagar.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
-  const ticket = DB.vendas.length ? totalVendas/DB.vendas.length : 0;
+  const ticket = efetivas.length ? totalVendas/efetivas.length : 0;
   const criticosMP = DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0)).length;
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const porMes={};
-  DB.vendas.forEach(v=>{const m=new Date(v.data).getMonth();porMes[m]=(porMes[m]||0)+(+v.qtd||0)*(+v.preco||0);});
+  efetivas.forEach(v=>{const m=new Date(v.data).getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;});
   const barMax=Math.max(...Object.values(porMes),1);
 
   const vendProd={};
-  DB.vendas.forEach(v=>{vendProd[v.produto]=(vendProd[v.produto]||0)+(+v.qtd||0)*(+v.preco||0);});
+  efetivas.forEach(v=>{if(!v.produto) return; vendProd[v.produto]=(vendProd[v.produto]||0)+v.valorTotal;});
   const top3=Object.entries(vendProd).sort((a,b)=>b[1]-a[1]).slice(0,3);
 
   return `
   <div class="kpi-grid">
-    <div class="kpi-card verde"><div class="kpi-label">Receita Total</div><div class="kpi-value">${R$(totalVendas)}</div><div class="kpi-sub">${DB.vendas.length} vendas</div></div>
+    <div class="kpi-card verde"><div class="kpi-label">Receita Total</div><div class="kpi-value">${R$(totalVendas)}</div><div class="kpi-sub">${efetivas.length} vendas</div></div>
     <div class="kpi-card"><div class="kpi-label">Lucro Total</div><div class="kpi-value text-verde">${R$(totalLucro)}</div><div class="kpi-sub">Margem ${totalVendas?((totalLucro/totalVendas)*100).toFixed(1):0}%</div></div>
     <div class="kpi-card laranja"><div class="kpi-label">Receita Mês</div><div class="kpi-value">${R$(vendaMes)}</div><div class="kpi-sub">${pctMeta}% da meta</div></div>
     <div class="kpi-card roxo"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticket)}</div></div>
@@ -864,7 +908,7 @@ SECTIONS.dashboard = () => {
       <div style="background:var(--laranja-claro);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--laranja);text-transform:uppercase;font-weight:600">Ticket Médio</div>
         <div style="font-size:17px;font-weight:800;color:var(--laranja)">${R$(fm.ticketMedio)}</div>
-        <div style="font-size:11px;color:var(--laranja)">Base: ${DB.vendas.length} vendas</div>
+        <div style="font-size:11px;color:var(--laranja)">Base: ${todasVendasEfetivas().length} vendas</div>
       </div>
       <div style="background:var(--roxo-claro);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--roxo);text-transform:uppercase;font-weight:600">Pedidos p/ bater meta do mês</div>
@@ -929,19 +973,19 @@ SECTIONS.dashboard = () => {
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">🕐 Últimas Vendas</span>
-      <button class="btn btn-success btn-sm" onclick="goTo('vendas')">Ver todas →</button>
+      <button class="btn btn-success btn-sm" onclick="goTo('pedidos')">Ver Pedidos →</button>
     </div>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Produto</th><th>Total</th><th>Status</th></tr></thead>
+        <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Produto</th><th>Total</th><th>Status</th></tr></thead>
         <tbody>
-          ${DB.vendas.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhuma venda ainda</td></tr>`:
-          DB.vendas.slice(-5).reverse().map(v=>`<tr>
-            <td class="fw-bold text-azul">${v.id}</td>
+          ${efetivas.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhuma venda ainda</td></tr>`:
+          [...efetivas].sort((a,b)=>(a.data||'').localeCompare(b.data||'')).slice(-5).reverse().map(v=>`<tr>
+            <td class="fw-bold text-azul">${v.id} ${v.origem==='pedido'?'<span class="badge badge-info" style="font-size:9px">pedido</span>':''}</td>
             <td>${v.data||'—'}</td>
             <td>${nomeCli(v.cliente)}</td>
-            <td>${nomeProd(v.produto)}</td>
-            <td class="fw-bold text-verde">${R$((+v.qtd||0)*(+v.preco||0))}</td>
+            <td>${v.produto?nomeProd(v.produto):'(vários itens)'}</td>
+            <td class="fw-bold text-verde">${R$(v.valorTotal)}</td>
             <td>${statusBadge(v.status)}</td>
           </tr>`).join('')}
         </tbody>
@@ -1030,20 +1074,20 @@ SECTIONS.clientes = () => `
         <thead><tr><th>Nome</th><th>Telefone</th><th>Cidade</th><th>Total Compras</th><th>Pedidos</th><th>Ações</th></tr></thead>
         <tbody>
           ${DB.clientes.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum cliente cadastrado.</td></tr>`:
-          ordNome(DB.clientes).map(c=>{
-            const vs=DB.vendas.filter(v=>v.cliente===c.id);
+          (()=>{const efetivas=todasVendasEfetivas();return ordNome(DB.clientes).map(c=>{
+            const vs=efetivas.filter(v=>v.cliente===c.id);
             return`<tr>
               <td class="fw-bold">${c.nome}</td>
               <td>${c.telefone||'—'}</td>
               <td>${c.cidade||'—'}</td>
-              <td class="fw-bold text-verde">${R$(vs.reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0))}</td>
+              <td class="fw-bold text-verde">${R$(vs.reduce((s,v)=>s+v.valorTotal,0))}</td>
               <td class="text-center">${vs.length}</td>
               <td class="td-actions">
                 <button class="btn btn-primary btn-xs" onclick="editarCli('${c.id}')">✏️</button>
                 ${c.whatsapp?`<button class="btn btn-success btn-xs" onclick="abrirWPP('${c.whatsapp}','')">💬</button>`:''}
                 <button class="btn btn-danger btn-xs" onclick="excluirItem('clientes','${c.id}')">🗑️</button>
               </td>
-            </tr>`;}).join('')}
+            </tr>`;}).join('');})()}
         </tbody>
       </table>
     </div>
@@ -1187,12 +1231,29 @@ function ajustarEstMP(id){
       <div class="form-group"><label class="form-label">Estoque atual: <strong>${m.estoque||0} ${m.unidade||'un'}</strong></label></div>
       <div class="form-group"><label class="form-label">Tipo de Ajuste</label><select class="form-select" id="adj-tp"><option value="1">➕ Adicionar</option><option value="-1">➖ Remover</option><option value="0">= Definir valor exato</option></select></div>
       <div class="form-group"><label class="form-label">Quantidade</label><input class="form-input" id="adj-qtd" type="number" value="0"></div>
+      <div style="background:var(--cinza-ultra);padding:8px 10px;border-radius:6px;font-size:11px;color:var(--cinza-med)">💡 Adicionar/Remover soma ou tira em cima do estoque mais atual da planilha (seguro mesmo usando em vários aparelhos). "Definir valor exato" substitui o número, use com cuidado.</div>
     </div>`,
     async()=>{
       const tp=+document.getElementById('adj-tp').value;
       const qtd=parseFloat(document.getElementById('adj-qtd').value)||0;
-      m.estoque=tp===0?qtd:Math.max(0,(+m.estoque||0)+tp*qtd);
-      await salvarItem('materias',m);
+      if(tp===0){
+        // Definir valor exato — substituição intencional, upsert normal
+        m.estoque=qtd;
+        await salvarItem('materias',m);
+      } else {
+        // Adicionar/Remover — usa DELTA atômico, seguro contra dado desatualizado
+        const delta=tp*qtd;
+        m.estoque=Math.max(0,(+m.estoque||0)+delta); // feedback local
+        salvarLocal();
+        enviarAjusteEstoqueBackground([{id:m.id, delta}]).then(ok=>{
+          if(ok) setSyncStatus('ok','✅ Sincronizado');
+          else throw new Error('falhou');
+        }).catch(()=>{
+          _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens:[{id:m.id, delta}]}});
+          salvarLocal();
+          setSyncStatus('error','📴 Salvo local');
+        });
+      }
       toast('Estoque ajustado para '+m.estoque+' '+m.unidade);closeModal();render('materias');
     },'✅ Confirmar');
 }
@@ -1296,22 +1357,77 @@ function calcularConsumoInsumos(pd){
   return consumo;
 }
 // Aplica o consumo no estoque (SUBTRAI). Permite ficar negativo de propósito — sinaliza que faltou insumo.
+// Envia ajustes de estoque (delta) pro Sheets em segundo plano — enfileirado
+// na MESMA fila da tabela materias, pra nunca disputar com outro salvamento de insumo
+async function enviarAjusteEstoque(itens){
+  if (!SHEETS_API_URL || SHEETS_API_URL === 'COLE_URL_DO_APPS_SCRIPT_AQUI') return true;
+  const res = await fetch(SHEETS_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ acao: 'ajustar_estoque', dados: { itens }, senha: SENHA_APP })
+  });
+  const data = await res.json();
+  return data.ok;
+}
+function enviarAjusteEstoqueBackground(itens){
+  if(!itens || itens.length===0) return Promise.resolve(true);
+  const tabela='materias';
+  _tabelasComSyncPendente.add(tabela);
+  _contadorPendentePorTabela[tabela] = (_contadorPendentePorTabela[tabela] || 0) + 1;
+
+  const anterior = _syncChainPorTabela[tabela] || Promise.resolve();
+  const atual = anterior.catch(()=>{}).then(() => enviarAjusteEstoque(itens));
+  _syncChainPorTabela[tabela] = atual.catch(()=>{});
+
+  atual.finally(() => {
+    _contadorPendentePorTabela[tabela] = Math.max(0, (_contadorPendentePorTabela[tabela]||1) - 1);
+    if (_contadorPendentePorTabela[tabela] === 0) _tabelasComSyncPendente.delete(tabela);
+  });
+  return atual;
+}
+// Aplica o consumo no estoque — SUBTRAI. Manda só o DELTA pro Sheets (não o valor
+// final calculado no aparelho), pra planilha somar em cima do valor mais atual dela.
+// Isso evita que dois aparelhos com dados desatualizados apaguem a baixa um do outro.
 async function aplicarBaixaEstoque(consumo){
+  const itens=[];
   for(const mpId of Object.keys(consumo)){
     const mp=getItem(DB.materias, mpId);
     if(!mp) continue;
-    mp.estoque=(+mp.estoque||0)-consumo[mpId];
-    await salvarItem('materias', mp);
+    const delta=-consumo[mpId];
+    mp.estoque=(+mp.estoque||0)+delta; // feedback instantâneo local
+    itens.push({id:mpId, delta});
   }
+  salvarLocal();
+  if(itens.length===0) return;
+  enviarAjusteEstoqueBackground(itens).then(ok=>{
+    if(ok) setSyncStatus('ok','✅ Sincronizado');
+    else throw new Error('falhou');
+  }).catch(()=>{
+    _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens}});
+    salvarLocal();
+    setSyncStatus('error','📴 Salvo local');
+  });
 }
-// Reverte um consumo anterior (SOMA de volta no estoque)
+// Reverte um consumo anterior — SOMA de volta, também por delta
 async function reverterBaixaEstoque(consumo){
+  const itens=[];
   for(const mpId of Object.keys(consumo||{})){
     const mp=getItem(DB.materias, mpId);
     if(!mp) continue;
-    mp.estoque=(+mp.estoque||0)+consumo[mpId];
-    await salvarItem('materias', mp);
+    const delta=consumo[mpId];
+    mp.estoque=(+mp.estoque||0)+delta;
+    itens.push({id:mpId, delta});
   }
+  salvarLocal();
+  if(itens.length===0) return;
+  enviarAjusteEstoqueBackground(itens).then(ok=>{
+    if(ok) setSyncStatus('ok','✅ Sincronizado');
+    else throw new Error('falhou');
+  }).catch(()=>{
+    _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens}});
+    salvarLocal();
+    setSyncStatus('error','📴 Salvo local');
+  });
 }
 // Verifica se algum insumo do consumo vai ficar negativo (pra avisar o usuário)
 function verificarEstoqueInsuficiente(consumo){
@@ -2110,8 +2226,9 @@ async function salvarCF(id=null){
 // DRE
 // ═══════════════════════════════════════════════════════════════
 SECTIONS.dre = () => {
-  const receita=DB.vendas.reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
-  const cpv=DB.vendas.reduce((s,v)=>{const p=getProd(v.produto);return s+(+v.qtd||0)*(+(p?.custo)||0);},0);
+  const efetivas=todasVendasEfetivas();
+  const receita=efetivas.reduce((s,v)=>s+v.valorTotal,0);
+  const cpv=efetivas.reduce((s,v)=>s+v.custoTotal,0);
   const mc=receita-cpv;
   const cfTotal=custosFixosMensais()*6;
   const ll=mc-cfTotal;
@@ -2744,16 +2861,17 @@ function calcPC(){
 // ═══════════════════════════════════════════════════════════════
 SECTIONS.relatorios = () => {
   const pC={},pP={};
-  DB.vendas.forEach(v=>{
-    const p=getProd(v.produto);
+  todasVendasEfetivas().forEach(v=>{
     if(!pC[v.cliente])pC[v.cliente]={total:0,lucro:0,ped:0};
-    pC[v.cliente].total+=(+v.qtd||0)*(+v.preco||0);
-    pC[v.cliente].lucro+=(+v.qtd||0)*(+v.preco||0)-(+v.qtd||0)*(+(p?.custo)||0);
+    pC[v.cliente].total+=v.valorTotal;
+    pC[v.cliente].lucro+=v.valorTotal-v.custoTotal;
     pC[v.cliente].ped++;
-    if(!pP[v.produto])pP[v.produto]={qtd:0,total:0,lucro:0};
-    pP[v.produto].qtd+=+v.qtd||0;
-    pP[v.produto].total+=(+v.qtd||0)*(+v.preco||0);
-    pP[v.produto].lucro+=(+v.qtd||0)*(+v.preco||0)-(+v.qtd||0)*(+(p?.custo)||0);
+    if(v.produto){
+      if(!pP[v.produto])pP[v.produto]={qtd:0,total:0,lucro:0};
+      pP[v.produto].qtd+=v.qtd;
+      pP[v.produto].total+=v.valorTotal;
+      pP[v.produto].lucro+=v.valorTotal-v.custoTotal;
+    }
   });
   const rC=Object.entries(pC).sort((a,b)=>b[1].total-a[1].total);
   const rP=Object.entries(pP).sort((a,b)=>b[1].total-a[1].total);
