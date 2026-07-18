@@ -1280,7 +1280,20 @@ function formProduto(p={}){return `<div class="form-grid">
     <select class="form-select" id="f-status"><option ${p.status==='Ativo'?'selected':''}>Ativo</option><option ${p.status==='Inativo'?'selected':''}>Inativo</option></select></div>
 </div>`;}
 async function salvarProduto(id=null){
-  const obj={id:id||nextId(DB.produtos,'PRD'),sku:document.getElementById('f-sku').value.trim(),categoria:document.getElementById('f-cat').value,nome:document.getElementById('f-nome').value.trim(),preco:parseFloat(document.getElementById('f-preco').value)||0,custo:parseFloat(document.getElementById('f-custo').value)||0,status:document.getElementById('f-status').value,criado_em:id?getProd(id)?.criado_em:new Date().toISOString()};
+  // Preserva campos que não fazem parte deste formulário (embalagem, margem_ideal
+  // etc, configurados lá na Ficha Técnica) — sem isso, salvar aqui apagava eles.
+  const existente=id?getProd(id):{};
+  const obj={
+    ...existente,
+    id:id||nextId(DB.produtos,'PRD'),
+    sku:document.getElementById('f-sku').value.trim(),
+    categoria:document.getElementById('f-cat').value,
+    nome:document.getElementById('f-nome').value.trim(),
+    preco:parseFloat(document.getElementById('f-preco').value)||0,
+    custo:parseFloat(document.getElementById('f-custo').value)||0,
+    status:document.getElementById('f-status').value,
+    criado_em:id?existente?.criado_em:new Date().toISOString()
+  };
   if(!obj.nome){toast('Informe o nome do produto','error');return;}
   await salvarItem('produtos',obj);
   toast(id?'Produto atualizado!':'Produto adicionado!');
@@ -3592,9 +3605,22 @@ SECTIONS.config = () => {
 };
 
 async function salvarConfig(){
-  const obj={id:1,empresa:document.getElementById('cfg-empresa').value,whatsapp:document.getElementById('cfg-wpp').value,instagram:document.getElementById('cfg-ig').value,email:document.getElementById('cfg-email').value,cidade:document.getElementById('cfg-cidade').value,meta_mensal:parseFloat(document.getElementById('cfg-meta').value)||5000,taxa_pix:parseFloat(document.getElementById('cfg-pix').value)||0,taxa_debito:parseFloat(document.getElementById('cfg-deb').value)||1.5,taxa_credito1:parseFloat(document.getElementById('cfg-cr1').value)||2.5,margem_padrao:parseFloat(document.getElementById('cfg-marg').value)||40,reserva:parseFloat(document.getElementById('cfg-res').value)||10,categorias:DB.config?.categorias||[]};
-  DB.config = obj;
+  if(!DB.config) DB.config={};
+  // Atualiza só os campos desta tela — preserva tudo mais (categorias, potes
+  // da Divisão de Lucro, vendas_esperadas_mes etc) que outras telas configuram
+  DB.config.empresa=document.getElementById('cfg-empresa').value;
+  DB.config.whatsapp=document.getElementById('cfg-wpp').value;
+  DB.config.instagram=document.getElementById('cfg-ig').value;
+  DB.config.email=document.getElementById('cfg-email').value;
+  DB.config.cidade=document.getElementById('cfg-cidade').value;
+  DB.config.meta_mensal=parseFloat(document.getElementById('cfg-meta').value)||5000;
+  DB.config.taxa_pix=parseFloat(document.getElementById('cfg-pix').value)||0;
+  DB.config.taxa_debito=parseFloat(document.getElementById('cfg-deb').value)||1.5;
+  DB.config.taxa_credito1=parseFloat(document.getElementById('cfg-cr1').value)||2.5;
+  DB.config.margem_padrao=parseFloat(document.getElementById('cfg-marg').value)||40;
+  DB.config.reserva=parseFloat(document.getElementById('cfg-res').value)||10;
   salvarLocal();
+  const obj={...DB.config,id:1};
   await enviarParaSheets('upsert','config',obj).catch((e)=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()});salvarLocal();});
   toast('Configurações salvas!');
 }
