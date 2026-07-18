@@ -276,6 +276,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div class="nav-item" onclick="goTo('areceber')"><span class="nav-icon">📥</span> A Receber</div>
       <div class="nav-item" onclick="goTo('apagar')"><span class="nav-icon">📤</span> A Pagar</div>
       <div class="nav-item" onclick="goTo('custos')"><span class="nav-icon">📌</span> Custos e Taxas</div>
+      <div class="nav-item" onclick="goTo('divisaolucro')"><span class="nav-icon">🧩</span> Divisão de Lucro</div>
       <div class="nav-item" onclick="goTo('dre')"><span class="nav-icon">📊</span> DRE</div>
     </div>
     <div class="nav-group">
@@ -449,10 +450,15 @@ async function sincronizarSheets() {
     const data = await res.json();
 
     if (data.ok && data.dados) {
+      // Tabelas que ainda têm alguma alteração pendente de enviar (mesmo depois
+      // de tentar reenviar agora) NÃO podem ser sobrescritas pelo que veio do
+      // Google — senão a edição que ainda não confirmou lá se perde na hora
+      // de sincronizar. Isso cobre tanto o envio em segundo plano quanto
+      // qualquer coisa que ainda esteja na fila de pendências.
+      const tabelasComPendenciaNaFila = new Set(_pendingQueue.map(op => op.tabela));
       Object.keys(data.dados).forEach(tabela => {
-        // Não sobrescreve uma tabela que está com alteração local em andamento —
-        // evita perder uma edição que ainda não confirmou no Google
         if (_tabelasComSyncPendente.has(tabela)) return;
+        if (tabelasComPendenciaNaFila.has(tabela)) return;
         if (DB[tabela] !== undefined) DB[tabela] = data.dados[tabela] || [];
       });
       // Config vem como array de 1 item
@@ -460,7 +466,11 @@ async function sincronizarSheets() {
         DB.config = DB.config[0];
       }
       salvarLocal();
-      setSyncStatus('ok', '✅ Sincronizado');
+      if (_pendingQueue.length > 0) {
+        setSyncStatus('error', '📴 ' + _pendingQueue.length + ' pendente(s)');
+      } else {
+        setSyncStatus('ok', '✅ Sincronizado');
+      }
       render(currentSection);
     } else {
       throw new Error(data.erro || 'Resposta inválida');
@@ -480,11 +490,15 @@ async function processarFila() {
   salvarLocal();
   for (const op of fila) {
     try {
+      let ok;
       if (op.acao === 'ajustar_estoque') {
-        await enviarAjusteEstoque(op.dados.itens);
+        ok = await enviarAjusteEstoque(op.dados.itens);
       } else {
-        await enviarParaSheets(op.acao, op.tabela, op.dados, op.id);
+        ok = await enviarParaSheets(op.acao, op.tabela, op.dados, op.id);
       }
+      // Se o Google respondeu mas disse que NÃO salvou (ok:false), trata igual
+      // uma falha de rede — não pode descartar a pendência sem confirmação real
+      if (!ok) throw new Error('Servidor não confirmou o salvamento');
     }
     catch(e) { _pendingQueue.push(op); }
   }
@@ -777,7 +791,7 @@ const TITLES = {
   fornecedores:'🏭 Fornecedores', clientes:'👥 Clientes', vendas:'💰 Vendas',
   compras:'🛒 Compras', producao:'🏗️ Produção', pedidos:'📋 Pedidos',
   kits:'🎁 Kits & Combos', areceber:'📥 A Receber', apagar:'📤 A Pagar',
-  custos:'📌 Custos e Taxas', dre:'📊 DRE', fichas:'🔬 Fichas Técnicas',
+  custos:'📌 Custos e Taxas', divisaolucro:'🧩 Divisão de Lucro', dre:'📊 DRE', fichas:'🔬 Fichas Técnicas',
   consignados:'🤝 Consignados', precificacao:'🧮 Precificação',
   relatorios:'📋 Relatórios', config:'⚙️ Configurações',
 };
@@ -2413,6 +2427,131 @@ async function salvarCF(id=null){
 // ═══════════════════════════════════════════════════════════════
 // DRE
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// DIVISÃO DE LUCRO — separa o lucro de cada venda em potes
+// (retirada, marketing, reinvestimento, reserva), técnica conhecida
+// como "Profit First" — separar % de cada venda antes de gastar.
+// ═══════════════════════════════════════════════════════════════
+function getDivisaoPercentuais(){
+  const c=DB.config||{};
+  return {
+    retirada: c.pct_retirada!=null?+c.pct_retirada:40,
+    marketing: c.pct_marketing!=null?+c.pct_marketing:20,
+    reinvestimento: c.pct_reinvestimento!=null?+c.pct_reinvestimento:25,
+    reserva: c.pct_reserva!=null?+c.pct_reserva:15,
+  };
+}
+function calcularDivisao(valorLucro){
+  const p=getDivisaoPercentuais();
+  return {
+    retirada: valorLucro*(p.retirada/100),
+    marketing: valorLucro*(p.marketing/100),
+    reinvestimento: valorLucro*(p.reinvestimento/100),
+    reserva: valorLucro*(p.reserva/100),
+  };
+}
+
+SECTIONS.divisaolucro = () => {
+  const p=getDivisaoPercentuais();
+  const somaPct=p.retirada+p.marketing+p.reinvestimento+p.reserva;
+  const fm=metricasFinanceiras();
+  const lucroMes=Math.max(0,fm.lucroLiquidoMes);
+  const divMes=calcularDivisao(lucroMes);
+
+  return `
+  <div style="background:var(--dourado-claro);border-left:4px solid var(--dourado-escuro);padding:12px 14px;border-radius:8px;font-size:12.5px;color:var(--cinza-escuro);margin-bottom:16px">
+    💡 <strong>Como funciona:</strong> primeiro o preço do produto já cobre o custo dos insumos, custo fixo e impostos (isso a Ficha Técnica calcula sozinha). O que sobra é o <strong>lucro</strong> — e é esse lucro que você divide aqui embaixo em 4 potes, em vez de gastar tudo sem separar.
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">🧩 Seus Percentuais</span></div>
+    <div style="padding:16px">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">💰 Retirada Pessoal (%)</label><input class="form-input" id="dl-retirada" type="number" min="0" max="100" value="${p.retirada}" oninput="atualizarPreviewDivisao()"></div>
+        <div class="form-group"><label class="form-label">📣 Marketing (%)</label><input class="form-input" id="dl-marketing" type="number" min="0" max="100" value="${p.marketing}" oninput="atualizarPreviewDivisao()"></div>
+        <div class="form-group"><label class="form-label">📦 Reinvestir em Estoque (%)</label><input class="form-input" id="dl-reinvestimento" type="number" min="0" max="100" value="${p.reinvestimento}" oninput="atualizarPreviewDivisao()"></div>
+        <div class="form-group"><label class="form-label">🛟 Reserva de Emergência (%)</label><input class="form-input" id="dl-reserva" type="number" min="0" max="100" value="${p.reserva}" oninput="atualizarPreviewDivisao()"></div>
+      </div>
+      <div id="dl-total-pct" style="margin-top:10px;font-size:13px;font-weight:700;color:${somaPct===100?'var(--verde-med)':'var(--vermelho)'}">Total: ${somaPct}% ${somaPct===100?'✅':'⚠️ precisa somar 100%'}</div>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="salvarDivisaoPercentuais()">💾 Salvar Percentuais</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">🧮 Simulador Rápido</span></div>
+    <div style="padding:16px">
+      <div class="form-group" style="max-width:260px;margin-bottom:14px">
+        <label class="form-label">Valor do lucro pra dividir (R$)</label>
+        <input class="form-input" id="dl-simulador" type="number" step="0.01" placeholder="Ex: 33,00" oninput="atualizarSimulador()">
+      </div>
+      <div id="dl-simulador-resultado"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">📆 Aplicado no Lucro deste Mês</span></div>
+    <div style="padding:16px">
+      <div style="font-size:12px;color:var(--cinza-med);margin-bottom:12px">Lucro Líquido do mês: <strong style="color:var(--cinza-escuro)">${R$(lucroMes)}</strong></div>
+      ${blocoDivisaoVisual(divMes)}
+    </div>
+  </div>`;
+};
+
+function blocoDivisaoVisual(div){
+  const itens=[
+    {label:'💰 Retirada Pessoal', valor:div.retirada, cor:'verde'},
+    {label:'📣 Marketing', valor:div.marketing, cor:'roxo'},
+    {label:'📦 Reinvestir em Estoque', valor:div.reinvestimento, cor:'azul'},
+    {label:'🛟 Reserva de Emergência', valor:div.reserva, cor:'amarelo'},
+  ];
+  const coresBg={verde:'var(--verde-claro)',roxo:'var(--roxo-claro)',azul:'#DCE7F5',amarelo:'var(--amarelo-claro)'};
+  const coresTxt={verde:'var(--verde)',roxo:'var(--roxo)',azul:'var(--azul-claro)',amarelo:'var(--amarelo)'};
+  return `<div class="kpi-grid">
+    ${itens.map(it=>`<div style="background:${coresBg[it.cor]};border-radius:10px;padding:12px 14px">
+      <div style="font-size:10px;font-weight:700;color:${coresTxt[it.cor]};text-transform:uppercase;letter-spacing:.4px">${it.label}</div>
+      <div style="font-size:19px;font-weight:800;color:${coresTxt[it.cor]};margin-top:4px">${R$(it.valor)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function atualizarPreviewDivisao(){
+  const r=parseFloat(document.getElementById('dl-retirada').value)||0;
+  const m=parseFloat(document.getElementById('dl-marketing').value)||0;
+  const rv=parseFloat(document.getElementById('dl-reinvestimento').value)||0;
+  const rs=parseFloat(document.getElementById('dl-reserva').value)||0;
+  const total=r+m+rv+rs;
+  const el=document.getElementById('dl-total-pct');
+  if(el){
+    el.style.color=total===100?'var(--verde-med)':'var(--vermelho)';
+    el.textContent=`Total: ${total}% ${total===100?'✅':'⚠️ precisa somar 100%'}`;
+  }
+  atualizarSimulador();
+}
+function atualizarSimulador(){
+  const valor=parseFloat(document.getElementById('dl-simulador')?.value)||0;
+  const r=parseFloat(document.getElementById('dl-retirada')?.value)||0;
+  const m=parseFloat(document.getElementById('dl-marketing')?.value)||0;
+  const rv=parseFloat(document.getElementById('dl-reinvestimento')?.value)||0;
+  const rs=parseFloat(document.getElementById('dl-reserva')?.value)||0;
+  const div={retirada:valor*(r/100),marketing:valor*(m/100),reinvestimento:valor*(rv/100),reserva:valor*(rs/100)};
+  const el=document.getElementById('dl-simulador-resultado');
+  if(el) el.innerHTML = valor>0 ? blocoDivisaoVisual(div) : `<p style="color:var(--cinza-med);font-size:12.5px">Digite um valor acima pra ver a divisão.</p>`;
+}
+async function salvarDivisaoPercentuais(){
+  const r=parseFloat(document.getElementById('dl-retirada').value)||0;
+  const m=parseFloat(document.getElementById('dl-marketing').value)||0;
+  const rv=parseFloat(document.getElementById('dl-reinvestimento').value)||0;
+  const rs=parseFloat(document.getElementById('dl-reserva').value)||0;
+  const total=r+m+rv+rs;
+  if(total!==100){ toast('Os percentuais precisam somar 100%','error'); return; }
+  if(!DB.config) DB.config={};
+  DB.config.pct_retirada=r; DB.config.pct_marketing=m; DB.config.pct_reinvestimento=rv; DB.config.pct_reserva=rs;
+  salvarLocal();
+  const obj={...DB.config,id:1};
+  await enviarParaSheets('upsert','config',obj).catch(()=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj});salvarLocal();});
+  toast('Percentuais salvos!');
+  render('divisaolucro');
+}
+
 SECTIONS.dre = () => {
   const efetivas=todasVendasEfetivas();
   const receita=efetivas.reduce((s,v)=>s+v.valorTotal,0);
