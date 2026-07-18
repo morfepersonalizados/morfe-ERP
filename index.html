@@ -300,7 +300,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <span id="page-title">Dashboard</span>
       </div>
       <div id="topbar-right">
-        <span id="sync-badge" class="ok">✅ Salvo</span>
+        <span id="sync-badge" class="ok" onclick="verPendencias()" style="cursor:pointer" title="Clica pra ver detalhes">✅ Salvo</span>
         <button class="btn btn-outline btn-sm" onclick="sincronizarAgora()" title="Sincronizar com Google Sheets">🔄</button>
       </div>
     </div>
@@ -420,6 +420,28 @@ function setSyncStatus(status, msg) {
   el.textContent = msg;
 }
 
+// Mostra o que exatamente está pendente de sincronizar, e por quê —
+// clica no aviso "X pendente(s)" no topo pra abrir isso
+function verPendencias(){
+  if(_pendingQueue.length===0){
+    toast('Tudo sincronizado, sem pendências! ✅');
+    return;
+  }
+  const NOMES_ACAO={upsert:'Salvar',excluir:'Excluir','ajustar_estoque':'Ajustar estoque'};
+  openModal(`⚠️ ${_pendingQueue.length} Pendência(s)`,
+    `<p style="font-size:12.5px;color:var(--cinza-med);margin-bottom:12px">Essas alterações ainda não foram confirmadas na sua planilha do Google. O sistema tenta reenviar automaticamente a cada sincronização — se continuar aparecendo aqui depois de várias tentativas, o motivo do erro abaixo ajuda a entender por quê.</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Ação</th><th>Tabela</th><th>Última tentativa</th><th>Motivo do erro</th></tr></thead>
+      <tbody>${_pendingQueue.map(op=>`<tr>
+        <td>${NOMES_ACAO[op.acao]||op.acao}</td>
+        <td>${op.tabela||'—'}</td>
+        <td style="font-size:11px">${op.tentadoEm?new Date(op.tentadoEm).toLocaleString('pt-BR'):'ainda não tentou de novo'}</td>
+        <td style="font-size:11px;color:var(--vermelho)">${op.ultimoErro||'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`,
+    async()=>{ closeModal(); await sincronizarAgora(); }, '🔄 Tentar Sincronizar Agora');
+}
+
 function showLoading() { document.getElementById('loading-bar')?.classList.add('show'); }
 function hideLoading() { document.getElementById('loading-bar')?.classList.remove('show'); }
 
@@ -507,32 +529,36 @@ async function processarFila() {
   salvarLocal();
   for (const op of fila) {
     try {
-      let ok;
       if (op.acao === 'ajustar_estoque') {
-        ok = await enviarAjusteEstoque(op.dados.itens);
+        await enviarAjusteEstoque(op.dados.itens);
       } else {
-        ok = await enviarParaSheets(op.acao, op.tabela, op.dados, op.id);
+        await enviarParaSheets(op.acao, op.tabela, op.dados, op.id);
       }
-      // Se o Google respondeu mas disse que NÃO salvou (ok:false), trata igual
-      // uma falha de rede — não pode descartar a pendência sem confirmação real
-      if (!ok) throw new Error('Servidor não confirmou o salvamento');
+      // Deu certo — não reentra na fila
     }
-    catch(e) { _pendingQueue.push(op); }
+    catch(e) {
+      op.ultimoErro = e.message || String(e);
+      op.tentadoEm = new Date().toISOString();
+      _pendingQueue.push(op);
+    }
   }
   salvarLocal();
 }
 
 async function enviarParaSheets(acao, tabela, dados, id) {
   if (!SHEETS_API_URL || SHEETS_API_URL === 'COLE_URL_DO_APPS_SCRIPT_AQUI') return true;
-  try {
-    const res = await fetch(SHEETS_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ acao, tabela, dados, id, senha: SENHA_APP })
-    });
-    const data = await res.json();
-    return data.ok;
-  } catch(e) { throw e; }
+  const res = await fetch(SHEETS_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ acao, tabela, dados, id, senha: SENHA_APP })
+  });
+  const data = await res.json();
+  // Se o Google respondeu mas disse que NÃO salvou (ok:false), isso agora
+  // LANÇA erro — antes só retornava "false" e vários lugares no código
+  // que esperavam um erro de rede (via .catch) simplesmente não percebiam
+  // que o salvamento tinha falhado de verdade, e seguiam como se tivesse dado certo.
+  if (!data.ok) throw new Error(data.erro || 'Servidor não confirmou o salvamento');
+  return true;
 }
 
 // Envia pro Sheets em segundo plano, SEM travar quem chamou.
@@ -567,11 +593,10 @@ async function salvarItem(tabela, obj) {
   setSyncStatus('ok', '✅ Salvo');
 
   // Sincroniza em segundo plano — NÃO trava a interface esperando o Google responder
-  enviarParaSheetsBackground('upsert', tabela, obj).then(ok => {
-    if (ok) setSyncStatus('ok', '✅ Sincronizado');
-    else throw new Error('Sheets retornou erro');
-  }).catch(() => {
-    _pendingQueue.push({ acao: 'upsert', tabela, dados: obj });
+  enviarParaSheetsBackground('upsert', tabela, obj).then(() => {
+    setSyncStatus('ok', '✅ Sincronizado');
+  }).catch((e) => {
+    _pendingQueue.push({ acao: 'upsert', tabela, dados: obj, ultimoErro: e?.message||String(e), tentadoEm: new Date().toISOString() });
     salvarLocal();
     setSyncStatus('error', '📴 Salvo local');
   });
@@ -586,11 +611,10 @@ async function excluirItem_db(tabela, id) {
   salvarLocal();
   setSyncStatus('ok', '✅ Excluído');
 
-  enviarParaSheetsBackground('excluir', tabela, null, id).then(ok => {
-    if (ok) setSyncStatus('ok', '✅ Sincronizado');
-    else throw new Error('Sheets retornou erro');
-  }).catch(() => {
-    _pendingQueue.push({ acao: 'excluir', tabela, id });
+  enviarParaSheetsBackground('excluir', tabela, null, id).then(() => {
+    setSyncStatus('ok', '✅ Sincronizado');
+  }).catch((e) => {
+    _pendingQueue.push({ acao: 'excluir', tabela, id, ultimoErro: e?.message||String(e), tentadoEm: new Date().toISOString() });
     salvarLocal();
     setSyncStatus('error', '📴 Excluído local');
   });
@@ -1451,11 +1475,10 @@ function ajustarEstMP(id){
         const delta=tp*qtd;
         m.estoque=Math.max(0,(+m.estoque||0)+delta); // feedback local
         salvarLocal();
-        enviarAjusteEstoqueBackground([{id:m.id, delta}]).then(ok=>{
-          if(ok) setSyncStatus('ok','✅ Sincronizado');
-          else throw new Error('falhou');
-        }).catch(()=>{
-          _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens:[{id:m.id, delta}]}});
+        enviarAjusteEstoqueBackground([{id:m.id, delta}]).then(()=>{
+          setSyncStatus('ok','✅ Sincronizado');
+        }).catch((e)=>{
+          _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens:[{id:m.id, delta}]}, ultimoErro:e?.message||String(e), tentadoEm:new Date().toISOString()});
           salvarLocal();
           setSyncStatus('error','📴 Salvo local');
         });
@@ -1574,7 +1597,8 @@ async function enviarAjusteEstoque(itens){
     body: JSON.stringify({ acao: 'ajustar_estoque', dados: { itens }, senha: SENHA_APP })
   });
   const data = await res.json();
-  return data.ok;
+  if (!data.ok) throw new Error(data.erro || 'Servidor não confirmou o ajuste de estoque');
+  return true;
 }
 function enviarAjusteEstoqueBackground(itens){
   if(!itens || itens.length===0) return Promise.resolve(true);
@@ -1606,11 +1630,10 @@ async function aplicarBaixaEstoque(consumo){
   }
   salvarLocal();
   if(itens.length===0) return;
-  enviarAjusteEstoqueBackground(itens).then(ok=>{
-    if(ok) setSyncStatus('ok','✅ Sincronizado');
-    else throw new Error('falhou');
-  }).catch(()=>{
-    _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens}});
+  enviarAjusteEstoqueBackground(itens).then(()=>{
+    setSyncStatus('ok','✅ Sincronizado');
+  }).catch((e)=>{
+    _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens}, ultimoErro:e?.message||String(e), tentadoEm:new Date().toISOString()});
     salvarLocal();
     setSyncStatus('error','📴 Salvo local');
   });
@@ -1627,11 +1650,10 @@ async function reverterBaixaEstoque(consumo){
   }
   salvarLocal();
   if(itens.length===0) return;
-  enviarAjusteEstoqueBackground(itens).then(ok=>{
-    if(ok) setSyncStatus('ok','✅ Sincronizado');
-    else throw new Error('falhou');
-  }).catch(()=>{
-    _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens}});
+  enviarAjusteEstoqueBackground(itens).then(()=>{
+    setSyncStatus('ok','✅ Sincronizado');
+  }).catch((e)=>{
+    _pendingQueue.push({acao:'ajustar_estoque', tabela:'materias', dados:{itens}, ultimoErro:e?.message||String(e), tentadoEm:new Date().toISOString()});
     salvarLocal();
     setSyncStatus('error','📴 Salvo local');
   });
@@ -2407,7 +2429,7 @@ async function salvarVendasMes(){
   DB.config.vendas_esperadas_mes = v;
   salvarLocal();
   const obj={...DB.config,id:1};
-  await enviarParaSheets('upsert','config',obj).catch(()=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj});salvarLocal();});
+  await enviarParaSheets('upsert','config',obj).catch((e)=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()});salvarLocal();});
   toast('Estimativa atualizada!');render('custos');
 }
 
@@ -2618,7 +2640,7 @@ async function salvarDivisaoPercentuais(){
   delete DB.config.pct_retirada; delete DB.config.pct_marketing; delete DB.config.pct_reinvestimento; delete DB.config.pct_reserva;
   salvarLocal();
   const obj={...DB.config,id:1};
-  await enviarParaSheets('upsert','config',obj).catch(()=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj});salvarLocal();});
+  await enviarParaSheets('upsert','config',obj).catch((e)=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()});salvarLocal();});
   toast('Potes salvos!');
   _dlBuckets=null;
   render('divisaolucro');
@@ -3573,7 +3595,7 @@ async function salvarConfig(){
   const obj={id:1,empresa:document.getElementById('cfg-empresa').value,whatsapp:document.getElementById('cfg-wpp').value,instagram:document.getElementById('cfg-ig').value,email:document.getElementById('cfg-email').value,cidade:document.getElementById('cfg-cidade').value,meta_mensal:parseFloat(document.getElementById('cfg-meta').value)||5000,taxa_pix:parseFloat(document.getElementById('cfg-pix').value)||0,taxa_debito:parseFloat(document.getElementById('cfg-deb').value)||1.5,taxa_credito1:parseFloat(document.getElementById('cfg-cr1').value)||2.5,margem_padrao:parseFloat(document.getElementById('cfg-marg').value)||40,reserva:parseFloat(document.getElementById('cfg-res').value)||10,categorias:DB.config?.categorias||[]};
   DB.config = obj;
   salvarLocal();
-  await enviarParaSheets('upsert','config',obj).catch(()=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj});salvarLocal();});
+  await enviarParaSheets('upsert','config',obj).catch((e)=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()});salvarLocal();});
   toast('Configurações salvas!');
 }
 
@@ -3613,7 +3635,7 @@ function editarCategoria(idx,nomeAtual){
       await salvarCategoriasNoDB(cats);
       // Salvar produtos afetados
       for (const p of DB.produtos.filter(p=>p.categoria===novo)) {
-        await enviarParaSheets('upsert','produtos',p).catch(()=>{_pendingQueue.push({acao:'upsert',tabela:'produtos',dados:p});});
+        await enviarParaSheets('upsert','produtos',p).catch((e)=>{_pendingQueue.push({acao:'upsert',tabela:'produtos',dados:p,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()});});
       }
       salvarLocal();
       toast('Categoria atualizada!');closeModal();render('config');
@@ -3640,7 +3662,7 @@ async function salvarCategoriasNoDB(cats){
   DB.config.categorias=cats;
   salvarLocal();
   const obj={...DB.config,id:1};
-  await enviarParaSheets('upsert','config',obj).catch(()=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj});salvarLocal();});
+  await enviarParaSheets('upsert','config',obj).catch((e)=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()});salvarLocal();});
 }
 
 // ═══════════════════════════════════════════════════════════════
