@@ -647,6 +647,12 @@ const nomeProd = id => getProd(id)?.nome || id || '—';
 const ordNome = (arr, campo='nome') => [...(arr||[])].sort((a,b) => String(a?.[campo]||'').localeCompare(String(b?.[campo]||''), 'pt-BR', {sensitivity:'base'}));
 const nomeCli = id => getCli(id)?.nome || id || '—';
 const nomeForn = id => getForn(id)?.nome || id || '—';
+// Verifica se um valor está de verdade definido — trata "undefined", "null"
+// E também "" (texto vazio) como "não definido". Isso importa porque o
+// Google Sheets devolve campo nunca preenchido como texto vazio, não como
+// null/undefined — sem esse cuidado, código que checa "!= null" acha que
+// tem um valor de verdade ali (e vira 0 ao converter pra número).
+function temValorDefinido(v){ return v!==undefined && v!==null && v!==''; }
 // Pega só a parte "AAAA-MM-DD" de qualquer formato de data que vier (defesa
 // contra o Google Sheets às vezes devolver um formato estranho tipo
 // "2026-07-16T03:00:00.000Z" em vez do texto puro que a gente espera)
@@ -2511,13 +2517,13 @@ function getDivisaoBuckets(){
     return DB.config.divisao_lucro;
   }
   const c=DB.config||{};
-  if(c.pct_retirada!=null||c.pct_marketing!=null||c.pct_reinvestimento!=null||c.pct_reserva!=null){
+  if(temValorDefinido(c.pct_retirada)||temValorDefinido(c.pct_marketing)||temValorDefinido(c.pct_reinvestimento)||temValorDefinido(c.pct_reserva)){
     // Migra a configuração antiga (4 campos fixos) pra formato livre
     return [
-      {nome:'💰 Retirada Pessoal', pct:c.pct_retirada!=null?+c.pct_retirada:40},
-      {nome:'📣 Marketing', pct:c.pct_marketing!=null?+c.pct_marketing:20},
-      {nome:'📦 Reinvestir em Estoque', pct:c.pct_reinvestimento!=null?+c.pct_reinvestimento:25},
-      {nome:'🛟 Reserva de Emergência', pct:c.pct_reserva!=null?+c.pct_reserva:15},
+      {nome:'💰 Retirada Pessoal', pct:temValorDefinido(c.pct_retirada)?+c.pct_retirada:40},
+      {nome:'📣 Marketing', pct:temValorDefinido(c.pct_marketing)?+c.pct_marketing:20},
+      {nome:'📦 Reinvestir em Estoque', pct:temValorDefinido(c.pct_reinvestimento)?+c.pct_reinvestimento:25},
+      {nome:'🛟 Reserva de Emergência', pct:temValorDefinido(c.pct_reserva)?+c.pct_reserva:15},
     ];
   }
   return [
@@ -2749,7 +2755,7 @@ function calcFichaCompleta(prodId){
   const custoFixo=custoFixoRateado();
   const embalagem=+(p.embalagem||0);
   const custoTotal=custoInsumos+custoFixo+embalagem;
-  const markum=p.margem_ideal!=null?+p.margem_ideal:+(DB.config?.margem_padrao||40);
+  const markum=temValorDefinido(p.margem_ideal)?+p.margem_ideal:+(DB.config?.margem_padrao||40);
   const impostosPct=pctImpostos();
   const outrasPct=pctTaxasCartao();
   const deliveryPct=pctTaxasDelivery();
@@ -2890,7 +2896,8 @@ function blocoResFM(prodId){
 async function recalcFM(prodId){
   const p=getProd(prodId);if(!p)return;
   p.embalagem=parseFloat(document.getElementById('fm-emb-'+prodId)?.value)||0;
-  p.margem_ideal=parseFloat(document.getElementById('fm-marg-'+prodId)?.value);
+  const margLida=parseFloat(document.getElementById('fm-marg-'+prodId)?.value);
+  if(!isNaN(margLida)) p.margem_ideal=margLida; // só grava se for um número válido de verdade
   await salvarItem('produtos',p);
   const c=calcFichaCompleta(prodId);
   const elT=document.getElementById('fm-custot-'+prodId);if(elT)elT.textContent=R$(c.custoTotal);
