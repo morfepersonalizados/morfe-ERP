@@ -3163,6 +3163,7 @@ function editarItemCSG(consigId, idx){
       <div class="form-group"><label class="form-label">Preço de Repasse (R$) — o que você cobra do parceiro</label><input class="form-input" id="eci-pr" type="number" step="0.01" value="${it.preco}"></div>
       <div class="form-group"><label class="form-label">Quantidade Atual (o que ainda está lá)</label><input class="form-input" id="eci-qa" type="number" min="0" value="${it.qtd_atual}"></div>
       <div class="form-group"><label class="form-label">Quantidade Inicial (total já entregue)</label><input class="form-input" id="eci-qi" type="number" min="0" value="${it.qtd_inicial}"></div>
+      <div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:11.5px">📦 Se você mudar produto, variante ou quantidade inicial, o estoque de insumo é reajustado automaticamente (devolve o antigo, abate o novo).</div>
     </div>`,
     async()=>{
       const novoProd=document.getElementById('eci-p_val').value||it.prod;
@@ -3170,9 +3171,21 @@ function editarItemCSG(consigId, idx){
       const novoPreco=parseFloat(document.getElementById('eci-pr').value)||0;
       const novaQA=parseInt(document.getElementById('eci-qa').value)||0;
       const novaQI=parseInt(document.getElementById('eci-qi').value)||0;
-      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI};
+
+      // Devolve o que tinha sido abatido antes, e abate de novo com os dados atualizados
+      if(it.consumo_insumos && Object.keys(it.consumo_insumos).length>0){
+        await reverterBaixaEstoque(it.consumo_insumos);
+      }
+      const novoConsumo={};
+      somarConsumoProduto(novoConsumo, novoProd, novaQI, novaVariante);
+      const avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
+      if(Object.keys(novoConsumo).length>0) await aplicarBaixaEstoque(novoConsumo);
+
+      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI, consumo_insumos:novoConsumo};
       await salvarItem('consignados', c);
-      toast('Item atualizado!'); closeModal(); render('consignados');
+      if(avisoFalta.length>0) toast('⚠️ Item atualizado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
+      else toast('Item atualizado! Estoque de insumo ajustado.');
+      closeModal(); render('consignados');
     }, '💾 Salvar');
 }
 function atualizarVarianteEditCSG(prodId){
@@ -3189,12 +3202,15 @@ function excluirItemCSG(consigId, idx){
   const c=getItem(DB.consignados, consigId); if(!c) return;
   const it=c.itens[idx]; if(!it) return;
   openModal('🗑️ Excluir Item',
-    `<p>Remover <strong>${nomeProd(it.prod)}</strong> deste ponto de consignação?</p>
-     <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">Isso não devolve estoque automaticamente — se o produto ainda está fisicamente com você, ajuste o estoque do insumo manualmente se precisar.</p>`,
+    `<p>Remover <strong>${nomeProd(it.prod)}</strong>${it.variante?' ('+it.variante+')':''} deste ponto de consignação?</p>
+     <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">📦 O estoque do insumo que foi abatido na entrega desse item será devolvido automaticamente.</p>`,
     async()=>{
+      if(it.consumo_insumos && Object.keys(it.consumo_insumos).length>0){
+        await reverterBaixaEstoque(it.consumo_insumos);
+      }
       c.itens.splice(idx,1);
       await salvarItem('consignados', c);
-      toast('Item removido!'); closeModal(); render('consignados');
+      toast('Item removido! Estoque de insumo devolvido.'); closeModal(); render('consignados');
     }, '🗑️ Excluir');
 }
 
@@ -3227,7 +3243,7 @@ function addItemCSG(consigId){
       <div class="form-group full" id="ci-variante-wrap"></div>
       <div class="form-group"><label class="form-label">Quantidade Entregue</label><input class="form-input" id="ci-q" type="number" min="1" value="1"></div>
       <div class="form-group"><label class="form-label">Preço de Repasse (R$)</label><input class="form-input" id="ci-pr" type="number" step="0.01"><div id="ci-preco-ref" style="font-size:11px;color:var(--cinza-med);margin-top:3px"></div></div>
-      <div style="grid-column:span 2;background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px">💡 <strong>Preço de repasse</strong> é o que você cobra do parceiro — geralmente menor que o preço normal, pra ele ter margem pra revender. Ex: você vende a R$35, repassa a R$25.</div>
+      <div style="grid-column:span 2;background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px">💡 <strong>Preço de repasse</strong> é o que você cobra do parceiro — geralmente menor que o preço normal, pra ele ter margem pra revender. Ex: você vende a R$35, repassa a R$25.<br>📦 Isso já vai abater automaticamente o estoque do insumo (se o produto tiver Ficha Técnica configurada).</div>
     </div>`,
     async()=>{
       const prod=document.getElementById('ci-p_val').value;
@@ -3239,11 +3255,23 @@ function addItemCSG(consigId){
       if(varInfo&&!variante){toast('Escolhe a cor/versão desse produto','error');return;}
       const c=getItem(DB.consignados,consigId);if(!c)return;
       if(!c.itens)c.itens=[];
+      // Calcula o consumo de insumo pra essa entrega (baseado na Ficha Técnica do produto)
+      const consumoDelta={};
+      somarConsumoProduto(consumoDelta, prod, qtd, variante);
+      const avisoFalta=verificarEstoqueInsuficiente(consumoDelta);
       const ex=c.itens.find(i=>i.prod===prod&&(i.variante||'')===variante);
-      if(ex){ex.qtd_inicial=(+ex.qtd_inicial||0)+qtd;ex.qtd_atual=(+ex.qtd_atual||0)+qtd;ex.preco=preco;}
-      else c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco});
+      if(ex){
+        ex.qtd_inicial=(+ex.qtd_inicial||0)+qtd;ex.qtd_atual=(+ex.qtd_atual||0)+qtd;ex.preco=preco;
+        ex.consumo_insumos=ex.consumo_insumos||{};
+        Object.keys(consumoDelta).forEach(mp=>{ex.consumo_insumos[mp]=(ex.consumo_insumos[mp]||0)+consumoDelta[mp];});
+      } else {
+        c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco,consumo_insumos:consumoDelta});
+      }
+      if(Object.keys(consumoDelta).length>0) await aplicarBaixaEstoque(consumoDelta);
       await salvarItem('consignados',c);
-      toast('Produto adicionado!');closeModal();render('consignados');
+      if(avisoFalta.length>0) toast('⚠️ Produto adicionado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
+      else toast('Produto adicionado! Estoque de insumo abatido.');
+      closeModal();render('consignados');
     },'📦 Entregar na Loja');
 }
 function autoPrecoCSG(prodId){
