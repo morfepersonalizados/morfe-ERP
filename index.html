@@ -2453,53 +2453,60 @@ async function salvarCF(id=null){
 // DRE
 // ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
-// DIVISÃO DE LUCRO — separa o lucro de cada venda em potes
-// (retirada, marketing, reinvestimento, reserva), técnica conhecida
-// como "Profit First" — separar % de cada venda antes de gastar.
 // ═══════════════════════════════════════════════════════════════
-function getDivisaoPercentuais(){
+// DIVISÃO DE LUCRO — separa o lucro de cada venda em potes que você
+// mesmo define (nome e quantidade livres), técnica conhecida como
+// "Profit First" — separar % de cada venda antes de gastar.
+// ═══════════════════════════════════════════════════════════════
+const CORES_DL=['verde','roxo','azul','amarelo','laranja','vermelho'];
+const CORES_DL_BG={verde:'var(--verde-claro)',roxo:'var(--roxo-claro)',azul:'#DCE7F5',amarelo:'var(--amarelo-claro)',laranja:'var(--laranja-claro)',vermelho:'var(--vermelho-claro)'};
+const CORES_DL_TXT={verde:'var(--verde)',roxo:'var(--roxo)',azul:'var(--azul-claro)',amarelo:'var(--amarelo)',laranja:'var(--laranja)',vermelho:'var(--vermelho)'};
+
+// Lê os potes salvos — se ainda não existir nada salvo (config nova ou vinda
+// da versão antiga de 4 campos fixos), monta a partir do que tinha antes ou
+// usa um padrão inicial. Sempre retorna um array, livre pra ter quantos
+// potes o usuário quiser.
+function getDivisaoBuckets(){
+  if(Array.isArray(DB.config?.divisao_lucro)&&DB.config.divisao_lucro.length>0){
+    return DB.config.divisao_lucro;
+  }
   const c=DB.config||{};
-  return {
-    retirada: c.pct_retirada!=null?+c.pct_retirada:40,
-    marketing: c.pct_marketing!=null?+c.pct_marketing:20,
-    reinvestimento: c.pct_reinvestimento!=null?+c.pct_reinvestimento:25,
-    reserva: c.pct_reserva!=null?+c.pct_reserva:15,
-  };
+  if(c.pct_retirada!=null||c.pct_marketing!=null||c.pct_reinvestimento!=null||c.pct_reserva!=null){
+    // Migra a configuração antiga (4 campos fixos) pra formato livre
+    return [
+      {nome:'💰 Retirada Pessoal', pct:c.pct_retirada!=null?+c.pct_retirada:40},
+      {nome:'📣 Marketing', pct:c.pct_marketing!=null?+c.pct_marketing:20},
+      {nome:'📦 Reinvestir em Estoque', pct:c.pct_reinvestimento!=null?+c.pct_reinvestimento:25},
+      {nome:'🛟 Reserva de Emergência', pct:c.pct_reserva!=null?+c.pct_reserva:15},
+    ];
+  }
+  return [
+    {nome:'💰 Retirada Pessoal', pct:40},
+    {nome:'📣 Marketing', pct:20},
+    {nome:'📦 Reinvestir em Estoque', pct:25},
+    {nome:'🛟 Reserva de Emergência', pct:15},
+  ];
 }
 function calcularDivisao(valorLucro){
-  const p=getDivisaoPercentuais();
-  return {
-    retirada: valorLucro*(p.retirada/100),
-    marketing: valorLucro*(p.marketing/100),
-    reinvestimento: valorLucro*(p.reinvestimento/100),
-    reserva: valorLucro*(p.reserva/100),
-  };
+  return getDivisaoBuckets().map((b,i)=>({nome:b.nome, pct:+b.pct||0, valor:valorLucro*((+b.pct||0)/100), cor:CORES_DL[i%CORES_DL.length]}));
+}
+
+// Estado de trabalho da tela (só carrega uma vez, edições ficam aqui até salvar)
+let _dlBuckets=null;
+function dlBuckets(){
+  if(!_dlBuckets) _dlBuckets=JSON.parse(JSON.stringify(getDivisaoBuckets()));
+  return _dlBuckets;
 }
 
 SECTIONS.divisaolucro = () => {
-  const p=getDivisaoPercentuais();
-  const somaPct=p.retirada+p.marketing+p.reinvestimento+p.reserva;
-  const fm=metricasFinanceiras();
-  const lucroMes=Math.max(0,fm.lucroLiquidoMes);
-  const divMes=calcularDivisao(lucroMes);
-
   return `
   <div style="background:var(--dourado-claro);border-left:4px solid var(--dourado-escuro);padding:12px 14px;border-radius:8px;font-size:12.5px;color:var(--cinza-escuro);margin-bottom:16px">
-    💡 <strong>Como funciona:</strong> primeiro o preço do produto já cobre o custo dos insumos, custo fixo e impostos (isso a Ficha Técnica calcula sozinha). O que sobra é o <strong>lucro</strong> — e é esse lucro que você divide aqui embaixo em 4 potes, em vez de gastar tudo sem separar.
+    💡 <strong>Como funciona:</strong> primeiro o preço do produto já cobre o custo dos insumos, custo fixo e impostos (isso a Ficha Técnica calcula sozinha). O que sobra é o <strong>lucro</strong> — e é esse lucro que você divide abaixo em potes que você mesmo cria e nomeia, em vez de gastar tudo sem separar.
   </div>
 
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">🧩 Seus Percentuais</span></div>
-    <div style="padding:16px">
-      <div class="form-grid">
-        <div class="form-group"><label class="form-label">💰 Retirada Pessoal (%)</label><input class="form-input" id="dl-retirada" type="number" min="0" max="100" value="${p.retirada}" oninput="atualizarPreviewDivisao()"></div>
-        <div class="form-group"><label class="form-label">📣 Marketing (%)</label><input class="form-input" id="dl-marketing" type="number" min="0" max="100" value="${p.marketing}" oninput="atualizarPreviewDivisao()"></div>
-        <div class="form-group"><label class="form-label">📦 Reinvestir em Estoque (%)</label><input class="form-input" id="dl-reinvestimento" type="number" min="0" max="100" value="${p.reinvestimento}" oninput="atualizarPreviewDivisao()"></div>
-        <div class="form-group"><label class="form-label">🛟 Reserva de Emergência (%)</label><input class="form-input" id="dl-reserva" type="number" min="0" max="100" value="${p.reserva}" oninput="atualizarPreviewDivisao()"></div>
-      </div>
-      <div id="dl-total-pct" style="margin-top:10px;font-size:13px;font-weight:700;color:${somaPct===100?'var(--verde-med)':'var(--vermelho)'}">Total: ${somaPct}% ${somaPct===100?'✅':'⚠️ precisa somar 100%'}</div>
-      <button class="btn btn-primary" style="margin-top:12px" onclick="salvarDivisaoPercentuais()">💾 Salvar Percentuais</button>
-    </div>
+    <div class="panel-header"><span class="panel-title">🧩 Seus Potes</span></div>
+    <div style="padding:16px" id="dl-buckets-container">${renderDlBucketsForm()}</div>
   </div>
 
   <div class="panel">
@@ -2514,36 +2521,80 @@ SECTIONS.divisaolucro = () => {
   </div>
 
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">📆 Aplicado no Lucro deste Mês</span></div>
-    <div style="padding:16px">
-      <div style="font-size:12px;color:var(--cinza-med);margin-bottom:12px">Lucro Líquido do mês: <strong style="color:var(--cinza-escuro)">${R$(lucroMes)}</strong></div>
-      ${blocoDivisaoVisual(divMes)}
-    </div>
+    <div class="panel-header"><span class="panel-title">📆 Somado Automaticamente por Período</span></div>
+    <div style="padding:0">${tabelaDivisaoPorPeriodo()}</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">📋 Extrato — Divisão de Cada Venda</span></div>
+    <div style="padding:0">${tabelaExtratoDivisao()}</div>
   </div>`;
 };
 
-function blocoDivisaoVisual(div){
-  const itens=[
-    {label:'💰 Retirada Pessoal', valor:div.retirada, cor:'verde'},
-    {label:'📣 Marketing', valor:div.marketing, cor:'roxo'},
-    {label:'📦 Reinvestir em Estoque', valor:div.reinvestimento, cor:'azul'},
-    {label:'🛟 Reserva de Emergência', valor:div.reserva, cor:'amarelo'},
+// Soma o lucro (vendas+pedidos) em 4 janelas de tempo diferentes, e já
+// devolve cada uma dividida nos potes — pra você ver tudo de uma vez,
+// sem precisar trocar de tela ou calcular na mão.
+function calcularLucroPorPeriodo(){
+  const efetivas=todasVendasEfetivas();
+  const hoje=new Date();
+  const hojeStr=hoje.toISOString().slice(0,10);
+  const seteDiasAtras=new Date(hoje); seteDiasAtras.setDate(hoje.getDate()-6);
+  const seteDiasStr=seteDiasAtras.toISOString().slice(0,10);
+  const inicioMesStr=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-01`;
+  const inicioAnoStr=`${hoje.getFullYear()}-01-01`;
+
+  const somaLucro=(desde)=>efetivas.filter(v=>normalizarData(v.data)>=desde && normalizarData(v.data)<=hojeStr)
+    .reduce((s,v)=>s+(v.valorTotal-v.custoTotal),0);
+
+  return [
+    {label:'📅 Hoje', lucro:Math.max(0,somaLucro(hojeStr))},
+    {label:'🗓️ Últimos 7 dias', lucro:Math.max(0,somaLucro(seteDiasStr))},
+    {label:'📆 Este Mês', lucro:Math.max(0,somaLucro(inicioMesStr))},
+    {label:'🗓️ Este Ano', lucro:Math.max(0,somaLucro(inicioAnoStr))},
   ];
-  const coresBg={verde:'var(--verde-claro)',roxo:'var(--roxo-claro)',azul:'#DCE7F5',amarelo:'var(--amarelo-claro)'};
-  const coresTxt={verde:'var(--verde)',roxo:'var(--roxo)',azul:'var(--azul-claro)',amarelo:'var(--amarelo)'};
-  return `<div class="kpi-grid">
-    ${itens.map(it=>`<div style="background:${coresBg[it.cor]};border-radius:10px;padding:12px 14px">
-      <div style="font-size:10px;font-weight:700;color:${coresTxt[it.cor]};text-transform:uppercase;letter-spacing:.4px">${it.label}</div>
-      <div style="font-size:19px;font-weight:800;color:${coresTxt[it.cor]};margin-top:4px">${R$(it.valor)}</div>
-    </div>`).join('')}
-  </div>`;
 }
-function atualizarPreviewDivisao(){
-  const r=parseFloat(document.getElementById('dl-retirada').value)||0;
-  const m=parseFloat(document.getElementById('dl-marketing').value)||0;
-  const rv=parseFloat(document.getElementById('dl-reinvestimento').value)||0;
-  const rs=parseFloat(document.getElementById('dl-reserva').value)||0;
-  const total=r+m+rv+rs;
+function tabelaDivisaoPorPeriodo(){
+  const periodos=calcularLucroPorPeriodo();
+  const buckets=getDivisaoBuckets();
+  return `<div class="tbl-wrap"><table>
+    <thead><tr><th>Período</th><th class="orc-val">Lucro</th>${buckets.map(b=>`<th class="orc-val">${b.nome}</th>`).join('')}</tr></thead>
+    <tbody>${periodos.map(p=>{
+      const div=calcularDivisao(p.lucro);
+      return `<tr>
+        <td class="fw-bold">${p.label}</td>
+        <td class="fw-bold text-verde text-center">${R$(p.lucro)}</td>
+        ${div.map(d=>`<td class="text-center">${R$(d.valor)}</td>`).join('')}
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+function renderDlBucketsForm(){
+  const buckets=dlBuckets();
+  const total=buckets.reduce((s,b)=>s+(+b.pct||0),0);
+  return `
+    <div id="dl-buckets-rows">${buckets.map((b,i)=>`
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <input type="text" value="${(b.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome do pote" oninput="dlBuckets()[${i}].nome=this.value" style="flex:2;padding:9px 10px;border:1.5px solid var(--cinza-claro);border-radius:6px;font-size:13px;font-family:inherit">
+        <input type="number" min="0" max="100" value="${b.pct}" oninput="dlBuckets()[${i}].pct=+this.value;atualizarTotalDl()" style="width:75px;padding:9px 10px;border:1.5px solid var(--cinza-claro);border-radius:6px;font-size:13px;text-align:center;font-family:inherit">
+        <span style="font-size:12px;color:var(--cinza-med)">%</span>
+        <button onclick="removerBucketDl(${i})" style="background:var(--vermelho);color:white;border:none;border-radius:5px;width:30px;height:30px;cursor:pointer;font-size:15px;flex-shrink:0">×</button>
+      </div>`).join('')}</div>
+    <button onclick="adicionarBucketDl()" style="background:none;border:1.5px dashed var(--roxo);color:var(--roxo);border-radius:6px;padding:8px;cursor:pointer;font-size:13px;font-weight:600;width:100%;margin:6px 0 12px">+ Adicionar Pote</button>
+    <div id="dl-total-pct" style="font-size:13px;font-weight:700;color:${total===100?'var(--verde-med)':'var(--vermelho)'}">Total: ${total}% ${total===100?'✅':'⚠️ precisa somar 100%'}</div>
+    <button class="btn btn-primary" style="margin-top:12px" onclick="salvarDivisaoPercentuais()">💾 Salvar Potes</button>`;
+}
+function adicionarBucketDl(){
+  dlBuckets().push({nome:'', pct:0});
+  document.getElementById('dl-buckets-container').innerHTML=renderDlBucketsForm();
+}
+function removerBucketDl(i){
+  if(dlBuckets().length<=1){toast('Precisa ter pelo menos 1 pote','error');return;}
+  dlBuckets().splice(i,1);
+  document.getElementById('dl-buckets-container').innerHTML=renderDlBucketsForm();
+  atualizarSimulador();
+}
+function atualizarTotalDl(){
+  const total=dlBuckets().reduce((s,b)=>s+(+b.pct||0),0);
   const el=document.getElementById('dl-total-pct');
   if(el){
     el.style.color=total===100?'var(--verde-med)':'var(--vermelho)';
@@ -2551,31 +2602,64 @@ function atualizarPreviewDivisao(){
   }
   atualizarSimulador();
 }
-function atualizarSimulador(){
-  const valor=parseFloat(document.getElementById('dl-simulador')?.value)||0;
-  const r=parseFloat(document.getElementById('dl-retirada')?.value)||0;
-  const m=parseFloat(document.getElementById('dl-marketing')?.value)||0;
-  const rv=parseFloat(document.getElementById('dl-reinvestimento')?.value)||0;
-  const rs=parseFloat(document.getElementById('dl-reserva')?.value)||0;
-  const div={retirada:valor*(r/100),marketing:valor*(m/100),reinvestimento:valor*(rv/100),reserva:valor*(rs/100)};
-  const el=document.getElementById('dl-simulador-resultado');
-  if(el) el.innerHTML = valor>0 ? blocoDivisaoVisual(div) : `<p style="color:var(--cinza-med);font-size:12.5px">Digite um valor acima pra ver a divisão.</p>`;
-}
 async function salvarDivisaoPercentuais(){
-  const r=parseFloat(document.getElementById('dl-retirada').value)||0;
-  const m=parseFloat(document.getElementById('dl-marketing').value)||0;
-  const rv=parseFloat(document.getElementById('dl-reinvestimento').value)||0;
-  const rs=parseFloat(document.getElementById('dl-reserva').value)||0;
-  const total=r+m+rv+rs;
-  if(total!==100){ toast('Os percentuais precisam somar 100%','error'); return; }
+  const buckets=dlBuckets();
+  const total=buckets.reduce((s,b)=>s+(+b.pct||0),0);
+  if(total!==100){toast('Os percentuais precisam somar 100%','error');return;}
+  if(buckets.some(b=>!String(b.nome||'').trim())){toast('Todo pote precisa de um nome','error');return;}
   if(!DB.config) DB.config={};
-  DB.config.pct_retirada=r; DB.config.pct_marketing=m; DB.config.pct_reinvestimento=rv; DB.config.pct_reserva=rs;
+  DB.config.divisao_lucro=buckets.map(b=>({nome:String(b.nome).trim(), pct:+b.pct||0}));
+  // Limpa os campos antigos (formato de 4 campos fixos) já que agora usa o array
+  delete DB.config.pct_retirada; delete DB.config.pct_marketing; delete DB.config.pct_reinvestimento; delete DB.config.pct_reserva;
   salvarLocal();
   const obj={...DB.config,id:1};
   await enviarParaSheets('upsert','config',obj).catch(()=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj});salvarLocal();});
-  toast('Percentuais salvos!');
+  toast('Potes salvos!');
+  _dlBuckets=null;
   render('divisaolucro');
 }
+
+function blocoDivisaoVisual(div){
+  return `<div class="kpi-grid">
+    ${div.map(it=>`<div style="background:${CORES_DL_BG[it.cor]};border-radius:10px;padding:12px 14px">
+      <div style="font-size:10px;font-weight:700;color:${CORES_DL_TXT[it.cor]};text-transform:uppercase;letter-spacing:.4px">${it.nome} <span style="opacity:.7">(${it.pct}%)</span></div>
+      <div style="font-size:19px;font-weight:800;color:${CORES_DL_TXT[it.cor]};margin-top:4px">${R$(it.valor)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function atualizarSimulador(){
+  const valor=parseFloat(document.getElementById('dl-simulador')?.value)||0;
+  const buckets=dlBuckets();
+  const div=buckets.map((b,i)=>({nome:b.nome||'(sem nome)', pct:+b.pct||0, valor:valor*((+b.pct||0)/100), cor:CORES_DL[i%CORES_DL.length]}));
+  const el=document.getElementById('dl-simulador-resultado');
+  if(el) el.innerHTML = valor>0 ? blocoDivisaoVisual(div) : `<p style="color:var(--cinza-med);font-size:12.5px">Digite um valor acima pra ver a divisão.</p>`;
+}
+
+// Extrato: pega as últimas vendas/pedidos de verdade e mostra a divisão de
+// CADA UMA individualmente — pra dar noção na hora de mexer no dinheiro.
+function tabelaExtratoDivisao(){
+  const efetivas=todasVendasEfetivas().filter(v=>v.valorTotal>0);
+  const buckets=getDivisaoBuckets();
+  const recentes=[...efetivas].sort((a,b)=>(b.data||'').localeCompare(a.data||'')).slice(0,30);
+  if(recentes.length===0){
+    return `<div style="padding:20px;text-align:center;color:var(--cinza-med);font-size:13px">Nenhuma venda registrada ainda.</div>`;
+  }
+  return `<div class="tbl-wrap"><table>
+    <thead><tr><th>Data</th><th>Cliente</th><th class="orc-val">Lucro</th>${buckets.map(b=>`<th class="orc-val">${b.nome}</th>`).join('')}</tr></thead>
+    <tbody>${recentes.map(v=>{
+      const lucro=v.valorTotal-v.custoTotal;
+      const div=calcularDivisao(Math.max(0,lucro));
+      return `<tr>
+        <td>${v.data||'—'}</td>
+        <td>${nomeCli(v.cliente)}</td>
+        <td class="fw-bold text-verde text-center">${R$(lucro)}</td>
+        ${div.map(d=>`<td class="text-center">${R$(d.valor)}</td>`).join('')}
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>
+  <div style="padding:8px 16px;font-size:11px;color:var(--cinza-med);border-top:1px solid var(--cinza-claro)">Mostrando as últimas ${recentes.length} vendas/pedidos.</div>`;
+}
+
 
 SECTIONS.dre = () => {
   const efetivas=todasVendasEfetivas();
@@ -2990,17 +3074,25 @@ SECTIONS.consignados = () => {
   const totalPecas=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0),s),0);
   const totalValor=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+i.preco||0),s),0);
   const totalVendido=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),s),0);
+  const totalLucro=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>{
+    const custo=+(getProd(i.prod)?.custo)||0; const lucroUn=(+i.preco||0)-custo;
+    return ss+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*lucroUn;
+  },s),0);
   return`
   <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Pontos</div><div class="kpi-value">${DB.consignados.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Peças em Loja</div><div class="kpi-value">${totalPecas}</div></div>
-    <div class="kpi-card laranja"><div class="kpi-label">Valor em Loja</div><div class="kpi-value">${R$(totalValor)}</div></div>
-    <div class="kpi-card roxo"><div class="kpi-label">Total Vendido</div><div class="kpi-value">${R$(totalVendido)}</div></div>
+    <div class="kpi-card laranja"><div class="kpi-label">Valor em Loja (repasse)</div><div class="kpi-value">${R$(totalValor)}</div></div>
+    <div class="kpi-card roxo"><div class="kpi-label">Já Vendido (repasse)</div><div class="kpi-value">${R$(totalVendido)}</div></div>
+    <div class="kpi-card verde"><div class="kpi-label">💰 Seu Lucro Já Realizado</div><div class="kpi-value">${R$(totalLucro)}</div></div>
+  </div>
+  <div style="background:var(--dourado-claro);border-left:4px solid var(--dourado-escuro);padding:12px 14px;border-radius:8px;font-size:12.5px;color:var(--cinza-escuro);margin-bottom:16px">
+    💡 <strong>Preço de Repasse</strong> é o valor que você cobra do parceiro (diferente do preço normal de venda) — eles colocam a margem deles em cima pra revender. Clique em ✏️ num item pra ajustar o repasse, quantidade ou trocar o produto.
   </div>
   <div class="panel"><div class="panel-header"><span class="panel-title">🤝 Pontos de Consignação</span><button class="btn btn-success" onclick="novoCSG()">+ Novo Ponto</button></div>
     <div style="padding:16px">
       ${DB.consignados.length===0?`<div class="empty-state"><div class="empty-icon">🤝</div>Nenhum ponto de consignação cadastrado.</div>`:
-      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
+      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">
         ${ordNome(DB.consignados).map(c=>{
           const pecas=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0),0);
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
@@ -3019,17 +3111,28 @@ SECTIONS.consignados = () => {
               </div>
               <div style="font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;margin-bottom:4px">Produtos na loja</div>
               ${(c.itens||[]).length===0?`<div style="font-size:12px;color:var(--cinza-med);padding:8px 0">Nenhum produto entregue ainda.</div>`:
-              (c.itens||[]).map((it,idx)=>`
-                <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px">
-                  <div style="flex:1;min-width:0"><span class="fw-bold">${nomeProd(it.prod)||it.prod}</span><span style="color:var(--cinza-med)"> · ${R$(it.preco)}</span></div>
-                  <div style="display:flex;align-items:center;gap:5px">
-                    <button onclick="ajustCSG('${c.id}',${idx},-1)" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:14px;font-weight:700">−</button>
-                    <span style="font-weight:900;font-size:14px;min-width:24px;text-align:center;color:${it.qtd_atual===0?'var(--vermelho)':it.qtd_atual<=2?'var(--amarelo)':'var(--verde)'}">${it.qtd_atual}</span>
-                    <button onclick="ajustCSG('${c.id}',${idx},1)" style="background:var(--verde-med);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:14px;font-weight:700">+</button>
-                    <span style="font-size:10px;color:var(--cinza-med)">/${it.qtd_inicial}</span>
+              (c.itens||[]).map((it,idx)=>{
+                const custo=+(getProd(it.prod)?.custo)||0;
+                const lucroUn=(+it.preco||0)-custo;
+                const margemPct=it.preco>0?(lucroUn/it.preco*100):0;
+                return`
+                <div style="padding:7px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;min-width:0"><span class="fw-bold">${nomeProd(it.prod)||it.prod}</span>${it.variante?` <span style="color:var(--dourado-escuro);font-weight:700">🔀 ${it.variante}</span>`:''}</div>
+                    <button onclick="editarItemCSG('${c.id}',${idx})" style="background:var(--azul-claro);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">✏️</button>
+                    <button onclick="excluirItemCSG('${c.id}',${idx})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">🗑️</button>
                   </div>
-                  <span class="fw-bold text-verde" style="min-width:65px;text-align:right">${R$((+it.qtd_atual||0)*(+it.preco||0))}</span>
-                </div>`).join('')}
+                  <div style="font-size:10.5px;color:var(--cinza-med);margin:3px 0">Repasse: <strong style="color:var(--cinza-escuro)">${R$(it.preco)}</strong> · Custo: ${R$(custo)} · Lucro/un: <strong style="color:${lucroUn>=0?'var(--verde)':'var(--vermelho)'}">${R$(lucroUn)} (${margemPct.toFixed(0)}%)</strong></div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="display:flex;align-items:center;gap:5px">
+                      <button onclick="ajustCSG('${c.id}',${idx},-1)" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:14px;font-weight:700">−</button>
+                      <span style="font-weight:900;font-size:14px;min-width:24px;text-align:center;color:${it.qtd_atual===0?'var(--vermelho)':it.qtd_atual<=2?'var(--amarelo)':'var(--verde)'}">${it.qtd_atual}</span>
+                      <button onclick="ajustCSG('${c.id}',${idx},1)" style="background:var(--verde-med);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:14px;font-weight:700">+</button>
+                      <span style="font-size:10px;color:var(--cinza-med)">/${it.qtd_inicial}</span>
+                    </div>
+                    <span class="fw-bold text-verde" style="margin-left:auto">${R$((+it.qtd_atual||0)*(+it.preco||0))}</span>
+                  </div>
+                </div>`;}).join('')}
               ${ultVis?`<div style="margin-top:8px;font-size:10px;color:var(--cinza-med)">🕐 Última visita: ${ultVis.data} · Vendido: ${R$(ultVis.valor_vendido||0)}</div>`:''}
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:6px;flex-wrap:wrap">
@@ -3043,6 +3146,57 @@ SECTIONS.consignados = () => {
     </div>
   </div>`;
 };
+
+function editarItemCSG(consigId, idx){
+  const c=getItem(DB.consignados, consigId); if(!c) return;
+  const it=c.itens[idx]; if(!it) return;
+  const poArr=ordNome(DB.produtos).map(p=>({value:p.id,label:`${p.nome} — normal: ${R$(p.preco)}`}));
+  const varInfo=getVariantesDoProduto(it.prod);
+  openModal('✏️ Editar Item do Consignado',
+    `<div class="form-grid cols-1">
+      <div class="form-group"><label class="form-label">Produto</label>${sselHTML('eci-p', poArr, it.prod, 'Buscar produto...', 'atualizarVarianteEditCSG(value)')}</div>
+      <div class="form-group" id="eci-variante-wrap">${varInfo?`<label class="form-label">🔀 Cor/Versão</label>
+        <select class="form-select" id="eci-variante">
+          <option value="">Escolher variante...</option>
+          ${varInfo.variantes.map(v=>`<option value="${v.nome}" ${it.variante===v.nome?'selected':''}>${v.nome}</option>`).join('')}
+        </select>`:''}</div>
+      <div class="form-group"><label class="form-label">Preço de Repasse (R$) — o que você cobra do parceiro</label><input class="form-input" id="eci-pr" type="number" step="0.01" value="${it.preco}"></div>
+      <div class="form-group"><label class="form-label">Quantidade Atual (o que ainda está lá)</label><input class="form-input" id="eci-qa" type="number" min="0" value="${it.qtd_atual}"></div>
+      <div class="form-group"><label class="form-label">Quantidade Inicial (total já entregue)</label><input class="form-input" id="eci-qi" type="number" min="0" value="${it.qtd_inicial}"></div>
+    </div>`,
+    async()=>{
+      const novoProd=document.getElementById('eci-p_val').value||it.prod;
+      const novaVariante=document.getElementById('eci-variante')?.value||'';
+      const novoPreco=parseFloat(document.getElementById('eci-pr').value)||0;
+      const novaQA=parseInt(document.getElementById('eci-qa').value)||0;
+      const novaQI=parseInt(document.getElementById('eci-qi').value)||0;
+      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI};
+      await salvarItem('consignados', c);
+      toast('Item atualizado!'); closeModal(); render('consignados');
+    }, '💾 Salvar');
+}
+function atualizarVarianteEditCSG(prodId){
+  const wrap=document.getElementById('eci-variante-wrap');
+  if(!wrap) return;
+  const varInfo=getVariantesDoProduto(prodId);
+  wrap.innerHTML=varInfo?`<label class="form-label">🔀 Cor/Versão</label>
+    <select class="form-select" id="eci-variante">
+      <option value="">Escolher variante...</option>
+      ${varInfo.variantes.map(v=>`<option value="${v.nome}">${v.nome}</option>`).join('')}
+    </select>`:'';
+}
+function excluirItemCSG(consigId, idx){
+  const c=getItem(DB.consignados, consigId); if(!c) return;
+  const it=c.itens[idx]; if(!it) return;
+  openModal('🗑️ Excluir Item',
+    `<p>Remover <strong>${nomeProd(it.prod)}</strong> deste ponto de consignação?</p>
+     <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">Isso não devolve estoque automaticamente — se o produto ainda está fisicamente com você, ajuste o estoque do insumo manualmente se precisar.</p>`,
+    async()=>{
+      c.itens.splice(idx,1);
+      await salvarItem('consignados', c);
+      toast('Item removido!'); closeModal(); render('consignados');
+    }, '🗑️ Excluir');
+}
 
 function novoCSG(){abrirFormCSG();}
 function editCSG(id){abrirFormCSG(id);}
@@ -3066,29 +3220,46 @@ function abrirFormCSG(editId=null){
 }
 
 function addItemCSG(consigId){
-  const poArr=ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
+  const poArr=ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:`${p.nome} — normal: ${R$(p.preco)}`}));
   openModal('📦 Adicionar Produto ao Consignado',
     `<div class="form-grid">
       <div class="form-group full"><label class="form-label">Produto</label>${sselHTML('ci-p', poArr, '', 'Buscar produto...', 'autoPrecoCSG(value)')}</div>
+      <div class="form-group full" id="ci-variante-wrap"></div>
       <div class="form-group"><label class="form-label">Quantidade Entregue</label><input class="form-input" id="ci-q" type="number" min="1" value="1"></div>
-      <div class="form-group"><label class="form-label">Preço de Venda (R$)</label><input class="form-input" id="ci-pr" type="number" step="0.01"></div>
-      <div style="grid-column:span 2;background:var(--amarelo-claro);color:var(--amarelo);padding:10px;border-radius:6px;font-size:12px">⚠️ Esta é a quantidade que você está entregando fisicamente na loja agora.</div>
+      <div class="form-group"><label class="form-label">Preço de Repasse (R$)</label><input class="form-input" id="ci-pr" type="number" step="0.01"><div id="ci-preco-ref" style="font-size:11px;color:var(--cinza-med);margin-top:3px"></div></div>
+      <div style="grid-column:span 2;background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px">💡 <strong>Preço de repasse</strong> é o que você cobra do parceiro — geralmente menor que o preço normal, pra ele ter margem pra revender. Ex: você vende a R$35, repassa a R$25.</div>
     </div>`,
     async()=>{
       const prod=document.getElementById('ci-p_val').value;
+      const variante=document.getElementById('ci-variante')?.value||'';
       const qtd=parseInt(document.getElementById('ci-q').value)||1;
       const preco=parseFloat(document.getElementById('ci-pr').value)||0;
-      if(!prod||!preco){toast('Preencha produto e preço','error');return;}
+      if(!prod||!preco){toast('Preencha produto e preço de repasse','error');return;}
+      const varInfo=getVariantesDoProduto(prod);
+      if(varInfo&&!variante){toast('Escolhe a cor/versão desse produto','error');return;}
       const c=getItem(DB.consignados,consigId);if(!c)return;
       if(!c.itens)c.itens=[];
-      const ex=c.itens.find(i=>i.prod===prod);
+      const ex=c.itens.find(i=>i.prod===prod&&(i.variante||'')===variante);
       if(ex){ex.qtd_inicial=(+ex.qtd_inicial||0)+qtd;ex.qtd_atual=(+ex.qtd_atual||0)+qtd;ex.preco=preco;}
-      else c.itens.push({prod,qtd_inicial:qtd,qtd_atual:qtd,preco});
+      else c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco});
       await salvarItem('consignados',c);
       toast('Produto adicionado!');closeModal();render('consignados');
     },'📦 Entregar na Loja');
 }
-function autoPrecoCSG(prodId){const p=getProd(prodId||document.getElementById('ci-p_val')?.value);if(p)document.getElementById('ci-pr').value=p.preco;}
+function autoPrecoCSG(prodId){
+  const p=getProd(prodId||document.getElementById('ci-p_val')?.value);
+  const ref=document.getElementById('ci-preco-ref');
+  if(p&&ref) ref.textContent=`Preço normal: ${R$(p.preco)} · Custo: ${R$(p.custo)}`;
+  const wrap=document.getElementById('ci-variante-wrap');
+  if(wrap){
+    const varInfo=p?getVariantesDoProduto(p.id):null;
+    wrap.innerHTML=varInfo?`<label class="form-label">🔀 Cor/Versão</label>
+      <select class="form-select" id="ci-variante">
+        <option value="">Escolher variante...</option>
+        ${varInfo.variantes.map(v=>`<option value="${v.nome}">${v.nome}</option>`).join('')}
+      </select>`:'';
+  }
+}
 async function ajustCSG(consigId,idx,delta){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const it=c.itens[idx];if(!it)return;
@@ -3118,7 +3289,7 @@ function regVisita(consigId){
         ${(c.itens||[]).map((it,idx)=>`
           <div class="form-group" style="grid-column:span 2">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--cinza-ultra);border-radius:6px">
-              <div><div style="font-size:13px;font-weight:600">${nomeProd(it.prod)}</div><div style="font-size:11px;color:var(--cinza-med)">Estava: ${it.qtd_atual} · ${R$(it.preco)}/un</div></div>
+              <div><div style="font-size:13px;font-weight:600">${nomeProd(it.prod)}${it.variante?` <span style="color:var(--dourado-escuro)">🔀 ${it.variante}</span>`:''}</div><div style="font-size:11px;color:var(--cinza-med)">Estava: ${it.qtd_atual} · ${R$(it.preco)}/un</div></div>
               <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
                 <div style="font-size:10px;color:var(--cinza-med)">Qtd que restou</div>
                 <input type="number" min="0" max="${it.qtd_atual}" value="${it.qtd_atual}" id="vis-q-${idx}" style="width:70px;padding:6px;border:1.5px solid var(--verde-med);border-radius:5px;font-size:16px;font-weight:700;text-align:center">
@@ -3163,21 +3334,32 @@ function wppCSG(consigId){
 // ═══════════════════════════════════════════════════════════════
 // PRECIFICAÇÃO CALCULATOR
 // ═══════════════════════════════════════════════════════════════
+let _pcModo='normal';
 SECTIONS.precificacao = () => `
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button class="btn ${_pcModo==='normal'?'btn-primary':'btn-outline'}" onclick="_pcModo='normal';render('precificacao')">🏷️ Venda Normal</button>
+    <button class="btn ${_pcModo==='consignacao'?'btn-primary':'btn-outline'}" onclick="_pcModo='consignacao';render('precificacao')">🤝 Consignação</button>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">🧮 Calculadora de Preço</span></div>
+      <div class="panel-header"><span class="panel-title">🧮 Calculadora de Preço${_pcModo==='consignacao'?' — Consignação':''}</span></div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:12px">
         <div class="form-group"><label class="form-label">Produto Cadastrado (opcional)</label>
           ${sselHTML('pc-prod', ordNome(DB.produtos).map(p=>({value:p.id,label:p.nome})), '', 'Buscar produto ou digitar manualmente...', 'autoPrecoPC(value)')}</div>
         <div class="form-group"><label class="form-label">Custo do Produto (R$)</label><input class="form-input" id="pc-custo" type="number" step="0.01" placeholder="0,00" oninput="calcPC()"></div>
         <div class="form-group"><label class="form-label">Custo Embalagem (R$)</label><input class="form-input" id="pc-emb" type="number" step="0.01" value="1.00" oninput="calcPC()"></div>
+        ${_pcModo==='normal'?`
         <div class="form-group"><label class="form-label">Forma de Pagamento</label>
           <select class="form-select" id="pc-forma" onchange="calcPC()">
             <option value="0">PIX (0%)</option><option value="1.5">Débito (1,5%)</option>
             <option value="2.5">Crédito 1x (2,5%)</option><option value="3.5">Crédito 2x (3,5%)</option>
           </select></div>
         <div class="form-group"><label class="form-label">Margem de Lucro Desejada (%)</label><input class="form-input" id="pc-marg" type="number" value="${DB.config?.margem_padrao||40}" oninput="calcPC()"></div>
+        `:`
+        <div class="form-group"><label class="form-label">Sua Margem no Repasse (%)</label><input class="form-input" id="pc-marg" type="number" value="30" oninput="calcPC()"></div>
+        <div class="form-group"><label class="form-label">Markup que o parceiro costuma usar (%)</label><input class="form-input" id="pc-markup-parceiro" type="number" value="40" oninput="calcPC()"></div>
+        <div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px">💡 O repasse é o preço que VOCÊ cobra do parceiro. Depois disso, ele costuma colocar a margem dele em cima pra vender pro cliente final — o campo acima só estima isso pra você ter uma ideia do preço final ao consumidor.</div>
+        `}
       </div>
     </div>
     <div id="pc-resultado" style="background:linear-gradient(135deg,var(--azul) 0%,var(--azul-claro) 100%);border-radius:var(--radius);padding:24px;color:white">
@@ -3190,22 +3372,41 @@ function autoPrecoPC(prodId){const p=getProd(prodId||document.getElementById('pc
 function calcPC(){
   const custo=parseFloat(document.getElementById('pc-custo')?.value)||0;
   const emb=parseFloat(document.getElementById('pc-emb')?.value)||0;
-  const taxa=parseFloat(document.getElementById('pc-forma')?.value)||0;
-  const margem=parseFloat(document.getElementById('pc-marg')?.value)||40;
+  const margem=parseFloat(document.getElementById('pc-marg')?.value)||0;
   if(!custo)return;
-  const custoT=custo+emb;const fator=1-(margem/100)-(taxa/100);
-  const preco=fator>0?custoT/fator:custoT*2;
-  const markup=custoT>0?preco/custoT:0;
-  const lucro=preco-custoT;
+  const custoT=custo+emb;
   const el=document.getElementById('pc-resultado');
-  if(el)el.innerHTML=`
-    <div style="font-size:12px;opacity:.7;text-transform:uppercase">Resultado</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
-      <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Custo Total</div><div style="font-size:18px;font-weight:800">${R$(custoT)}</div></div>
-      <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Markup</div><div style="font-size:18px;font-weight:800">${markup.toFixed(2)}x</div></div>
-      <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Lucro</div><div style="font-size:18px;font-weight:800">${R$(lucro)}</div></div>
-      <div style="background:rgba(255,255,255,0.22);border-radius:8px;padding:12px;grid-column:span 2;text-align:center"><div style="font-size:11px;opacity:.8">✅ PREÇO SUGERIDO</div><div style="font-size:30px;font-weight:900">${R$(preco)}</div></div>
-    </div>`;
+  if(!el) return;
+
+  if(_pcModo==='consignacao'){
+    const fatorRep=1-(margem/100);
+    const repasse=fatorRep>0?custoT/fatorRep:custoT*2;
+    const lucroRepasse=repasse-custoT;
+    const markupParceiro=parseFloat(document.getElementById('pc-markup-parceiro')?.value)||0;
+    const precoFinalEstimado=repasse*(1+markupParceiro/100);
+    el.innerHTML=`
+      <div style="font-size:12px;opacity:.7;text-transform:uppercase">Resultado — Consignação</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Custo Total</div><div style="font-size:18px;font-weight:800">${R$(custoT)}</div></div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Seu Lucro no Repasse</div><div style="font-size:18px;font-weight:800">${R$(lucroRepasse)}</div></div>
+        <div style="background:rgba(255,255,255,0.22);border-radius:8px;padding:12px;grid-column:span 2;text-align:center"><div style="font-size:11px;opacity:.8">✅ PREÇO DE REPASSE SUGERIDO</div><div style="font-size:30px;font-weight:900">${R$(repasse)}</div></div>
+        <div style="background:rgba(255,255,255,0.10);border-radius:8px;padding:10px;grid-column:span 2;text-align:center;font-size:12px">📈 Preço final estimado ao consumidor (com a margem do parceiro): <strong>${R$(precoFinalEstimado)}</strong></div>
+      </div>`;
+  } else {
+    const taxa=parseFloat(document.getElementById('pc-forma')?.value)||0;
+    const fator=1-(margem/100)-(taxa/100);
+    const preco=fator>0?custoT/fator:custoT*2;
+    const markup=custoT>0?preco/custoT:0;
+    const lucro=preco-custoT;
+    el.innerHTML=`
+      <div style="font-size:12px;opacity:.7;text-transform:uppercase">Resultado</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Custo Total</div><div style="font-size:18px;font-weight:800">${R$(custoT)}</div></div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Markup</div><div style="font-size:18px;font-weight:800">${markup.toFixed(2)}x</div></div>
+        <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Lucro</div><div style="font-size:18px;font-weight:800">${R$(lucro)}</div></div>
+        <div style="background:rgba(255,255,255,0.22);border-radius:8px;padding:12px;grid-column:span 2;text-align:center"><div style="font-size:11px;opacity:.8">✅ PREÇO SUGERIDO</div><div style="font-size:30px;font-weight:900">${R$(preco)}</div></div>
+      </div>`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
