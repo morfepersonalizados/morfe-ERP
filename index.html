@@ -456,10 +456,27 @@ async function sincronizarSheets() {
       // de sincronizar. Isso cobre tanto o envio em segundo plano quanto
       // qualquer coisa que ainda esteja na fila de pendências.
       const tabelasComPendenciaNaFila = new Set(_pendingQueue.map(op => op.tabela));
+      const CAMPOS_DATA = ['data','entrega','venc','prazo','cadastro'];
       Object.keys(data.dados).forEach(tabela => {
         if (_tabelasComSyncPendente.has(tabela)) return;
         if (tabelasComPendenciaNaFila.has(tabela)) return;
-        if (DB[tabela] !== undefined) DB[tabela] = data.dados[tabela] || [];
+        if (DB[tabela] === undefined) return;
+        let registros = data.dados[tabela] || [];
+        // Corrige aqui mesmo qualquer data que o Google tenha devolvido num
+        // formato estranho (ex: "2026-07-16T03:00:00.000Z" em vez de
+        // "2026-07-16"), pra nunca mais isso quebrar o calendário ou o campo
+        // de data do formulário.
+        if (Array.isArray(registros)) {
+          registros = registros.map(reg => {
+            if (reg && typeof reg === 'object') {
+              CAMPOS_DATA.forEach(campo => {
+                if (reg[campo]) reg[campo] = normalizarData(reg[campo]);
+              });
+            }
+            return reg;
+          });
+        }
+        DB[tabela] = registros;
       });
       // Config vem como array de 1 item
       if (Array.isArray(DB.config) && DB.config.length > 0) {
@@ -606,6 +623,14 @@ const nomeProd = id => getProd(id)?.nome || id || '—';
 const ordNome = (arr, campo='nome') => [...(arr||[])].sort((a,b) => String(a?.[campo]||'').localeCompare(String(b?.[campo]||''), 'pt-BR', {sensitivity:'base'}));
 const nomeCli = id => getCli(id)?.nome || id || '—';
 const nomeForn = id => getForn(id)?.nome || id || '—';
+// Pega só a parte "AAAA-MM-DD" de qualquer formato de data que vier (defesa
+// contra o Google Sheets às vezes devolver um formato estranho tipo
+// "2026-07-16T03:00:00.000Z" em vez do texto puro que a gente espera)
+function normalizarData(str){
+  if(!str) return '';
+  const m = String(str).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : String(str);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // VENDAS EFETIVAS — combina a tabela Vendas COM os itens dos Pedidos
@@ -878,7 +903,7 @@ function metricasFinanceiras(){
   const inicioSemanaStr=inicioSemana.toISOString().slice(0,10);
 
   const efetivas=todasVendasEfetivas();
-  const vendasMes=efetivas.filter(v=>{const d=new Date(v.data);return d.getMonth()+1===mes&&d.getFullYear()===ano;});
+  const vendasMes=efetivas.filter(v=>{const d=new Date(normalizarData(v.data));return d.getMonth()+1===mes&&d.getFullYear()===ano;});
   const receitaMes=vendasMes.reduce((s,v)=>s+v.valorTotal,0);
   const cpvMes=vendasMes.reduce((s,v)=>s+v.custoTotal,0);
   const mcMes=receitaMes-cpvMes;
@@ -933,7 +958,7 @@ function diasComVendas(mes, ano){
   const porDia = {};
   todasVendasEfetivas().forEach(v=>{
     if(!v.data) return;
-    const d = new Date(v.data+'T00:00:00');
+    const d = new Date(normalizarData(v.data)+'T00:00:00');
     if(isNaN(d)) return;
     if(d.getMonth()===mes && d.getFullYear()===ano){
       const dia = d.getDate();
@@ -1008,7 +1033,7 @@ function calIrHoje(){
   render('calendario');
 }
 function abrirDetalheDia(dataStr){
-  const efetivas=todasVendasEfetivas().filter(v=>v.data===dataStr);
+  const efetivas=todasVendasEfetivas().filter(v=>normalizarData(v.data)===dataStr);
   const total=efetivas.reduce((s,v)=>s+v.valorTotal,0);
   const dataObj=new Date(dataStr+'T00:00:00');
   const dataFormatada=dataObj.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
@@ -1038,7 +1063,7 @@ SECTIONS.dashboard = () => {
   const totalVendas = efetivas.reduce((s,v)=>s+v.valorTotal,0);
   const totalLucro = efetivas.reduce((s,v)=>s+v.valorTotal-v.custoTotal,0);
   const mes = new Date().getMonth()+1, ano = new Date().getFullYear();
-  const vendaMes = efetivas.filter(v=>{const d=new Date(v.data);return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
+  const vendaMes = efetivas.filter(v=>{const d=new Date(normalizarData(v.data));return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
   const meta = +(DB.config?.meta_mensal||5000);
   const pctMeta = meta ? (vendaMes/meta*100).toFixed(0) : 0;
   const aReceber = DB.areceber.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
@@ -1048,7 +1073,7 @@ SECTIONS.dashboard = () => {
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const porMes={};
-  efetivas.forEach(v=>{const m=new Date(v.data).getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;});
+  efetivas.forEach(v=>{const m=new Date(normalizarData(v.data)).getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;});
   const barMax=Math.max(...Object.values(porMes),1);
 
   const vendProd={};
@@ -1749,9 +1774,9 @@ function abrirFormPedido(editId){
         <div style="font-size:10px;opacity:.7">Nº Pedido</div>
         <div style="font-size:18px;font-weight:900">${pd.id}</div>
         <div style="font-size:10px;opacity:.7;margin-top:6px">Data</div>
-        <input type="date" value="${pd.data}" id="ped-data" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:12px;border-radius:4px;padding:3px 6px;width:100%">
+        <input type="date" value="${normalizarData(pd.data)}" id="ped-data" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:12px;border-radius:4px;padding:3px 6px;width:100%">
         <div style="font-size:10px;opacity:.7;margin-top:4px">Entrega</div>
-        <input type="date" value="${pd.entrega||''}" id="ped-entrega" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:12px;border-radius:4px;padding:3px 6px;width:100%">
+        <input type="date" value="${normalizarData(pd.entrega||'')}" id="ped-entrega" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:12px;border-radius:4px;padding:3px 6px;width:100%">
         <select id="ped-status" style="margin-top:4px;background:rgba(255,255,255,0.2);border:none;color:white;font-size:11px;border-radius:4px;padding:3px 6px;width:100%">
           ${['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option ${pd.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
