@@ -1550,6 +1550,7 @@ function calcularConsumoInsumos(pd){
   (pd.itens||[]).forEach(it=>{
     const qtdPedido=+it.qtd||1;
     if(!it.prod) return; // item "livre" sem produto vinculado — não tem ficha pra baixar
+    if(it.jaProduzida) return; // já estava pronta antes do sistema — não abate estoque
     if(String(it.prod).startsWith('KIT:')){
       const kit=getItem(DB.kits, it.prod.replace('KIT:',''));
       if(!kit) return;
@@ -1736,9 +1737,13 @@ function pedItemRow(it,i){
       <option value="">🔀 Escolher variante...</option>
       ${varInfo.variantes.map(v=>`<option value="${v.nome}" ${it.variante===v.nome?'selected':''}>${v.nome}</option>`).join('')}
     </select>`:'';
+  const jaProdHtml=(it.prod&&!String(it.prod).startsWith('KIT:'))?`<label style="display:flex;align-items:center;gap:3px;margin-top:3px;font-size:10px;color:${it.jaProduzida?'var(--dourado-escuro)':'var(--cinza-med)'};cursor:pointer">
+      <input type="checkbox" ${it.jaProduzida?'checked':''} onchange="window._pedTemp.itens[${i}].jaProduzida=this.checked" style="width:13px;height:13px;cursor:pointer">
+      🏭 Já estava pronta (não abater estoque)
+    </label>`:'';
   return `<tr id="pr-${i}" style="background:${i%2===0?'#FBF3E4':'white'}">
     <td style="padding:4px;min-width:150px">${sselHTML(`pedprod${i}`, prodOpts, it.prod, 'Buscar produto...', `onChangePedProd(${i}, value)`)}</td>
-    <td style="padding:4px"><input type="text" value="${it.desc||''}" oninput="window._pedTemp.itens[${i}].desc=this.value" style="width:100%;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px">${varSelectHtml}</td>
+    <td style="padding:4px"><input type="text" value="${it.desc||''}" oninput="window._pedTemp.itens[${i}].desc=this.value" style="width:100%;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px">${varSelectHtml}${jaProdHtml}</td>
     <td style="padding:4px;width:56px"><input type="number" min="1" value="${it.qtd||1}" oninput="window._pedTemp.itens[${i}].qtd=+this.value;updSubtotal(${i})" style="width:50px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
     <td style="padding:4px;width:82px"><input type="number" step="0.01" value="${it.valor||''}" oninput="window._pedTemp.itens[${i}].valor=+this.value;updSubtotal(${i})" style="width:76px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
     <td style="padding:4px;width:96px">
@@ -3118,7 +3123,7 @@ SECTIONS.consignados = () => {
                 return`
                 <div style="padding:7px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px">
                   <div style="display:flex;align-items:center;gap:8px">
-                    <div style="flex:1;min-width:0"><span class="fw-bold">${nomeProd(it.prod)||it.prod}</span>${it.variante?` <span style="color:var(--dourado-escuro);font-weight:700">🔀 ${it.variante}</span>`:''}</div>
+                    <div style="flex:1;min-width:0"><span class="fw-bold">${nomeProd(it.prod)||it.prod}</span>${it.variante?` <span style="color:var(--dourado-escuro);font-weight:700">🔀 ${it.variante}</span>`:''}${it.jaProduzida?` <span class="badge badge-gray" style="font-size:9px">🏭 já pronta</span>`:''}</div>
                     <button onclick="editarItemCSG('${c.id}',${idx})" style="background:var(--azul-claro);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">✏️</button>
                     <button onclick="excluirItemCSG('${c.id}',${idx})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">🗑️</button>
                   </div>
@@ -3163,7 +3168,8 @@ function editarItemCSG(consigId, idx){
       <div class="form-group"><label class="form-label">Preço de Repasse (R$) — o que você cobra do parceiro</label><input class="form-input" id="eci-pr" type="number" step="0.01" value="${it.preco}"></div>
       <div class="form-group"><label class="form-label">Quantidade Atual (o que ainda está lá)</label><input class="form-input" id="eci-qa" type="number" min="0" value="${it.qtd_atual}"></div>
       <div class="form-group"><label class="form-label">Quantidade Inicial (total já entregue)</label><input class="form-input" id="eci-qi" type="number" min="0" value="${it.qtd_inicial}"></div>
-      <div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:11.5px">📦 Se você mudar produto, variante ou quantidade inicial, o estoque de insumo é reajustado automaticamente (devolve o antigo, abate o novo).</div>
+      <div class="form-group"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="eci-japronta" ${it.jaProduzida?'checked':''} style="width:16px;height:16px;cursor:pointer"> 🏭 Já estava pronta antes (não abater do estoque)</label></div>
+      <div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:11.5px">📦 Se essa opção estiver desmarcada, mudar produto/variante/quantidade reajusta o estoque de insumo automaticamente (devolve o antigo, abate o novo).</div>
     </div>`,
     async()=>{
       const novoProd=document.getElementById('eci-p_val').value||it.prod;
@@ -3171,20 +3177,22 @@ function editarItemCSG(consigId, idx){
       const novoPreco=parseFloat(document.getElementById('eci-pr').value)||0;
       const novaQA=parseInt(document.getElementById('eci-qa').value)||0;
       const novaQI=parseInt(document.getElementById('eci-qi').value)||0;
+      const novaJaProduzida=document.getElementById('eci-japronta').checked;
 
-      // Devolve o que tinha sido abatido antes, e abate de novo com os dados atualizados
+      // Devolve o que tinha sido abatido antes (se tinha)
       if(it.consumo_insumos && Object.keys(it.consumo_insumos).length>0){
         await reverterBaixaEstoque(it.consumo_insumos);
       }
+      // Abate de novo com os dados atualizados — só se não estiver marcado como "já pronta"
       const novoConsumo={};
-      somarConsumoProduto(novoConsumo, novoProd, novaQI, novaVariante);
+      if(!novaJaProduzida) somarConsumoProduto(novoConsumo, novoProd, novaQI, novaVariante);
       const avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
       if(Object.keys(novoConsumo).length>0) await aplicarBaixaEstoque(novoConsumo);
 
-      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI, consumo_insumos:novoConsumo};
+      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI, jaProduzida:novaJaProduzida, consumo_insumos:novoConsumo};
       await salvarItem('consignados', c);
       if(avisoFalta.length>0) toast('⚠️ Item atualizado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
-      else toast('Item atualizado! Estoque de insumo ajustado.');
+      else toast('Item atualizado!');
       closeModal(); render('consignados');
     }, '💾 Salvar');
 }
@@ -3243,34 +3251,36 @@ function addItemCSG(consigId){
       <div class="form-group full" id="ci-variante-wrap"></div>
       <div class="form-group"><label class="form-label">Quantidade Entregue</label><input class="form-input" id="ci-q" type="number" min="1" value="1"></div>
       <div class="form-group"><label class="form-label">Preço de Repasse (R$)</label><input class="form-input" id="ci-pr" type="number" step="0.01"><div id="ci-preco-ref" style="font-size:11px;color:var(--cinza-med);margin-top:3px"></div></div>
-      <div style="grid-column:span 2;background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px">💡 <strong>Preço de repasse</strong> é o que você cobra do parceiro — geralmente menor que o preço normal, pra ele ter margem pra revender. Ex: você vende a R$35, repassa a R$25.<br>📦 Isso já vai abater automaticamente o estoque do insumo (se o produto tiver Ficha Técnica configurada).</div>
+      <div class="form-group full"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="ci-japronta" style="width:16px;height:16px;cursor:pointer"> 🏭 Essas peças já estavam prontas antes (não abater do estoque)</label></div>
+      <div style="grid-column:span 2;background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px">💡 <strong>Preço de repasse</strong> é o que você cobra do parceiro — geralmente menor que o preço normal, pra ele ter margem pra revender. Ex: você vende a R$35, repassa a R$25.<br>📦 Se não marcar "já estava pronta", isso abate automaticamente o estoque do insumo (se o produto tiver Ficha Técnica configurada).</div>
     </div>`,
     async()=>{
       const prod=document.getElementById('ci-p_val').value;
       const variante=document.getElementById('ci-variante')?.value||'';
       const qtd=parseInt(document.getElementById('ci-q').value)||1;
       const preco=parseFloat(document.getElementById('ci-pr').value)||0;
+      const jaProduzida=document.getElementById('ci-japronta').checked;
       if(!prod||!preco){toast('Preencha produto e preço de repasse','error');return;}
       const varInfo=getVariantesDoProduto(prod);
       if(varInfo&&!variante){toast('Escolhe a cor/versão desse produto','error');return;}
       const c=getItem(DB.consignados,consigId);if(!c)return;
       if(!c.itens)c.itens=[];
-      // Calcula o consumo de insumo pra essa entrega (baseado na Ficha Técnica do produto)
+      // Calcula o consumo de insumo pra essa entrega (a não ser que já estivesse pronta antes)
       const consumoDelta={};
-      somarConsumoProduto(consumoDelta, prod, qtd, variante);
+      if(!jaProduzida) somarConsumoProduto(consumoDelta, prod, qtd, variante);
       const avisoFalta=verificarEstoqueInsuficiente(consumoDelta);
-      const ex=c.itens.find(i=>i.prod===prod&&(i.variante||'')===variante);
+      const ex=c.itens.find(i=>i.prod===prod&&(i.variante||'')===variante&&!!i.jaProduzida===jaProduzida);
       if(ex){
         ex.qtd_inicial=(+ex.qtd_inicial||0)+qtd;ex.qtd_atual=(+ex.qtd_atual||0)+qtd;ex.preco=preco;
         ex.consumo_insumos=ex.consumo_insumos||{};
         Object.keys(consumoDelta).forEach(mp=>{ex.consumo_insumos[mp]=(ex.consumo_insumos[mp]||0)+consumoDelta[mp];});
       } else {
-        c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco,consumo_insumos:consumoDelta});
+        c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco,jaProduzida,consumo_insumos:consumoDelta});
       }
       if(Object.keys(consumoDelta).length>0) await aplicarBaixaEstoque(consumoDelta);
       await salvarItem('consignados',c);
       if(avisoFalta.length>0) toast('⚠️ Produto adicionado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
-      else toast('Produto adicionado! Estoque de insumo abatido.');
+      else toast(jaProduzida?'Produto adicionado! (sem mexer no estoque)':'Produto adicionado! Estoque de insumo abatido.');
       closeModal();render('consignados');
     },'📦 Entregar na Loja');
 }
