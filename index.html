@@ -890,14 +890,31 @@ function todasVendasEfetivas(){
   const deConsignados=[];
   DB.consignados.forEach(c=>{
     (c.visitas||[]).forEach(v=>{
-      (v.itens_vendidos||[]).forEach(iv=>{
+      if(v.itens_vendidos && v.itens_vendidos.length>0){
+        v.itens_vendidos.forEach(iv=>{
+          deConsignados.push({
+            data:v.data, cliente:null, produto:iv.prod, qtd:+iv.qtd||0,
+            valorTotal:(+iv.qtd||0)*(+iv.preco_repasse||0),
+            custoTotal:(+iv.qtd||0)*(+iv.custo_snapshot||0),
+            status:'Pago', origem:'consignado', id:c.id+':'+v.data
+          });
+        });
+      } else if(+v.valor_vendido>0){
+        // Visita ANTIGA, registrada antes dessa funcionalidade existir — não
+        // tem o detalhe de quais produtos/quantidades venderam, só o valor
+        // total. Estima o custo pela margem média dos itens atuais desse
+        // consignado, só pra não deixar essa venda de fora do Dashboard/DRE.
+        const itensAtivos=c.itens||[];
+        const margemMedia=itensAtivos.length>0
+          ?itensAtivos.reduce((s,it)=>{const custo=+(getProd(it.prod)?.custo)||0;const preco=+it.preco||1;return s+(custo/preco);},0)/itensAtivos.length
+          :0.5;
         deConsignados.push({
-          data:v.data, cliente:null, produto:iv.prod, qtd:+iv.qtd||0,
-          valorTotal:(+iv.qtd||0)*(+iv.preco_repasse||0),
-          custoTotal:(+iv.qtd||0)*(+iv.custo_snapshot||0),
+          data:v.data, cliente:null, produto:null, qtd:0,
+          valorTotal:+v.valor_vendido||0,
+          custoTotal:(+v.valor_vendido||0)*margemMedia,
           status:'Pago', origem:'consignado', id:c.id+':'+v.data
         });
-      });
+      }
     });
   });
   return [...deVendas, ...dePedidos, ...deConsignados];
