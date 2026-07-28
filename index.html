@@ -3,9 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#1A3A5C">
+<meta name="theme-color" content="#182E62">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Morfê ERP">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" id="apple-touch-icon-link">
 <title>Morfê Personalizados — ERP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -243,6 +246,12 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
   #orc-preview-actions, #sidebar, #topbar, .modal-overlay { display: none !important; }
 }
 </style>
+<!-- Login com Google (Fase 2) — só é usado se GOOGLE_CLIENT_ID for configurado
+     no bloco de JavaScript principal mais abaixo. Carregar essa biblioteca
+     não expõe nenhum segredo: o Client ID de OAuth é público por natureza
+     (ele identifica o APLICATIVO, não autoriza nada sozinho — quem autoriza
+     de verdade é o Apps Script, validando o token do lado do servidor). -->
+<script src="https://accounts.google.com/gsi/client" async defer onload="inicializarLoginGoogle()"></script>
 </head>
 <body class="sidebar-hidden">
 
@@ -260,6 +269,12 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
     <div id="login-error" class="login-error"></div>
     <input type="password" class="login-input" id="login-senha" placeholder="🔑 Digite sua senha" onkeydown="if(event.key==='Enter')entrar()">
     <button class="login-btn" id="login-btn" onclick="entrar()">Entrar</button>
+    <div id="login-google-divisor" style="display:flex;align-items:center;gap:10px;margin:14px 0 0;display:none">
+      <div style="flex:1;height:1px;background:var(--cinza-claro)"></div>
+      <span style="font-size:11px;color:var(--cinza-med)">ou</span>
+      <div style="flex:1;height:1px;background:var(--cinza-claro)"></div>
+    </div>
+    <div id="login-google-area" style="margin-top:10px"></div>
     <p style="text-align:center;margin-top:14px;font-size:11px;color:var(--cinza-med)">Morfê Personalizados · Manaus-AM</p>
   </div>
 </div>
@@ -313,6 +328,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
         <div class="nav-item" onclick="goTo('consignados')"><span class="nav-icon">🤝</span> Consignados</div>
         <div class="nav-item" onclick="goTo('precificacao')"><span class="nav-icon">🧮</span> Precificação</div>
         <div class="nav-item" onclick="goTo('relatorios')"><span class="nav-icon">📋</span> Relatórios</div>
+        <div class="nav-item" onclick="goTo('pendencias')"><span class="nav-icon">🧭</span> Pendências de Cadastro</div>
       </div>
     </div>
     <div class="nav-group" data-grupo="sistema">
@@ -368,14 +384,94 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 // CONFIGURAÇÃO — ALTERE AQUI
 // ═══════════════════════════════════════════════════════════════
 const SENHA_APP = 'morfe2105';
+// Login com Google (Fase 2, preparado mas OPCIONAL por enquanto). Troque
+// pelo Client ID de verdade quando configurar no Google Cloud Console —
+// enquanto estiver com esse valor de exemplo, o botão de login com Google
+// simplesmente não aparece, e a senha continua funcionando normalmente.
+const GOOGLE_CLIENT_ID = 'COLE_SEU_CLIENT_ID_AQUI.apps.googleusercontent.com';
+let _googleIdToken = null; // preenchido só depois de um login com Google bem-sucedido
+
+// Central de credenciais: usa o token do Google se teve login com Google
+// nesta sessão, senão usa a senha antiga. Assim, TODA chamada pro Apps
+// Script já fica pronta pros dois métodos sem precisar mudar em vários
+// lugares — muda aqui uma vez só.
+function credenciaisAuth(){
+  return _googleIdToken ? { token: _googleIdToken } : { senha: SENHA_APP };
+}
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbwDqrAftrPBia3DEHD4c-SIcHwm7f8kfYsH-0chJmSXE146VpcEQFMsxzU5-8c6-4tBMA/exec';
 // Logo reaproveitada no orçamento exportável (imagem/PDF)
 const LOGO_ORC_B64 = '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';
 
 // ═══════════════════════════════════════════════════════════════
+// PWA — deixa o sistema instalável (ícone na tela do celular/tablet,
+// abre em tela cheia sem barra do navegador). O manifest é gerado na
+// hora (não precisa de arquivo separado pra isso), mas o Service Worker
+// PRECISA de um arquivo à parte (sw.js) — é uma restrição de segurança
+// do próprio navegador, não dá pra rodar ele de dentro do HTML.
+// ═══════════════════════════════════════════════════════════════
+function inicializarPWA(){
+  const iconeDataUri='data:image/png;base64,'+LOGO_ORC_B64;
+
+  // Ícone da Apple (Add to Home Screen no iPhone/iPad não usa o manifest)
+  const linkApple=document.getElementById('apple-touch-icon-link');
+  if(linkApple) linkApple.href=iconeDataUri;
+
+  // Manifest gerado na hora como um Blob — funciona pro Chrome/Android
+  // instalar sem precisar subir um segundo arquivo .webmanifest
+  try{
+    const manifest={
+      name:'Morfê ERP',
+      short_name:'Morfê ERP',
+      description:'Sistema de gestão da Morfê Personalizados',
+      start_url:'./',
+      scope:'./',
+      display:'standalone',
+      background_color:'#F9F1E4',
+      theme_color:'#182E62',
+      orientation:'any',
+      icons:[
+        {src:iconeDataUri, sizes:'96x96', type:'image/png', purpose:'any maskable'}
+      ]
+    };
+    const blob=new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('link');
+    link.rel='manifest';
+    link.href=url;
+    document.head.appendChild(link);
+  }catch(e){ console.warn('Não deu pra gerar o manifest do PWA:', e); }
+
+  // Service Worker — habilita instalação de verdade + funcionar melhor
+  // com internet ruim. Se o arquivo sw.js ainda não foi subido pro
+  // GitHub Pages, isso só falha silenciosamente (o resto do app
+  // continua funcionando normal, só sem esse extra).
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>{
+      navigator.serviceWorker.register('./sw.js').catch(()=>{
+        console.warn('Service Worker (sw.js) não encontrado ainda — PWA funciona parcialmente até ele ser publicado.');
+      });
+    });
+  }
+}
+inicializarPWA();
+
+// ═══════════════════════════════════════════════════════════════
 // BANCO DE DADOS LOCAL
 // ═══════════════════════════════════════════════════════════════
 const STORAGE_KEY = 'morfe_erp_v1';
+// Versao da ESTRUTURA dos dados (nao da aparencia do app). Sobe só quando
+// um campo novo é adicionado de um jeito que precisa de cuidado especial
+// pra nao quebrar dados antigos que nao tem esse campo ainda.
+const SCHEMA_VERSION = 1;
+let _ultimaSincronizacao = null; // guarda quando foi a última sincronização com sucesso
+
+// Log de sincronização em memória (só os últimos 30 eventos) — NUNCA guarda
+// senha, token ou qualquer dado sensível, só o tipo de evento e resultado.
+let _logSincronizacao = [];
+function registrarLogSync(tipo, detalhe){
+  _logSincronizacao.unshift({ quando: new Date().toISOString(), tipo, detalhe: String(detalhe||'').slice(0,200) });
+  if (_logSincronizacao.length > 30) _logSincronizacao.length = 30;
+}
 
 let DB = {
   config: { empresa:'Morfê Personalizados', whatsapp:'5592994875346', instagram:'@morfepersonalizados', email:'morfepersonalizados@gmail.com', cidade:'Manaus - AM', meta_mensal:5000, margem_padrao:40, taxa_credito1:2.5, vendas_esperadas_mes:100, categorias:['Caneca','Azulejo','Camiseta','Almofada','Quadro','Chaveiro','Mouse Pad','Squeeze','Bolsa','Porta Retrato','Outros'] },
@@ -423,8 +519,22 @@ function entrar() {
   errEl.style.display = 'none';
   btn.disabled = true;
   btn.textContent = 'Entrando...';
-  _isLoggedIn = true;
+  finalizarLogin();
+}
 
+// Chamado pelo Google depois que a pessoa escolhe a conta e confirma —
+// "response.credential" é o token assinado pelo Google (ID token), que o
+// Apps Script confere de verdade do lado do servidor antes de liberar
+// qualquer dado. Só funciona depois de configurar GOOGLE_CLIENT_ID aqui em
+// cima E as Script Properties no Apps Script (ver apps-script/README.md).
+function entrarComGoogle(response){
+  _googleIdToken = response.credential;
+  finalizarLogin();
+}
+
+// Lógica compartilhada depois de qualquer método de login dar certo
+function finalizarLogin(){
+  _isLoggedIn = true;
   carregarLocal();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
@@ -433,6 +543,20 @@ function entrar() {
   garantirGrupoAberto('dashboard');
   render('dashboard');
   setTimeout(() => sincronizarSheets(), 500);
+}
+
+// Mostra o botão "Entrar com Google" SÓ se o Client ID de verdade já foi
+// configurado — enquanto estiver com o valor de exemplo, não aparece nada
+// e o login por senha continua sendo o único jeito de entrar.
+function inicializarLoginGoogle(){
+  if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('COLE_SEU_CLIENT_ID_AQUI') === 0) return;
+  if (typeof google === 'undefined' || !google.accounts) return;
+  try{
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: entrarComGoogle });
+    google.accounts.id.renderButton(document.getElementById('login-google-area'), { theme:'outline', size:'large', width:280, text:'signin_with' });
+    const divisor=document.getElementById('login-google-divisor');
+    if(divisor) divisor.style.display='flex';
+  }catch(e){ console.warn('Não deu pra iniciar o login do Google:', e); }
 }
 
 function sair() {
@@ -487,7 +611,7 @@ let _tabelasComSyncPendente = new Set();
 let _syncChainPorTabela = {};
 
 async function sincronizarSheets() {
-  if (_isSyncing) return;
+  if (_isSyncing) return; // já impede duas sincronizações simultâneas
   if (!SHEETS_API_URL || SHEETS_API_URL === 'COLE_URL_DO_APPS_SCRIPT_AQUI') {
     setSyncStatus('error', '⚠️ Sheets não configurado');
     return;
@@ -496,11 +620,14 @@ async function sincronizarSheets() {
   _isSyncing = true;
   setSyncStatus('loading', '🔄 Sincronizando...');
   showLoading();
+  registrarLogSync('inicio', 'sincronizacao iniciada');
 
   try {
     if (_pendingQueue.length > 0) await processarFila();
 
-    const url = SHEETS_API_URL + '?acao=ler_tudo&senha=' + encodeURIComponent(SENHA_APP);
+    const _auth = credenciaisAuth();
+    const _authParam = _auth.token ? 'token=' + encodeURIComponent(_auth.token) : 'senha=' + encodeURIComponent(_auth.senha);
+    const url = SHEETS_API_URL + '?acao=ler_tudo&' + _authParam;
     const res = await fetch(url, { method: 'GET' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -513,11 +640,22 @@ async function sincronizarSheets() {
       // qualquer coisa que ainda esteja na fila de pendências.
       const tabelasComPendenciaNaFila = new Set(_pendingQueue.map(op => op.tabela));
       const CAMPOS_DATA = ['data','entrega','venc','prazo','cadastro'];
+      const tabelasBloqueadasPorSeguranca = [];
       Object.keys(data.dados).forEach(tabela => {
         if (_tabelasComSyncPendente.has(tabela)) return;
         if (tabelasComPendenciaNaFila.has(tabela)) return;
         if (DB[tabela] === undefined) return;
         let registros = data.dados[tabela] || [];
+        // PROTEÇÃO: uma fonte vazia nunca pode sobrescrever uma fonte com dados.
+        // Se o Google respondeu uma tabela vazia mas localmente já existem
+        // registros, isso é suspeito (pode ser erro transitório do Apps Script,
+        // aba renomeada/apagada sem querer etc) — não aceita a sobrescrita,
+        // registra no log e avisa visualmente, em vez de apagar tudo silenciosamente.
+        if (Array.isArray(registros) && registros.length === 0 && Array.isArray(DB[tabela]) && DB[tabela].length > 0) {
+          tabelasBloqueadasPorSeguranca.push(tabela);
+          registrarLogSync('bloqueio_seguranca', `Google devolveu "${tabela}" vazia, mas local tinha ${DB[tabela].length} registro(s) — mantido o local, nada foi apagado.`);
+          return;
+        }
         // Corrige aqui mesmo qualquer data que o Google tenha devolvido num
         // formato estranho (ex: "2026-07-16T03:00:00.000Z" em vez de
         // "2026-07-16"), pra nunca mais isso quebrar o calendário ou o campo
@@ -539,10 +677,17 @@ async function sincronizarSheets() {
         DB.config = DB.config[0];
       }
       salvarLocal();
-      if (_pendingQueue.length > 0) {
+      _ultimaSincronizacao = new Date().toISOString();
+      if (tabelasBloqueadasPorSeguranca.length > 0) {
+        setSyncStatus('error', '⚠️ Verifique: ' + tabelasBloqueadasPorSeguranca.join(', '));
+        toast('⚠️ Proteção ativada: "'+tabelasBloqueadasPorSeguranca.join(', ')+'" veio vazia do Google, dados locais preservados. Veja o Log de Sincronização.', 'error');
+        registrarLogSync('fim_com_bloqueio', tabelasBloqueadasPorSeguranca.join(', '));
+      } else if (_pendingQueue.length > 0) {
         setSyncStatus('error', '📴 ' + _pendingQueue.length + ' pendente(s)');
+        registrarLogSync('fim', _pendingQueue.length + ' pendencia(s) restante(s)');
       } else {
         setSyncStatus('ok', '✅ Sincronizado');
+        registrarLogSync('fim', 'sucesso');
       }
       render(currentSection);
     } else {
@@ -551,6 +696,7 @@ async function sincronizarSheets() {
   } catch(e) {
     console.warn('Sheets offline:', e.message);
     setSyncStatus('error', '📴 Offline');
+    registrarLogSync('erro', e.message||String(e));
   } finally {
     _isSyncing = false;
     hideLoading();
@@ -584,7 +730,7 @@ async function enviarParaSheets(acao, tabela, dados, id) {
   const res = await fetch(SHEETS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ acao, tabela, dados, id, senha: SENHA_APP })
+    body: JSON.stringify({ acao, tabela, dados, id, ...credenciaisAuth() })
   });
   const data = await res.json();
   // Se o Google respondeu mas disse que NÃO salvou (ok:false), isso agora
@@ -701,8 +847,10 @@ function normalizarData(str){
 // (exceto cancelados), pra Dashboard/DRE/Metas/Relatórios refletirem
 // o faturamento real, não só o que foi digitado manualmente em Vendas.
 // ═══════════════════════════════════════════════════════════════
-function custoItemPedido(it){
-  if(!it.prod) return 0; // item livre — sem produto vinculado, custo desconhecido
+// Custo "ao vivo" — direto do cadastro ATUAL do produto. Usado só na hora
+// de CONGELAR o snapshot pela primeira vez (ver custoItemPedido abaixo).
+function custoItemPedidoAoVivo(it){
+  if(!it.prod) return 0;
   if(String(it.prod).startsWith('KIT:')){
     const kit=getItem(DB.kits, it.prod.replace('KIT:',''));
     if(!kit) return 0;
@@ -710,10 +858,18 @@ function custoItemPedido(it){
   }
   return +(getProd(it.prod)?.custo)||0;
 }
+// Custo usado nos relatórios/DRE/Dashboard — prefere o custo CONGELADO no
+// momento da venda (custo_snapshot), pra mudanças futuras no custo de um
+// produto não alterarem o lucro de vendas já registradas. Só cai pro
+// cálculo ao vivo se for uma venda antiga, feita antes dessa proteção existir.
+function custoItemPedido(it){
+  if(temValorDefinido(it.custo_snapshot)) return +it.custo_snapshot;
+  return custoItemPedidoAoVivo(it);
+}
 function todasVendasEfetivas(){
   const deVendas=DB.vendas.map(v=>({
     data:v.data, cliente:v.cliente, produto:v.produto, qtd:+v.qtd||0, valorTotal:(+v.qtd||0)*(+v.preco||0),
-    custoTotal:(+v.qtd||0)*custoItemPedido({prod:v.produto}), status:v.status, origem:'venda', id:v.id
+    custoTotal:(+v.qtd||0)*custoItemPedido({prod:v.produto, custo_snapshot:v.custo_snapshot}), status:v.status, origem:'venda', id:v.id
   }));
   const dePedidos=[];
   DB.pedidos.forEach(p=>{
@@ -728,7 +884,23 @@ function todasVendasEfetivas(){
       });
     });
   });
-  return [...deVendas, ...dePedidos];
+  // Vendas por consignação — reconhece a receita da MORFÊ pelo preço de
+  // REPASSE (não o preço cheio que o parceiro cobra do cliente final dele),
+  // usando o custo/preço já congelados no momento de cada visita.
+  const deConsignados=[];
+  DB.consignados.forEach(c=>{
+    (c.visitas||[]).forEach(v=>{
+      (v.itens_vendidos||[]).forEach(iv=>{
+        deConsignados.push({
+          data:v.data, cliente:null, produto:iv.prod, qtd:+iv.qtd||0,
+          valorTotal:(+iv.qtd||0)*(+iv.preco_repasse||0),
+          custoTotal:(+iv.qtd||0)*(+iv.custo_snapshot||0),
+          status:'Pago', origem:'consignado', id:c.id+':'+v.data
+        });
+      });
+    });
+  });
+  return [...deVendas, ...dePedidos, ...deConsignados];
 }
 
 
@@ -855,6 +1027,8 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
   saveBtn.textContent = saveLabel;
   saveBtn.style.display = 'inline-flex';
   saveBtn.style.background = '';
+  saveBtn.disabled = false;
+  saveBtn.style.opacity = '';
   document.getElementById('modal').style.maxWidth = '560px';
   _modalSaveFn = saveFn;
   document.getElementById('modal-overlay').classList.add('open');
@@ -866,7 +1040,22 @@ function closeModal() {
   document.getElementById('modal').style.maxWidth = '560px';
 }
 
-function modalSave() { if (_modalSaveFn) _modalSaveFn(); }
+// Protege contra clique duplo (ou toque duplo no celular) em QUALQUER
+// salvamento do sistema — trava o botão assim que clica, e só destrava de
+// novo quando a função de salvar terminar (seja sucesso, erro de validação,
+// ou falha). Como todo "Salvar" do app passa por este botão único, essa
+// proteção central cobre Pedidos, Vendas, Produtos, tudo, sem precisar
+// mexer em cada função separadamente.
+function modalSave() {
+  if (!_modalSaveFn) return;
+  const btn = document.getElementById('modal-save-btn');
+  if (btn.disabled) return; // já está processando esse clique, ignora repetição
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  Promise.resolve(_modalSaveFn()).finally(() => {
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  });
+}
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // ═══════════════════════════════════════════════════════════════
@@ -882,7 +1071,7 @@ const TITLES = {
   kits:'🎁 Kits & Combos', areceber:'📥 A Receber', apagar:'📤 A Pagar',
   custos:'📌 Custos e Taxas', divisaolucro:'🧩 Divisão de Lucro', dre:'📊 DRE', fichas:'🔬 Fichas Técnicas',
   consignados:'🤝 Consignados', precificacao:'🧮 Precificação',
-  relatorios:'📋 Relatórios', config:'⚙️ Configurações',
+  relatorios:'📋 Relatórios', pendencias:'🧭 Pendências de Cadastro', config:'⚙️ Configurações',
 };
 
 function goTo(sec) {
@@ -1036,22 +1225,25 @@ function metricasFinanceiras(){
   const recebidoVendas=DB.vendas.filter(v=>v.status==='Pago').reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
   const recebidoPedidos=DB.pedidos.reduce((s,p)=>s+(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0),0);
   const recebidoAR=DB.areceber.reduce((s,x)=>s+(+x.recebido||0),0);
+  const recebidoConsignados=DB.consignados.reduce((s,c)=>s+(c.visitas||[]).reduce((ss,v)=>ss+(+v.valor_recebido||0),0),0);
   const pagoCompras=DB.compras.filter(c=>c.status==='Pago').reduce((s,c)=>s+(+c.qtd||0)*(+c.custo||0),0);
   const pagoAP=DB.apagar.reduce((s,x)=>s+(+x.pago||0),0);
-  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR)-(pagoCompras+pagoAP+custoFixoMes);
+  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR+recebidoConsignados)-(pagoCompras+pagoAP+custoFixoMes);
 
   // Valor parado — dinheiro "preso" em cada frente, ainda não virou caixa
   const valorEstoqueInsumos=DB.materias.reduce((s,m)=>s+Math.max(0,(+m.estoque||0))*(+m.custo||0),0);
   const valorConsignados=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+i.preco||0),s),0);
   const aReceberPendente=DB.areceber.filter(x=>x.status!=='Pago').reduce((s,x)=>s+Math.max(0,(+x.valor||0)-(+x.recebido||0)),0);
   const saldoPedidosPendente=DB.pedidos.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0);
+  // Vendido no consignado mas o parceiro ainda não repassou o dinheiro
+  const saldoConsignadoPendente=DB.consignados.reduce((s,c)=>(c.visitas||[]).reduce((ss,v)=>ss+Math.max(0,(+v.valor_vendido||0)-(+v.valor_recebido||0)),s),0);
   const aPagarPendente=DB.apagar.filter(x=>x.status!=='Pago').reduce((s,x)=>s+Math.max(0,(+x.valor||0)-(+x.pago||0)),0);
-  const valorParadoTotal=valorEstoqueInsumos+valorConsignados+aReceberPendente+saldoPedidosPendente;
+  const valorParadoTotal=valorEstoqueInsumos+valorConsignados+aReceberPendente+saldoPedidosPendente+saldoConsignadoPendente;
 
-  const ativoCirculante=caixaDisponivel+aReceberPendente+saldoPedidosPendente+valorEstoqueInsumos+valorConsignados;
+  const ativoCirculante=caixaDisponivel+aReceberPendente+saldoPedidosPendente+saldoConsignadoPendente+valorEstoqueInsumos+valorConsignados;
   const capitalGiro=ativoCirculante-aPagarPendente;
 
-  return {receitaMes,receitaHoje,receitaSemana,metaMensal,metaSemanal,metaDiaria,pctMetaMensal:metaMensal?(receitaMes/metaMensal*100):0,pctMetaSemanal:metaSemanal?(receitaSemana/metaSemanal*100):0,pctMetaDiaria:metaDiaria?(receitaHoje/metaDiaria*100):0,ticketMedio,pedidosParaMeta,pedidosParaMetaHoje,faltaMes,faltaHoje,lucroLiquidoMes,caixaDisponivel,valorEstoqueInsumos,valorConsignados,aReceberPendente,saldoPedidosPendente,aPagarPendente,valorParadoTotal,capitalGiro};
+  return {receitaMes,receitaHoje,receitaSemana,metaMensal,metaSemanal,metaDiaria,pctMetaMensal:metaMensal?(receitaMes/metaMensal*100):0,pctMetaSemanal:metaSemanal?(receitaSemana/metaSemanal*100):0,pctMetaDiaria:metaDiaria?(receitaHoje/metaDiaria*100):0,ticketMedio,pedidosParaMeta,pedidosParaMetaHoje,faltaMes,faltaHoje,lucroLiquidoMes,caixaDisponivel,valorEstoqueInsumos,valorConsignados,aReceberPendente,saldoPedidosPendente,saldoConsignadoPendente,aPagarPendente,valorParadoTotal,capitalGiro};
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1167,15 +1359,19 @@ function abrirDetalheDia(dataStr){
 
 SECTIONS.dashboard = () => {
   const efetivas = todasVendasEfetivas();
-  const totalVendas = efetivas.reduce((s,v)=>s+v.valorTotal,0);
-  const totalLucro = efetivas.reduce((s,v)=>s+v.valorTotal-v.custoTotal,0);
+  const per=getPeriodoAtual(_dashPeriodo,_dashCustomIni,_dashCustomFim);
+  const vendasPeriodo=vendasNoPeriodo(per.inicio,per.fim);
+  const receitaPeriodo=vendasPeriodo.reduce((s,v)=>s+v.valorTotal,0);
+  const lucroBrutoPeriodo=vendasPeriodo.reduce((s,v)=>s+v.valorTotal-v.custoTotal,0);
+  const cfPeriodo=custosFixosNoPeriodo(per.inicio,per.fim);
+  const lucroLiquidoPeriodo=lucroBrutoPeriodo-cfPeriodo;
+  const ticketPeriodo=vendasPeriodo.length?receitaPeriodo/vendasPeriodo.length:0;
+  const meta = +(DB.config?.meta_mensal||5000);
   const mes = new Date().getMonth()+1, ano = new Date().getFullYear();
   const vendaMes = efetivas.filter(v=>{const d=new Date(normalizarData(v.data));return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
-  const meta = +(DB.config?.meta_mensal||5000);
   const pctMeta = meta ? (vendaMes/meta*100).toFixed(0) : 0;
   const aReceber = DB.areceber.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
   const aPagar = DB.apagar.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
-  const ticket = efetivas.length ? totalVendas/efetivas.length : 0;
   const criticosMP = DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0)).length;
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -1188,11 +1384,15 @@ SECTIONS.dashboard = () => {
   const top3=Object.entries(vendProd).sort((a,b)=>b[1]-a[1]).slice(0,3);
 
   return `
+  ${renderSeletorPeriodo('dash',_dashPeriodo,_dashCustomIni,_dashCustomFim)}
+  <div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:8px 14px;border-radius:8px;font-size:12px;margin-bottom:12px">
+    📅 ${per.label} — ${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)}
+  </div>
   <div class="kpi-grid">
-    <div class="kpi-card verde"><div class="kpi-label">Receita Total</div><div class="kpi-value">${R$(totalVendas)}</div><div class="kpi-sub">${efetivas.length} vendas</div></div>
-    <div class="kpi-card"><div class="kpi-label">Lucro Total</div><div class="kpi-value text-verde">${R$(totalLucro)}</div><div class="kpi-sub">Margem ${totalVendas?((totalLucro/totalVendas)*100).toFixed(1):0}%</div></div>
-    <div class="kpi-card laranja"><div class="kpi-label">Receita Mês</div><div class="kpi-value">${R$(vendaMes)}</div><div class="kpi-sub">${pctMeta}% da meta</div></div>
-    <div class="kpi-card roxo"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticket)}</div></div>
+    <div class="kpi-card verde"><div class="kpi-label">Receita</div><div class="kpi-value">${R$(receitaPeriodo)}</div><div class="kpi-sub">${vendasPeriodo.length} venda${vendasPeriodo.length!==1?'s':''}</div></div>
+    <div class="kpi-card ${lucroLiquidoPeriodo>=0?'':'vermelho'}"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${lucroLiquidoPeriodo>=0?'text-verde':'text-vermelho'}">${R$(lucroLiquidoPeriodo)}</div><div class="kpi-sub">Receita − CPV − Custos Fixos</div></div>
+    <div class="kpi-card laranja"><div class="kpi-label">Receita Mês (atual)</div><div class="kpi-value">${R$(vendaMes)}</div><div class="kpi-sub">${pctMeta}% da meta</div></div>
+    <div class="kpi-card roxo"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticketPeriodo)}</div></div>
     <div class="kpi-card ${aReceber>0?'amarelo':'verde'}"><div class="kpi-label">A Receber</div><div class="kpi-value">${R$(aReceber)}</div></div>
     <div class="kpi-card ${aPagar>0?'vermelho':'verde'}"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
   </div>
@@ -1232,7 +1432,6 @@ SECTIONS.dashboard = () => {
   </div>
 
   <div class="kpi-grid">
-    <div class="kpi-card ${fm.lucroLiquidoMes>=0?'verde':'vermelho'}"><div class="kpi-label">Lucro Líquido do Mês</div><div class="kpi-value ${fm.lucroLiquidoMes>=0?'text-verde':'text-vermelho'}">${R$(fm.lucroLiquidoMes)}</div><div class="kpi-sub">Receita − CPV − Custos Fixos</div></div>
     <div class="kpi-card ${fm.caixaDisponivel>=0?'azul':'vermelho'}" style="border-left-color:${fm.caixaDisponivel>=0?'var(--azul-claro)':'var(--vermelho)'}"><div class="kpi-label">Caixa Disponível</div><div class="kpi-value ${fm.caixaDisponivel>=0?'':'text-vermelho'}">${R$(fm.caixaDisponivel)}</div><div class="kpi-sub">Estimado pelos lançamentos</div></div>
     <div class="kpi-card ${fm.capitalGiro>=0?'roxo':'vermelho'}"><div class="kpi-label">Capital de Giro</div><div class="kpi-value">${R$(fm.capitalGiro)}</div><div class="kpi-sub">Ativo circulante − A Pagar</div></div>
   </div>
@@ -1246,6 +1445,7 @@ SECTIONS.dashboard = () => {
         <tr><td>🤝 Produtos em consignação</td><td class="text-center fw-bold text-roxo">${R$(fm.valorConsignados)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('consignados')">Ver</button></td></tr>
         <tr><td>📥 A Receber (pendente)</td><td class="text-center fw-bold" style="color:var(--amarelo)">${R$(fm.aReceberPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('areceber')">Ver</button></td></tr>
         <tr><td>📋 Saldo de pedidos em aberto</td><td class="text-center fw-bold" style="color:var(--amarelo)">${R$(fm.saldoPedidosPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('pedidos')">Ver</button></td></tr>
+        <tr><td>🤝 Vendido no consignado, ainda não repassado</td><td class="text-center fw-bold" style="color:var(--amarelo)">${R$(fm.saldoConsignadoPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('consignados')">Ver</button></td></tr>
       </tbody>
     </table></div>
     <div style="padding:10px 16px;font-size:11px;color:var(--cinza-med)">💡 "Parado" = dinheiro que já foi gasto ou está garantido, mas ainda não virou caixa disponível na sua mão.</div>
@@ -1637,7 +1837,16 @@ function formVenda(v={}){
 }
 function autoPrecoVenda(prodId){const p=getProd(prodId||document.getElementById('f-vprod_val')?.value);if(p)document.getElementById('f-vpreco').value=p.preco;}
 async function salvarVenda(id=null){
-  const obj={id:id||nextId(DB.vendas,'PED'),data:document.getElementById('f-vdata').value,cliente:document.getElementById('f-vcli_val').value,produto:document.getElementById('f-vprod_val').value,qtd:parseFloat(document.getElementById('f-vqtd').value)||1,preco:parseFloat(document.getElementById('f-vpreco').value)||0,forma:document.getElementById('f-vforma').value,status:document.getElementById('f-vstatus').value,criado_em:id?getItem(DB.vendas,id)?.criado_em:new Date().toISOString()};
+  const existente=id?getItem(DB.vendas,id):null;
+  const produto=document.getElementById('f-vprod_val').value;
+  // Congela o custo na hora da venda — preserva o snapshot antigo se o
+  // produto não mudou (mantém o histórico correto), recalcula se mudou
+  // (ou se é uma venda nova).
+  const produtoMudou=existente&&existente.produto!==produto;
+  const custo_snapshot=(existente&&temValorDefinido(existente.custo_snapshot)&&!produtoMudou)
+    ?existente.custo_snapshot
+    :(+(getProd(produto)?.custo)||0);
+  const obj={id:id||nextId(DB.vendas,'PED'),data:document.getElementById('f-vdata').value,cliente:document.getElementById('f-vcli_val').value,produto,qtd:parseFloat(document.getElementById('f-vqtd').value)||1,preco:parseFloat(document.getElementById('f-vpreco').value)||0,forma:document.getElementById('f-vforma').value,status:document.getElementById('f-vstatus').value,custo_snapshot,criado_em:id?existente?.criado_em:new Date().toISOString()};
   await salvarItem('vendas',obj);
   toast(id?'Venda atualizada!':'Venda registrada!');closeModal();render('vendas');
 }
@@ -1690,7 +1899,7 @@ async function enviarAjusteEstoque(itens){
   const res = await fetch(SHEETS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ acao: 'ajustar_estoque', dados: { itens }, senha: SENHA_APP })
+    body: JSON.stringify({ acao: 'ajustar_estoque', dados: { itens }, ...credenciaisAuth() })
   });
   const data = await res.json();
   if (!data.ok) throw new Error(data.erro || 'Servidor não confirmou o ajuste de estoque');
@@ -1964,6 +2173,7 @@ function abrirFormPedido(editId){
 function onChangePedCli(id){const c=getCli(id);if(c){document.getElementById('ped-clinome').value=c.nome;document.getElementById('ped-tel').value=c.whatsapp||c.telefone||'';window._pedTemp.cliente=id;}}
 function onChangePedProd(i,val){
   const it=window._pedTemp.itens[i];it.prod=val;it.variante='';
+  delete it.custo_snapshot; // produto mudou — o custo congelado antigo não vale mais, recalcula na hora de salvar
   if(val.startsWith('KIT:')){const k=getItem(DB.kits,val.replace('KIT:',''));if(k){it.desc=k.nome;it.valor=k.preco_venda||0;}}
   else if(val){const p=getProd(val);if(p){it.desc=p.nome;it.valor=p.preco||0;}}
   else{it.desc='';it.valor=0;}
@@ -2018,6 +2228,14 @@ async function salvarPedidoOrc(editId){
   pd.total=calc.total;
   pd.subtotal=calc.somaItens;
   pd.itens=JSON.parse(JSON.stringify(pd.itens||[]));
+  // Congela o custo de cada item que ainda não tem um snapshot (item novo,
+  // ou teve o produto trocado) — assim, se o custo do produto mudar depois,
+  // esse pedido já salvo não muda de lucro sozinho.
+  pd.itens.forEach(it=>{
+    if(!temValorDefinido(it.custo_snapshot)){
+      it.custo_snapshot=custoItemPedidoAoVivo(it);
+    }
+  });
   pd.entradas=pd.entradas||[];
   pd.criado_em=editId?getItem(DB.pedidos,editId)?.criado_em:new Date().toISOString();
   if(!pd.cliente_nome&&!pd.cliente){toast('Informe o cliente','error');return;}
@@ -2179,8 +2397,8 @@ function abrirPreviewOrcamento(pedidoId){
   const empresa=DB.config?.empresa||'Morfê Personalizados';
   const instagram=DB.config?.instagram||'';
   const cidade=DB.config?.cidade||'';
-  const dataEmissao=pd.data?new Date(pd.data+'T00:00:00').toLocaleDateString('pt-BR'):new Date().toLocaleDateString('pt-BR');
-  const dataEntrega=pd.entrega?new Date(pd.entrega+'T00:00:00').toLocaleDateString('pt-BR'):'A combinar';
+  const dataEmissao=pd.data?new Date(normalizarData(pd.data)+'T00:00:00').toLocaleDateString('pt-BR'):new Date().toLocaleDateString('pt-BR');
+  const dataEntrega=pd.entrega?new Date(normalizarData(pd.entrega)+'T00:00:00').toLocaleDateString('pt-BR'):'A combinar';
 
   const linhasItens=(pd.itens||[]).filter(i=>i.desc||i.prod).map(it=>{
     const c=itemCalc(it);
@@ -2445,6 +2663,86 @@ async function marcarPagoAP(id){const x=getItem(DB.apagar,id);x.pago=x.valor;x.s
 // ═══════════════════════════════════════════════════════════════
 // Helpers de cálculo de Custos e Taxas — usados também nas Fichas Técnicas
 function custosFixosMensais(){ return DB.custos_fixos.filter(c=>c.tipo!=='percentual').reduce((s,c)=>s+(+c.valor||0),0); }
+
+// ═══════════════════════════════════════════════════════════════
+// PERÍODO — usado por Dashboard e DRE (e qualquer outra tela que
+// precisar). Existe UMA fonte só pra "qual o período" e "quanto de
+// custo fixo cabe nesse período" — assim as telas nunca mais divergem
+// (bug real que já aconteceu: DRE somando TODAS as vendas de sempre
+// só que descontando só 6 meses fixos de custo, sem bater um com o outro).
+// ═══════════════════════════════════════════════════════════════
+function formatarDataBR(dataStr){
+  if(!dataStr) return '—';
+  const [ano,mes,dia]=dataStr.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
+function primeiraDataRegistrada(){
+  const datas=todasVendasEfetivas().map(v=>normalizarData(v.data)).filter(Boolean).sort();
+  return datas[0]||new Date().toISOString().slice(0,10);
+}
+function periodoPreset(preset){
+  const hoje=new Date();
+  const hojeStr=hoje.toISOString().slice(0,10);
+  const pad=n=>String(n).padStart(2,'0');
+  if(preset==='hoje') return {inicio:hojeStr, fim:hojeStr, label:'Hoje'};
+  if(preset==='7dias'){
+    const d=new Date(hoje); d.setDate(d.getDate()-6);
+    return {inicio:d.toISOString().slice(0,10), fim:hojeStr, label:'Últimos 7 dias'};
+  }
+  if(preset==='mes'){
+    return {inicio:`${hoje.getFullYear()}-${pad(hoje.getMonth()+1)}-01`, fim:hojeStr, label:'Este Mês'};
+  }
+  if(preset==='mesant'){
+    const d=new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
+    const fimD=new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+    return {inicio:`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, fim:`${fimD.getFullYear()}-${pad(fimD.getMonth()+1)}-${pad(fimD.getDate())}`, label:'Mês Anterior'};
+  }
+  if(preset==='ano') return {inicio:`${hoje.getFullYear()}-01-01`, fim:hojeStr, label:'Este Ano'};
+  if(preset==='tudo') return {inicio:primeiraDataRegistrada(), fim:hojeStr, label:'Todo o Período'};
+  return {inicio:hojeStr, fim:hojeStr, label:'Hoje'};
+}
+function getPeriodoAtual(preset,customIni,customFim){
+  if(preset==='custom'){
+    const hojeStr=new Date().toISOString().slice(0,10);
+    return {inicio:customIni||hojeStr, fim:customFim||hojeStr, label:'Personalizado'};
+  }
+  return periodoPreset(preset);
+}
+function diasNoPeriodo(inicio,fim){
+  const d1=new Date(inicio+'T00:00:00'), d2=new Date(fim+'T00:00:00');
+  return Math.max(1, Math.round((d2-d1)/86400000)+1);
+}
+function vendasNoPeriodo(inicio,fim){
+  return todasVendasEfetivas().filter(v=>{const d=normalizarData(v.data); return d && d>=inicio && d<=fim;});
+}
+// Rateia os Custos Fixos (que são um valor MENSAL configurado em Custos e
+// Taxas) proporcionalmente aos dias do período escolhido — nunca mais
+// mistura "custo de X meses" com "receita de um período diferente".
+function custosFixosNoPeriodo(inicio,fim){
+  return custosFixosMensais()*(diasNoPeriodo(inicio,fim)/30);
+}
+function renderSeletorPeriodo(prefixo,presetAtual,customIni,customFim){
+  const presets=[['hoje','Hoje'],['7dias','7 dias'],['mes','Este Mês'],['mesant','Mês Anterior'],['ano','Este Ano'],['tudo','Tudo'],['custom','Personalizado']];
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+    ${presets.map(([v,l])=>`<button class="btn btn-sm ${presetAtual===v?'btn-primary':'btn-outline'}" onclick="setPeriodo('${prefixo}','${v}')">${l}</button>`).join('')}
+    ${presetAtual==='custom'?`
+      <input type="date" value="${customIni||''}" onchange="setPeriodoCustom('${prefixo}','inicio',this.value)" style="padding:6px 8px;border:1.5px solid var(--cinza-claro);border-radius:6px;font-size:12px">
+      <span style="font-size:12px;color:var(--cinza-med)">até</span>
+      <input type="date" value="${customFim||''}" onchange="setPeriodoCustom('${prefixo}','fim',this.value)" style="padding:6px 8px;border:1.5px solid var(--cinza-claro);border-radius:6px;font-size:12px">
+    `:''}
+  </div>`;
+}
+let _dashPeriodo='mes', _dashCustomIni=null, _dashCustomFim=null;
+let _drePeriodo='mes', _dreCustomIni=null, _dreCustomFim=null;
+function setPeriodo(prefixo,preset){
+  if(prefixo==='dash') _dashPeriodo=preset; else _drePeriodo=preset;
+  render(currentSection);
+}
+function setPeriodoCustom(prefixo,campo,valor){
+  if(prefixo==='dash'){ if(campo==='inicio') _dashCustomIni=valor; else _dashCustomFim=valor; }
+  else { if(campo==='inicio') _dreCustomIni=valor; else _dreCustomFim=valor; }
+  render(currentSection);
+}
 function custoFixoRateado(){
   const vendas = +(DB.config?.vendas_esperadas_mes||100)||100;
   return custosFixosMensais() / vendas;
@@ -2785,13 +3083,20 @@ function tabelaExtratoDivisao(){
 
 
 SECTIONS.dre = () => {
-  const efetivas=todasVendasEfetivas();
-  const receita=efetivas.reduce((s,v)=>s+v.valorTotal,0);
-  const cpv=efetivas.reduce((s,v)=>s+v.custoTotal,0);
+  const per=getPeriodoAtual(_drePeriodo,_dreCustomIni,_dreCustomFim);
+  const vendas=vendasNoPeriodo(per.inicio,per.fim);
+  const receita=vendas.reduce((s,v)=>s+v.valorTotal,0);
+  const cpv=vendas.reduce((s,v)=>s+v.custoTotal,0);
   const mc=receita-cpv;
-  const cfTotal=custosFixosMensais()*6;
+  const cfTotal=custosFixosNoPeriodo(per.inicio,per.fim);
   const ll=mc-cfTotal;
-  return`<div class="kpi-grid">
+  const dias=diasNoPeriodo(per.inicio,per.fim);
+  return`
+  ${renderSeletorPeriodo('dre',_drePeriodo,_dreCustomIni,_dreCustomFim)}
+  <div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px 14px;border-radius:8px;font-size:12.5px;margin-bottom:14px">
+    📅 Período analisado: <strong>${per.label}</strong> — de ${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)} (${dias} dia${dias>1?'s':''}). O Custo Fixo abaixo já foi ajustado pra caber só nesse período (calculado a partir do valor mensal em Custos e Taxas).
+  </div>
+  <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Receita Bruta</div><div class="kpi-value">${R$(receita)}</div></div>
     <div class="kpi-card"><div class="kpi-label">Margem</div><div class="kpi-value">${R$(mc)}</div></div>
     <div class="kpi-card ${ll>=0?'verde':'vermelho'}"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${ll>=0?'text-verde':'text-vermelho'}">${R$(ll)}</div></div>
@@ -2802,7 +3107,7 @@ SECTIONS.dre = () => {
       <div class="dre-row deducao"><span>(-) Custo dos Produtos (CPV)</span><span>${R$(cpv)}</span></div>
       <div class="dre-row subtotal"><span>MARGEM DE CONTRIBUIÇÃO</span><span>${R$(mc)}</span></div>
       <div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Margem %</span><span>${receita?((mc/receita)*100).toFixed(1)+'%':'—'}</span></div>
-      <div class="dre-row deducao"><span>(-) Custos Fixos (6 meses)</span><span>${R$(cfTotal)}</span></div>
+      <div class="dre-row deducao"><span>(-) Custos Fixos (rateado p/ ${dias} dia${dias>1?'s':''})</span><span>${R$(cfTotal)}</span></div>
       <div class="dre-row lucro"><span>💰 LUCRO LÍQUIDO</span><span>${R$(ll)}</span></div>
     </div>
   </div>`;
@@ -2813,6 +3118,25 @@ SECTIONS.dre = () => {
 // ═══════════════════════════════════════════════════════════════
 // Calcula o breakdown completo de custo/preço de um produto
 // Custo de um item de ficha — se tiver variantes (cores), usa a média entre elas
+// Mantém o campo "custo" do produto (usado no CPV do Dashboard/DRE/Pedidos)
+// sempre sincronizado com a Ficha Técnica — antes só atualizava quando
+// alguém clicava manualmente em "Aplicar preço sugerido", então podia ficar
+// desatualizado (o "custo em Produtos" divergindo do "custo na Ficha").
+// IMPORTANTE: usa só Insumos + Embalagem, SEM a fatia de custo fixo — essa
+// fatia é só uma ferramenta pra ajudar a sugerir preço de venda; incluir ela
+// aqui contaria o custo fixo DUAS vezes (uma em cada venda, outra de novo
+// como linha separada na DRE).
+async function sincronizarCustoProduto(prodId){
+  const p=getProd(prodId);if(!p)return;
+  const temFicha=DB.fichas.some(f=>f.produto===prodId);
+  if(!temFicha) return; // sem ficha configurada — mantém o custo manual como está
+  const custoInsumos=DB.fichas.filter(f=>f.produto===prodId).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0);
+  const novoCusto=parseFloat((custoInsumos+(+p.embalagem||0)).toFixed(2));
+  if(p.custo!==novoCusto){
+    p.custo=novoCusto;
+    await salvarItem('produtos',p);
+  }
+}
 function custoFichaItem(f){
   if(f.variantes && f.variantes.length>0){
     const custos=f.variantes.map(v=>+(getItem(DB.materias,v.mp)?.custo)||0).filter(c=>c>0);
@@ -2832,19 +3156,31 @@ function calcFichaCompleta(prodId){
   const custoFixo=custoFixoRateado();
   const embalagem=+(p.embalagem||0);
   const custoTotal=custoInsumos+custoFixo+embalagem;
-  const markum=temValorDefinido(p.margem_ideal)?+p.margem_ideal:+(DB.config?.margem_padrao||40);
+  // "markum" é, na verdade, a MARGEM desejada (lucro/preço) — não um markup
+  // (lucro/custo). É assim que a fórmula abaixo funciona: preco = custo /
+  // (1 - margem). Chamamos de "margemDesejada" pra deixar isso sem ambiguidade.
+  const margemDesejada=temValorDefinido(p.margem_ideal)?+p.margem_ideal:+(DB.config?.margem_padrao||40);
+  const markum=margemDesejada; // mantido por compatibilidade com quem já usa esse nome
   const impostosPct=pctImpostos();
   const outrasPct=pctTaxasCartao();
   const deliveryPct=pctTaxasDelivery();
-  const fatorMarkup=1-(markum/100);
-  const precoComMarkup=fatorMarkup>0?custoTotal/fatorMarkup:custoTotal*2;
+  const fatorMargem=1-(margemDesejada/100);
+  const precoComMarkup=fatorMargem>0?custoTotal/fatorMargem:custoTotal*2;
   const fatorTaxas=1-(impostosPct/100)-(outrasPct/100);
   const precoSugerido=fatorTaxas>0?precoComMarkup/fatorTaxas:precoComMarkup*1.5;
   const precoPraticado=+(p.preco||0);
+  // Markup aplicado = lucro dividido pelo CUSTO (lucro/custo) — esse aqui já
+  // era um markup de verdade, só o nome "Markup Ideal" (acima) que estava errado.
   const markupAplicado=custoTotal>0?((precoPraticado-custoTotal)/custoTotal*100):0;
-  const margemContrib=precoPraticado-custoTotal;
+  // Margem REAL = lucro dividido pelo PREÇO praticado (lucro/preço) — mostra
+  // a margem que você está tendo de verdade, pra comparar com a desejada.
+  const margemReal=precoPraticado>0?((precoPraticado-custoTotal)/precoPraticado*100):0;
+  // Fator de markup = quantas vezes o preço é maior que o custo (ex: 1.67x)
+  const fatorMarkupAplicado=custoTotal>0&&precoPraticado>0?precoPraticado/custoTotal:0;
+  const lucroReais=precoPraticado-custoTotal;
+  const margemContrib=lucroReais; // mantido por compatibilidade, é o mesmo valor
   const dentroMargem=precoPraticado>0 && precoPraticado>=precoSugerido;
-  return {p,custoInsumos,custoFixo,embalagem,custoTotal,markum,impostosPct,outrasPct,deliveryPct,precoComMarkup,precoSugerido,precoPraticado,markupAplicado,margemContrib,dentroMargem};
+  return {p,custoInsumos,custoFixo,embalagem,custoTotal,markum,margemDesejada,impostosPct,outrasPct,deliveryPct,precoComMarkup,precoSugerido,precoPraticado,markupAplicado,margemReal,fatorMarkupAplicado,lucroReais,margemContrib,dentroMargem};
 }
 
 SECTIONS.fichas = () => `
@@ -2856,10 +3192,10 @@ SECTIONS.fichas = () => `
     <div class="tbl-wrap"><table>
       <thead><tr>
         <th>Produto</th><th>Insumos</th><th>C.Fixo</th><th>Embal.</th><th>Custo Total</th>
-        <th>Markup Ideal</th><th>Preço c/Markup</th><th>Impostos</th><th>Outras Taxas</th>
-        <th>Preço Sugerido</th><th>Preço Praticado</th><th>Markup Apl.</th><th>Status</th><th>Margem</th><th></th>
+        <th>Margem Desejada</th><th>Preço c/ Margem</th><th>Impostos</th><th>Outras Taxas</th>
+        <th>Preço Sugerido</th><th>Preço Praticado</th><th>Markup Apl.</th><th>Fator</th><th>Margem Real</th><th>Status</th><th>Lucro (R$)</th><th></th>
       </tr></thead>
-      <tbody>${DB.produtos.length===0?`<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--cinza-med)">Cadastre produtos primeiro.</td></tr>`:
+      <tbody>${DB.produtos.length===0?`<tr><td colspan="17" style="text-align:center;padding:20px;color:var(--cinza-med)">Cadastre produtos primeiro.</td></tr>`:
       ordNome(DB.produtos).map(p=>{
         const c=calcFichaCompleta(p.id);
         return`<tr>
@@ -2868,15 +3204,17 @@ SECTIONS.fichas = () => `
           <td class="text-center text-muted">${c.custoFixo?R$(c.custoFixo):'—'}</td>
           <td class="text-center text-muted">${c.embalagem?R$(c.embalagem):'—'}</td>
           <td class="text-center fw-bold">${R$(c.custoTotal)}</td>
-          <td class="text-center">${c.markum}%</td>
+          <td class="text-center">${c.margemDesejada}%</td>
           <td class="text-center">${R$(c.precoComMarkup)}</td>
           <td class="text-center text-muted">${c.impostosPct?c.impostosPct+'%':'—'}</td>
           <td class="text-center text-muted">${c.outrasPct?c.outrasPct+'%':'—'}</td>
           <td class="text-center fw-bold text-azul">${R$(c.precoSugerido)}</td>
           <td class="text-center fw-bold">${R$(c.precoPraticado)}</td>
           <td class="text-center">${c.markupAplicado.toFixed(0)}%</td>
+          <td class="text-center text-muted">${c.precoPraticado>0?c.fatorMarkupAplicado.toFixed(2)+'x':'—'}</td>
+          <td class="text-center ${c.precoPraticado>0?(c.margemReal>=c.margemDesejada?'text-verde':'text-vermelho'):'text-muted'}">${c.precoPraticado>0?c.margemReal.toFixed(0)+'%':'—'}</td>
           <td>${c.precoPraticado===0?'<span class="badge badge-gray">Sem preço</span>':c.dentroMargem?'<span class="badge badge-ok">Dentro da margem</span>':'<span class="badge badge-danger">Abaixo da margem</span>'}</td>
-          <td class="text-center fw-bold ${c.margemContrib>=0?'text-verde':'text-vermelho'}">${R$(c.margemContrib)}</td>
+          <td class="text-center fw-bold ${c.lucroReais>=0?'text-verde':'text-vermelho'}">${R$(c.lucroReais)}</td>
           <td><button class="btn btn-outline btn-xs" onclick="selFicha('${p.id}')">📋 Acessar ficha</button></td>
         </tr>`;}).join('')}</tbody>
     </table></div>
@@ -2938,10 +3276,13 @@ function renderFichaDetalhe(prodId){
       <div class="panel"><div class="panel-header" style="background:var(--laranja);color:white;border-radius:var(--radius) var(--radius) 0 0"><span class="panel-title" style="color:white">🧮 Custos e Precificação</span></div>
         <div style="padding:14px;display:flex;flex-direction:column;gap:9px">
           <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px">Custo Insumos</span><span class="fw-bold text-verde">${R$(c.custoInsumos)}</span></div>
-          <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px">Custo Fixo (rateio)</span><span class="fw-bold text-vermelho">${R$(c.custoFixo)}</span></div>
           <div style="display:flex;justify-content:space-between;align-items:center"><label style="font-size:12.5px">Embalagem (R$)</label><input type="number" step="0.01" value="${p.embalagem||0}" id="fm-emb-${prodId}" oninput="recalcFM('${prodId}')" style="width:75px;padding:5px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></div>
-          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--cinza-claro);padding-top:6px"><span style="font-size:13px;font-weight:700">Custo Total</span><span class="fw-bold" id="fm-custot-${prodId}">${R$(c.custoTotal)}</span></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><label style="font-size:12.5px">Markup Ideal (%)</label><input type="number" step="1" value="${c.markum}" id="fm-marg-${prodId}" oninput="recalcFM('${prodId}')" style="width:75px;padding:5px;border:1.5px solid var(--amarelo);border-radius:5px;font-size:14px;text-align:center"></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--cinza-claro);padding-top:6px"><span style="font-size:13px;font-weight:700">💰 Custo Real (usado no CPV)</span><span class="fw-bold text-verde" id="fm-custoreal-${prodId}">${R$(c.custoInsumos+(+p.embalagem||0))}</span></div>
+          <div style="font-size:10px;color:var(--cinza-med);margin-top:-4px">Esse valor é o que conta no Dashboard, DRE e Pedidos — e fica sempre sincronizado sozinho com o que está aqui em cima.</div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><span style="font-size:12.5px">Custo Fixo (rateio p/ precificar)</span><span class="fw-bold text-vermelho">${R$(c.custoFixo)}</span></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--cinza-claro);padding-top:6px"><span style="font-size:13px;font-weight:700">Custo Total p/ Sugerir Preço</span><span class="fw-bold" id="fm-custot-${prodId}">${R$(c.custoTotal)}</span></div>
+          <div style="font-size:10px;color:var(--cinza-med);margin-top:-4px">Esse aqui é maior de propósito — inclui uma fatia do custo fixo só pra ajudar a calcular um preço de venda que cubra tudo. Não é o que vira "custo" nos relatórios.</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><label style="font-size:12.5px">Margem Desejada (%)</label><input type="number" step="1" value="${c.margemDesejada}" id="fm-marg-${prodId}" oninput="recalcFM('${prodId}')" style="width:75px;padding:5px;border:1.5px solid var(--amarelo);border-radius:5px;font-size:14px;text-align:center"></div>
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cinza-med)"><span>Impostos (Custos e Taxas)</span><span>${c.impostosPct}%</span></div>
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cinza-med)"><span>Outras taxas/cartão</span><span>${c.outrasPct}%</span></div>
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cinza-med)"><span>Taxa delivery</span><span>${c.deliveryPct}%</span></div>
@@ -2959,9 +3300,12 @@ function renderFichaDetalhe(prodId){
 function blocoResFM(prodId){
   const c=calcFichaCompleta(prodId);
   return`<div style="display:flex;flex-direction:column;gap:6px;font-size:13px">
-    <div style="display:flex;justify-content:space-between"><span>Preço c/ Markup</span><span class="fw-bold">${R$(c.precoComMarkup)}</span></div>
+    <div style="display:flex;justify-content:space-between"><span>Preço c/ Margem Desejada</span><span class="fw-bold">${R$(c.precoComMarkup)}</span></div>
+    <div style="display:flex;justify-content:space-between"><span>Margem Desejada</span><span class="fw-bold">${c.margemDesejada.toFixed(0)}%</span></div>
+    ${c.precoPraticado>0?`<div style="display:flex;justify-content:space-between"><span>Margem Real (no preço praticado)</span><span class="fw-bold ${c.margemReal>=c.margemDesejada?'text-verde':'text-vermelho'}">${c.margemReal.toFixed(1)}%</span></div>`:''}
     <div style="display:flex;justify-content:space-between"><span>Markup Aplicado</span><span class="fw-bold">${c.markupAplicado.toFixed(0)}%</span></div>
-    <div style="display:flex;justify-content:space-between"><span>Margem de Contribuição</span><span class="fw-bold ${c.margemContrib>=0?'text-verde':'text-vermelho'}">${R$(c.margemContrib)}</span></div>
+    ${c.precoPraticado>0?`<div style="display:flex;justify-content:space-between"><span>Fator de Markup</span><span class="fw-bold">${c.fatorMarkupAplicado.toFixed(2)}x</span></div>`:''}
+    <div style="display:flex;justify-content:space-between"><span>Lucro em R$</span><span class="fw-bold ${c.lucroReais>=0?'text-verde':'text-vermelho'}">${R$(c.lucroReais)}</span></div>
     ${c.precoPraticado?`<div style="display:flex;justify-content:space-between"><span>Preço praticado</span><span class="fw-bold ${c.dentroMargem?'text-verde':'text-vermelho'}">${R$(c.precoPraticado)}</span></div>
     <div style="text-align:center">${c.dentroMargem?'<span class="badge badge-ok">✅ Dentro da margem</span>':'<span class="badge badge-danger">⚠️ Abaixo da margem</span>'}</div>`:''}
     <div style="background:var(--azul);color:white;padding:12px;border-radius:6px;text-align:center;margin-top:6px">
@@ -2975,15 +3319,25 @@ async function recalcFM(prodId){
   p.embalagem=parseFloat(document.getElementById('fm-emb-'+prodId)?.value)||0;
   const margLida=parseFloat(document.getElementById('fm-marg-'+prodId)?.value);
   if(!isNaN(margLida)) p.margem_ideal=margLida; // só grava se for um número válido de verdade
+  // Mantém o custo do produto sincronizado (insumos + embalagem, sem a
+  // fatia de custo fixo — essa é só pra ajudar a sugerir preço, ver
+  // sincronizarCustoProduto() pra entender o motivo)
+  if(DB.fichas.some(f=>f.produto===prodId)){
+    const custoInsumos=DB.fichas.filter(f=>f.produto===prodId).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0);
+    p.custo=parseFloat((custoInsumos+(+p.embalagem||0)).toFixed(2));
+  }
   await salvarItem('produtos',p);
   const c=calcFichaCompleta(prodId);
   const elT=document.getElementById('fm-custot-'+prodId);if(elT)elT.textContent=R$(c.custoTotal);
+  const elR=document.getElementById('fm-custoreal-'+prodId);if(elR)elR.textContent=R$(c.custoInsumos+(+p.embalagem||0));
   const el=document.getElementById('fm-res-'+prodId);if(el)el.innerHTML=blocoResFM(prodId);
 }
 async function updQtdFicha(fichaId,prodId,novaQtd){
   const f=getItem(DB.fichas,fichaId);if(!f)return;
   f.qtd=parseFloat(novaQtd)||0;
-  await salvarItem('fichas',f);renderFichaDetalhe(prodId);
+  await salvarItem('fichas',f);
+  await sincronizarCustoProduto(prodId);
+  renderFichaDetalhe(prodId);
 }
 function addInsFicha(prodId){
   const mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} — ${R$(m.custo)}/${m.unidade}`}));
@@ -3000,10 +3354,15 @@ function addInsFicha(prodId){
       if(DB.fichas.some(f=>f.produto===prodId&&f.mp===mp)){toast('Insumo já está na ficha','error');return;}
       const novo={id:nextId(DB.fichas,'FT'),produto:prodId,mp,qtd,criado_em:new Date().toISOString()};
       await salvarItem('fichas',novo);
+      await sincronizarCustoProduto(prodId);
       toast('Insumo adicionado!');closeModal();renderFichaDetalhe(prodId);
     },'✅ Adicionar');
 }
-async function remInsFicha(fichaId,prodId){await excluirItem_db('fichas',fichaId);toast('Removido!');renderFichaDetalhe(prodId);}
+async function remInsFicha(fichaId,prodId){
+  await excluirItem_db('fichas',fichaId);
+  await sincronizarCustoProduto(prodId);
+  toast('Removido!');renderFichaDetalhe(prodId);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // VARIANTES — cores/versões de um insumo (ex: caneca azul/vermelha)
@@ -3054,6 +3413,7 @@ function gerenciarVariantes(fichaId, prodId){
       }
       fRef.variantes=completas;
       await salvarItem('fichas', fRef);
+      await sincronizarCustoProduto(window._varTemp.prodId);
       toast(`✅ ${completas.length} variante(s) salva(s)!`);closeModal();renderFichaDetalhe(window._varTemp.prodId);
     },'💾 Salvar Variantes');
 }
@@ -3462,13 +3822,23 @@ function regVisita(consigId){
       const valR=parseFloat(document.getElementById('vis-v').value)||0;
       const obs=document.getElementById('vis-obs').value;
       let vendido=0;
+      const itensVendidos=[];
       (c.itens||[]).forEach((it,idx)=>{
         const nq=parseInt(document.getElementById('vis-q-'+idx)?.value)??it.qtd_atual;
-        vendido+=((+it.qtd_atual||0)-Math.max(0,nq))*(+it.preco||0);
-        it.qtd_atual=Math.max(0,nq);
+        const qtdAntes=+it.qtd_atual||0;
+        const qtdDepois=Math.max(0,nq);
+        const qtdVendida=Math.max(0,qtdAntes-qtdDepois);
+        if(qtdVendida>0){
+          vendido+=qtdVendida*(+it.preco||0);
+          // Congela preço de repasse e custo NESSE momento — igual já fazemos
+          // em Vendas/Pedidos, pra mudanças futuras não alterarem o lucro
+          // dessa venda já feita
+          itensVendidos.push({prod:it.prod, variante:it.variante||'', qtd:qtdVendida, preco_repasse:+it.preco||0, custo_snapshot:custoItemPedidoAoVivo({prod:it.prod})});
+        }
+        it.qtd_atual=qtdDepois;
       });
       if(!c.visitas)c.visitas=[];
-      c.visitas.push({data,valor_vendido:vendido||valR,valor_recebido:valR,obs});
+      c.visitas.push({data,valor_vendido:vendido||valR,valor_recebido:valR,obs,itens_vendidos:itensVendidos});
       await salvarItem('consignados',c);
       toast(`Visita registrada! Vendido: ${R$(vendido)}`);closeModal();render('consignados');
     },'✅ Confirmar Visita');
@@ -3569,6 +3939,102 @@ function calcPC(){
 // ═══════════════════════════════════════════════════════════════
 // RELATÓRIOS
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// PENDÊNCIAS DE CADASTRO — relatório somente leitura, não corrige nada
+// sozinho. Mostra o que está incompleto pra você decidir o que ajustar.
+// ═══════════════════════════════════════════════════════════════
+function calcularPendenciasCadastro(){
+  const materiasSemFornecedor = DB.materias.filter(m=>!m.fornecedor);
+  const fornSemTelefone = DB.fornecedores.filter(f=>!f.telefone);
+  const fornSemEmail = DB.fornecedores.filter(f=>!f.email);
+  const fornSemCategoria = DB.fornecedores.filter(f=>!f.categoria);
+  const produtosSemSku = DB.produtos.filter(p=>!p.sku);
+  const produtosSemFicha = DB.produtos.filter(p=>!DB.fichas.some(f=>f.produto===p.id));
+  const pedidosSemCliente = DB.pedidos.filter(pd=>!pd.cliente && !pd.cliente_nome);
+
+  // Custos divergentes: compara o custo cadastrado no produto com o custo
+  // calculado pela Ficha Técnica (soma dos insumos). Só considera produto
+  // que já tem ficha configurada (senão a comparação não faz sentido).
+  const LIMIAR_DIVERGENCIA = 0.5; // considera divergente se diferença > R$0,50
+  const produtosCustoDivergente = DB.produtos.filter(p=>{
+    const temFicha = DB.fichas.some(f=>f.produto===p.id);
+    if(!temFicha) return false;
+    const custoFicha = DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0);
+    return Math.abs((+p.custo||0) - custoFicha) > LIMIAR_DIVERGENCIA;
+  }).map(p=>{
+    const custoFicha = DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0);
+    return {produto:p, custoCadastrado:+p.custo||0, custoFicha, diferenca:(+p.custo||0)-custoFicha};
+  });
+
+  return {materiasSemFornecedor, fornSemTelefone, fornSemEmail, fornSemCategoria, produtosSemSku, produtosSemFicha, pedidosSemCliente, produtosCustoDivergente};
+}
+
+SECTIONS.pendencias = () => {
+  const p = calcularPendenciasCadastro();
+  const totalPendencias = p.materiasSemFornecedor.length + p.fornSemTelefone.length + p.fornSemEmail.length +
+    p.fornSemCategoria.length + p.produtosSemSku.length + p.produtosSemFicha.length + p.pedidosSemCliente.length + p.produtosCustoDivergente.length;
+
+  const bloco = (titulo, lista, renderItem, corVazio='var(--verde-med)') => `
+    <div class="panel" style="margin-bottom:14px">
+      <div class="panel-header">
+        <span class="panel-title">${titulo}</span>
+        <span class="badge ${lista.length===0?'badge-ok':'badge-danger'}">${lista.length}</span>
+      </div>
+      <div style="padding:${lista.length===0?'16px':'0'}">
+        ${lista.length===0
+          ? `<p style="color:${corVazio};font-size:13px;margin:0">✅ Tudo certo aqui.</p>`
+          : `<div class="tbl-wrap"><table><tbody>${lista.map(renderItem).join('')}</tbody></table></div>`}
+      </div>
+    </div>`;
+
+  return `
+  <div style="background:${totalPendencias===0?'var(--verde-claro)':'var(--dourado-claro)'};border-left:4px solid ${totalPendencias===0?'var(--verde)':'var(--dourado-escuro)'};padding:12px 14px;border-radius:8px;font-size:13px;color:var(--cinza-escuro);margin-bottom:16px">
+    ${totalPendencias===0?'✅ Nenhuma pendência de cadastro encontrada!':`⚠️ <strong>${totalPendencias}</strong> pendência(s) de cadastro encontrada(s). Isso é só um relatório — nada aqui é corrigido automaticamente, você decide o que ajustar.`}
+  </div>
+
+  ${bloco('🧱 Matérias-Primas sem Fornecedor', p.materiasSemFornecedor, m=>
+    `<tr><td>${m.nome}</td><td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="editarMP('${m.id}')">✏️ Editar</button></td></tr>`)}
+
+  ${bloco('🏭 Fornecedores sem Telefone', p.fornSemTelefone, f=>
+    `<tr><td>${f.nome}</td><td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="editarForn('${f.id}')">✏️ Editar</button></td></tr>`)}
+
+  ${bloco('🏭 Fornecedores sem E-mail', p.fornSemEmail, f=>
+    `<tr><td>${f.nome}</td><td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="editarForn('${f.id}')">✏️ Editar</button></td></tr>`)}
+
+  ${bloco('🏭 Fornecedores sem Categoria', p.fornSemCategoria, f=>
+    `<tr><td>${f.nome}</td><td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="editarForn('${f.id}')">✏️ Editar</button></td></tr>`)}
+
+  ${bloco('📦 Produtos sem SKU', p.produtosSemSku, pr=>
+    `<tr><td>${pr.nome}</td><td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="editarProduto('${pr.id}')">✏️ Editar</button></td></tr>`)}
+
+  ${bloco('🔬 Produtos sem Ficha Técnica', p.produtosSemFicha, pr=>
+    `<tr><td>${pr.nome}</td><td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="goTo('fichas');setTimeout(()=>selFicha('${pr.id}'),100)">📋 Configurar Ficha</button></td></tr>`)}
+
+  ${bloco('📋 Pedidos sem Cliente', p.pedidosSemCliente, pd=>
+    `<tr><td>${pd.id} — ${R$(pd.total||0)}</td><td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="verPedidoOrc('${pd.id}')">✏️ Associar Cliente</button></td></tr>`)}
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">⚠️ Produtos com Custo Divergente</span>
+      <span class="badge ${p.produtosCustoDivergente.length===0?'badge-ok':'badge-danger'}">${p.produtosCustoDivergente.length}</span>
+    </div>
+    <div style="padding:${p.produtosCustoDivergente.length===0?'16px':'0'}">
+      ${p.produtosCustoDivergente.length===0 ? `<p style="color:var(--verde-med);font-size:13px;margin:0">✅ Nenhuma divergência acima de R$0,50 encontrada entre o custo cadastrado no produto e o custo calculado pela Ficha Técnica.</p>` : `
+      <div style="padding:12px 16px 0;font-size:12px;color:var(--cinza-med)">Compara o campo "Custo" cadastrado direto no Produto com o custo somado dos insumos na Ficha Técnica. Diferença pode vir de: preço de insumo mudou depois que você cadastrou o custo do produto manualmente, ficha técnica incompleta, ou o custo do produto nunca foi atualizado.</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Produto</th><th>Custo no Cadastro</th><th>Custo pela Ficha</th><th>Diferença</th><th></th></tr></thead>
+        <tbody>${p.produtosCustoDivergente.map(d=>`<tr>
+          <td class="fw-bold">${d.produto.nome}</td>
+          <td class="text-center">${R$(d.custoCadastrado)}</td>
+          <td class="text-center">${R$(d.custoFicha)}</td>
+          <td class="text-center fw-bold ${d.diferenca>0?'text-vermelho':'text-verde'}">${d.diferenca>0?'+':''}${R$(d.diferenca)}</td>
+          <td style="text-align:right"><button class="btn btn-outline btn-xs" onclick="goTo('fichas');setTimeout(()=>selFicha('${d.produto.id}'),100)">🔬 Ver Ficha</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+    </div>
+  </div>`;
+};
+
 SECTIONS.relatorios = () => {
   const pC={},pP={};
   todasVendasEfetivas().forEach(v=>{
@@ -3678,15 +4144,35 @@ SECTIONS.config = () => {
   <div class="panel" style="margin-top:16px">
     <div class="panel-header"><span class="panel-title">🔄 Sincronização</span></div>
     <div style="padding:20px">
-      <p style="font-size:13px;margin-bottom:14px">Backup local: <strong>${JSON.stringify(DB).length.toLocaleString()} caracteres</strong></p>
+      <p style="font-size:13px;margin-bottom:6px">Backup local: <strong>${JSON.stringify(DB).length.toLocaleString()} caracteres</strong></p>
+      <p style="font-size:13px;margin-bottom:14px">Última sincronização: <strong>${_ultimaSincronizacao?new Date(_ultimaSincronizacao).toLocaleString('pt-BR'):'ainda não sincronizou nesta sessão'}</strong> · Versão dos dados: <strong>v${SCHEMA_VERSION}</strong></p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="sincronizarAgora()">🔄 Sincronizar com Google Sheets</button>
         <button class="btn btn-outline" onclick="exportarBackup()">💾 Backup JSON</button>
         <button class="btn btn-outline" onclick="importarBackup()">📥 Importar Backup</button>
+        ${localStorage.getItem('morfe_erp_v1_safety_backup')?`<button class="btn btn-warning" onclick="restaurarBackupSeguranca()">🛟 Restaurar Backup de Segurança</button>`:''}
+        <button class="btn btn-outline" onclick="verLogSincronizacao()">📋 Ver Log de Sincronização</button>
       </div>
     </div>
   </div>`;
 };
+
+// Mostra o histórico recente de sincronizações — nunca inclui senha/token,
+// só tipo de evento, quando aconteceu, e um detalhe curto do resultado.
+function verLogSincronizacao(){
+  openModal('📋 Log de Sincronização (últimos eventos)',
+    _logSincronizacao.length===0
+      ? `<p style="color:var(--cinza-med);font-size:13px">Nenhum evento registrado ainda nesta sessão.</p>`
+      : `<div class="tbl-wrap"><table>
+          <thead><tr><th>Quando</th><th>Evento</th><th>Detalhe</th></tr></thead>
+          <tbody>${_logSincronizacao.map(l=>`<tr>
+            <td style="font-size:11px;white-space:nowrap">${new Date(l.quando).toLocaleString('pt-BR')}</td>
+            <td>${l.tipo}</td>
+            <td style="font-size:11.5px">${l.detalhe}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`,
+    ()=>closeModal(),'Fechar');
+}
 
 async function salvarConfig(){
   if(!DB.config) DB.config={};
@@ -3779,21 +4265,79 @@ async function salvarCategoriasNoDB(cats){
 // BACKUP / RESTORE
 // ═══════════════════════════════════════════════════════════════
 function exportarBackup(){
-  const backup={data:new Date().toISOString(),db:DB};
-  const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+  const backup=montarPacoteBackup();
+  baixarArquivoBackup(backup, 'morfe_backup_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');
+  toast('Backup exportado!');
+}
+
+// Monta o pacote de backup com metadados (data/hora, versão, quantidade de
+// registros por tabela) — útil pra conferir se o arquivo é o que parece ser
+function montarPacoteBackup(){
+  const contagem={};
+  Object.keys(DB).forEach(t=>{ contagem[t]=Array.isArray(DB[t])?DB[t].length:(DB[t]?1:0); });
+  return {
+    tipo:'morfe_erp_backup',
+    versao:SCHEMA_VERSION,
+    data:new Date().toISOString(),
+    contagem,
+    db:JSON.parse(JSON.stringify(DB))
+  };
+}
+function baixarArquivoBackup(pacote, nomeArquivo){
+  const blob=new Blob([JSON.stringify(pacote,null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='morfe_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.download=nomeArquivo;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast('Backup exportado!');
+}
+
+// Backup de SEGURANÇA automático — roda sozinho antes de qualquer operação
+// arriscada (como importar um backup por cima dos dados atuais). Guarda uma
+// cópia extra no localStorage (além de baixar o arquivo), pra ter uma segunda
+// forma de recuperar caso algo dê errado. Não mexe nos dados atuais, só lê.
+function criarBackupSeguranca(motivo){
+  const pacote=montarPacoteBackup();
+  pacote.motivo=motivo||'backup automático de segurança';
+  try{
+    localStorage.setItem('morfe_erp_v1_safety_backup', JSON.stringify(pacote));
+  }catch(e){ console.warn('Não deu pra guardar backup de segurança no localStorage:', e); }
+  baixarArquivoBackup(pacote, 'morfe_SEGURANCA_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');
+  return pacote;
+}
+
+// Valida a estrutura de um arquivo de backup ANTES de aplicar qualquer coisa.
+// Não modifica nada — só inspeciona e devolve um relatório.
+const TABELAS_ESPERADAS=['produtos','clientes','fornecedores','materias','vendas','compras','producao','pedidos','kits','fichas','custos_fixos','areceber','apagar','consignados'];
+function validarBackupJSON(conteudo){
+  const erros=[]; const avisos=[]; let bkp=null;
+
+  try{ bkp = typeof conteudo==='string' ? JSON.parse(conteudo) : conteudo; }
+  catch(e){ return {valido:false, erros:['O arquivo não é um JSON válido: '+e.message], avisos:[], bkp:null}; }
+
+  if(!bkp || typeof bkp!=='object'){ erros.push('Conteúdo do arquivo não é um objeto.'); }
+  if(!bkp?.db || typeof bkp.db!=='object'){ erros.push('O arquivo não tem a chave "db" esperada — não parece ser um backup deste sistema.'); }
+
+  if(bkp?.db){
+    TABELAS_ESPERADAS.forEach(t=>{
+      if(bkp.db[t]===undefined){ avisos.push(`Tabela "${t}" não está no arquivo — não será alterada na restauração.`); return; }
+      if(!Array.isArray(bkp.db[t])){ erros.push(`Tabela "${t}" deveria ser uma lista, mas não é.`); return; }
+      const semId=bkp.db[t].filter(r=>!r || r.id===undefined || r.id===null || r.id==='').length;
+      if(semId>0) erros.push(`Tabela "${t}" tem ${semId} registro(s) sem "id" válido.`);
+    });
+    if(bkp.db.config!==undefined && typeof bkp.db.config!=='object'){
+      erros.push('Configuração ("config") deveria ser um objeto, mas não é.');
+    }
+  }
+
+  return {valido:erros.length===0, erros, avisos, bkp};
 }
 
 // Envia TODAS as tabelas locais pro Google Sheets de uma vez (usado após importar backup)
 async function enviarTudoParaSheets(){
   if(!SHEETS_API_URL || SHEETS_API_URL==='COLE_URL_DO_APPS_SCRIPT_AQUI') return false;
   try{
-    const res=await fetch(SHEETS_API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({acao:'salvar_tudo',dados:DB,senha:SENHA_APP})});
+    const res=await fetch(SHEETS_API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({acao:'salvar_tudo',dados:DB,...credenciaisAuth()})});
     const data=await res.json();
     return data.ok;
   }catch(e){ console.error('Erro ao enviar tudo pro Sheets:',e); return false; }
@@ -3806,11 +4350,32 @@ function importarBackup(){
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
     r.onload=async ev=>{
-      try{
-        const bkp=JSON.parse(ev.target.result);
-        if(!bkp.db){toast('Arquivo inválido','error');return;}
-        const tabelasAfetadas=Object.keys(bkp.db).join(', ');
-        if(confirm(`Isso vai SUBSTITUIR os dados atuais de: ${tabelasAfetadas}.\n\nAs demais tabelas não são afetadas. Continuar?`)){
+      const {valido, erros, avisos, bkp}=validarBackupJSON(ev.target.result);
+
+      if(!valido){
+        openModal('❌ Arquivo inválido — nada foi alterado',
+          `<p style="margin-bottom:10px">Este arquivo não pode ser importado com segurança:</p>
+           <ul style="color:var(--vermelho);font-size:13px;padding-left:20px">${erros.map(x=>`<li>${x}</li>`).join('')}</ul>`,
+          ()=>closeModal(),'Entendi');
+        return;
+      }
+
+      const contagemNova=Object.keys(bkp.db).map(t=>`${t}: ${Array.isArray(bkp.db[t])?bkp.db[t].length:'—'} registro(s)`).join('<br>');
+      const contagemAtual=Object.keys(DB).map(t=>`${t}: ${Array.isArray(DB[t])?DB[t].length:'—'}`).join(', ');
+
+      openModal('⚠️ Confirmar Restauração de Backup',
+        `<div style="background:var(--amarelo-claro);color:var(--amarelo);padding:10px;border-radius:6px;font-size:12.5px;margin-bottom:12px">
+          Isso vai <strong>substituir</strong> os dados atuais pelas tabelas presentes neste arquivo. Um backup de segurança do que está AGORA será baixado automaticamente antes de aplicar qualquer coisa.
+        </div>
+        ${avisos.length>0?`<div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px;margin-bottom:12px"><strong>Avisos:</strong><br>${avisos.join('<br>')}</div>`:''}
+        <div style="font-size:12px;color:var(--cinza-med);margin-bottom:6px">Dados atuais (resumo): ${contagemAtual}</div>
+        <div style="font-size:13px;background:var(--cinza-ultra);padding:10px;border-radius:6px">Dados do arquivo a importar:<br>${contagemNova}</div>`,
+        async()=>{
+          closeModal();
+          // Backup de segurança automático ANTES de mexer em qualquer coisa
+          criarBackupSeguranca('antes de importar backup em '+new Date().toLocaleString('pt-BR'));
+          toast('Backup de segurança baixado. Aplicando restauração...','success');
+
           Object.assign(DB,bkp.db);
           salvarLocal();
           setSyncStatus('loading','📤 Enviando pro Sheets...');
@@ -3825,12 +4390,35 @@ function importarBackup(){
             toast('Importado localmente. Sem conexão com Sheets — sincronize depois.','error');
           }
           render('config');
-        }
-      }catch(e){toast('Erro ao ler arquivo','error');}
+        },'⚠️ Baixar Backup e Restaurar');
     };
     r.readAsText(f);
   };
   inp.click();
+}
+
+// Restaura o backup de SEGURANÇA guardado automaticamente (caso uma importação
+// tenha dado errado e precise desfazer). Não some sozinho — fica disponível
+// até você importar outro backup de segurança por cima.
+function restaurarBackupSeguranca(){
+  const salvo=localStorage.getItem('morfe_erp_v1_safety_backup');
+  if(!salvo){ toast('Nenhum backup de segurança encontrado neste aparelho.','error'); return; }
+  const {valido, erros, bkp}=validarBackupJSON(salvo);
+  if(!valido){ toast('Backup de segurança guardado está corrompido: '+erros.join('; '),'error'); return; }
+  openModal('🛟 Restaurar Backup de Segurança',
+    `<p style="font-size:13px">Encontrado backup de segurança de <strong>${new Date(bkp.data).toLocaleString('pt-BR')}</strong> (motivo: ${bkp.motivo||'—'}).</p>
+     <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">Isso vai substituir os dados atuais pelo que estava salvo nesse momento.</p>`,
+    async()=>{
+      closeModal();
+      Object.assign(DB,bkp.db);
+      salvarLocal();
+      setSyncStatus('loading','📤 Enviando pro Sheets...');
+      showLoading();
+      const ok=await enviarTudoParaSheets();
+      hideLoading();
+      toast(ok?'Backup de segurança restaurado e sincronizado!':'Restaurado localmente — sincronize quando tiver conexão.');
+      render('config');
+    },'🛟 Restaurar');
 }
 
 // ═══════════════════════════════════════════════════════════════
