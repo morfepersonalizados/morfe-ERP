@@ -826,6 +826,7 @@ const nomeProd = id => getProd(id)?.nome || id || '—';
 // Ordena uma lista por um campo de nome, respeitando acentos do português (não muda o array original)
 const ordNome = (arr, campo='nome') => [...(arr||[])].sort((a,b) => String(a?.[campo]||'').localeCompare(String(b?.[campo]||''), 'pt-BR', {sensitivity:'base'}));
 const nomeCli = id => getCli(id)?.nome || id || '—';
+const nomeVenda = v => (v.cliente && getCli(v.cliente)?.nome) || v.cliente_nome || v.cliente || '—';
 const nomeForn = id => getForn(id)?.nome || id || '—';
 // Verifica se um valor está de verdade definido — trata "undefined", "null"
 // E também "" (texto vazio) como "não definido". Isso importa porque o
@@ -879,7 +880,7 @@ function todasVendasEfetivas(){
       if(c.tot<=0 && (+it.qtd||0)<=0) return;
       const ehKit=it.prod && String(it.prod).startsWith('KIT:');
       dePedidos.push({
-        data:p.data, cliente:p.cliente, produto:ehKit||!it.prod?null:it.prod, qtd:+it.qtd||1, valorTotal:c.tot,
+        data:p.data, cliente:p.cliente, cliente_nome:p.cliente_nome, produto:ehKit||!it.prod?null:it.prod, qtd:+it.qtd||1, valorTotal:c.tot,
         custoTotal:custoItemPedido(it)*(+it.qtd||1), status:p.status, origem:'pedido', id:p.id
       });
     });
@@ -1253,7 +1254,12 @@ function metricasFinanceiras(){
   const aReceberPendente=DB.areceber.filter(x=>x.status!=='Pago').reduce((s,x)=>s+Math.max(0,(+x.valor||0)-(+x.recebido||0)),0);
   const saldoPedidosPendente=DB.pedidos.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0);
   // Vendido no consignado mas o parceiro ainda não repassou o dinheiro
-  const saldoConsignadoPendente=DB.consignados.reduce((s,c)=>(c.visitas||[]).reduce((ss,v)=>ss+Math.max(0,(+v.valor_vendido||0)-(+v.valor_recebido||0)),s),0);
+  const saldoConsignadoPendente=DB.consignados.reduce((s,c)=>{
+    const vs=c.visitas||[];
+    const vend=vs.reduce((ss,v)=>ss+(+v.valor_vendido||0),0);
+    const receb=vs.reduce((ss,v)=>ss+(+v.valor_recebido||0),0);
+    return s+Math.max(0,vend-receb);   // saldo da PARCERIA inteira
+  },0);
   const aPagarPendente=DB.apagar.filter(x=>x.status!=='Pago').reduce((s,x)=>s+Math.max(0,(+x.valor||0)-(+x.pago||0)),0);
   const valorParadoTotal=valorEstoqueInsumos+valorConsignados+aReceberPendente+saldoPedidosPendente+saldoConsignadoPendente;
 
@@ -1513,7 +1519,7 @@ SECTIONS.dashboard = () => {
           [...efetivas].sort((a,b)=>(a.data||'').localeCompare(b.data||'')).slice(-5).reverse().map(v=>`<tr>
             <td class="fw-bold text-azul">${v.id} ${v.origem==='pedido'?'<span class="badge badge-info" style="font-size:9px">pedido</span>':''}</td>
             <td>${v.data||'—'}</td>
-            <td>${nomeCli(v.cliente)}</td>
+            <td>${nomeVenda(v)}</td>
             <td>${v.produto?nomeProd(v.produto):'(vários itens)'}</td>
             <td class="fw-bold text-verde">${R$(v.valorTotal)}</td>
             <td>${statusBadge(v.status)}</td>
@@ -2234,6 +2240,26 @@ async function salvarPedidoOrc(editId){
   pd.cliente=document.getElementById('ped-cli_val')?.value||pd.cliente;
   pd.cliente_nome=document.getElementById('ped-clinome')?.value||'';
   pd.telefone=document.getElementById('ped-tel')?.value||'';
+
+  // Cliente digitado mas não vinculado a um cadastro -> cadastra sozinho.
+  // Evita duplicar: procura primeiro por telefone (mais confiável),
+  // depois por nome exatamente igual (sem espaços/maiúsculas).
+  let _clienteAutoCriado=false;
+  if(!pd.cliente && pd.cliente_nome.trim()){
+    const _nomeNorm=pd.cliente_nome.trim().toLowerCase();
+    let _existente=null;
+    if(pd.telefone.trim()) _existente=DB.clientes.find(c=>c.telefone===pd.telefone||c.whatsapp===pd.telefone);
+    if(!_existente) _existente=DB.clientes.find(c=>(c.nome||'').trim().toLowerCase()===_nomeNorm);
+    if(_existente){
+      pd.cliente=_existente.id;
+    } else {
+      const _novoCli={id:nextId(DB.clientes,'CLI'),nome:pd.cliente_nome.trim(),telefone:pd.telefone.trim(),
+        whatsapp:pd.telefone.trim(),cidade:'',cadastro:'Automático (via pedido '+pd.id+')',criado_em:new Date().toISOString()};
+      await salvarItem('clientes',_novoCli);
+      pd.cliente=_novoCli.id;
+      _clienteAutoCriado=true;
+    }
+  }
   pd.data=document.getElementById('ped-data')?.value||pd.data;
   pd.entrega=document.getElementById('ped-entrega')?.value||'';
   pd.status=document.getElementById('ped-status')?.value||'Em aberto';
@@ -2275,6 +2301,7 @@ async function salvarPedidoOrc(editId){
     await reverterBaixaEstoque(pedidoAnterior.consumo_insumos||{});
   }
   // Calcula e aplica o novo consumo — a não ser que o pedido esteja Cancelado
+  const consumoAnterior=(pedidoAnterior?.estoque_baixado?(pedidoAnterior.consumo_insumos||{}):{});
   let novoConsumo={};
   let avisoFalta=[];
   if(pd.status!=='Cancelado'){
@@ -2282,6 +2309,10 @@ async function salvarPedidoOrc(editId){
     avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
     await aplicarBaixaEstoque(novoConsumo);
   }
+  // O que REALMENTE mudou no estoque nesta gravação (reverteu antes, aplicou depois)
+  const _chaves=new Set([...Object.keys(consumoAnterior),...Object.keys(novoConsumo)]);
+  let _dif=0;
+  _chaves.forEach(k=>{ if((+novoConsumo[k]||0)!==(+consumoAnterior[k]||0)) _dif++; });
   pd.consumo_insumos=novoConsumo;
   pd.estoque_baixado=Object.keys(novoConsumo).length>0;
   // ──────────────────────────────────────────────────────────────
@@ -2290,7 +2321,12 @@ async function salvarPedidoOrc(editId){
   if(avisoFalta.length>0){
     toast(`⚠️ Estoque insuficiente: ${avisoFalta.join(', ')}`,'error');
   } else {
-    toast((editId?'Pedido atualizado! ':'Pedido salvo! ')+(pd.estoque_baixado?'📦 Estoque baixado.':''));
+    const _sufixoCliente=_clienteAutoCriado?' · 👤 Cliente cadastrado.':'';
+    toast((!editId
+      ? 'Pedido salvo! '+(pd.estoque_baixado?'📦 Insumos baixados do estoque.':'')
+      : _dif===0
+        ? 'Pedido atualizado! Estoque não mudou.'
+        : `Pedido atualizado! 📦 Estoque ajustado (${_dif} ${_dif===1?'insumo':'insumos'}).`)+_sufixoCliente);
   }
   document.getElementById('modal').style.maxWidth='560px';
   closeModal();render('pedidos');
@@ -3598,6 +3634,7 @@ SECTIONS.consignados = () => {
           const pecas=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0),0);
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
           const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
+          const repassado=(c.visitas||[]).reduce((s,v)=>s+(+v.valor_recebido||0),0);
           const ultVis=(c.visitas||[]).slice(-1)[0];
           return`<div class="panel" style="border-top:4px solid var(--roxo);margin:0">
             <div class="panel-header" style="padding:12px 14px">
@@ -3605,10 +3642,11 @@ SECTIONS.consignados = () => {
               <span class="badge badge-${c.ativo?'ok':'gray'}">${c.ativo?'Ativo':'Inativo'}</span>
             </div>
             <div style="padding:10px 14px">
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px">
                 <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:20px;font-weight:900;color:var(--azul)">${pecas}</div></div>
-                <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--roxo)">Valor lá</div><div style="font-size:14px;font-weight:800;color:var(--roxo)">${R$(valor)}</div></div>
-                <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--verde)">Vendido</div><div style="font-size:14px;font-weight:800;color:var(--verde)">${R$(vendido)}</div></div>
+                <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--roxo)">Valor lá</div><div style="font-size:13px;font-weight:800;color:var(--roxo)">${R$(valor)}</div></div>
+                <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--verde)">Vendido</div><div style="font-size:13px;font-weight:800;color:var(--verde)">${R$(vendido)}</div></div>
+                <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--amarelo,#B8860B)">Repassado</div><div style="font-size:13px;font-weight:800;color:var(--amarelo,#B8860B)">${R$(repassado)}</div></div>
               </div>
               <div style="font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;margin-bottom:4px">Produtos na loja</div>
               ${(c.itens||[]).length===0?`<div style="font-size:12px;color:var(--cinza-med);padding:8px 0">Nenhum produto entregue ainda.</div>`:
@@ -3634,7 +3672,24 @@ SECTIONS.consignados = () => {
                     <span class="fw-bold text-verde" style="margin-left:auto">${R$((+it.qtd_atual||0)*(+it.preco||0))}</span>
                   </div>
                 </div>`;}).join('')}
-              ${ultVis?`<div style="margin-top:8px;font-size:10px;color:var(--cinza-med)">🕐 Última visita: ${ultVis.data} · Vendido: ${R$(ultVis.valor_vendido||0)}</div>`:''}
+              ${(()=>{
+                const vs=c.visitas||[];
+                const tv=vs.reduce((a,v)=>a+(+v.valor_vendido||0),0);
+                const tr=vs.reduce((a,v)=>a+(+v.valor_recebido||0),0);
+                const sd=tv-tr;
+                if(!vs.length) return '<div style="margin-top:8px;font-size:10px;color:var(--cinza-med)">Nenhuma visita registrada ainda</div>';
+                const cor=sd>0.004?'var(--amarelo)':sd<-0.004?'var(--roxo)':'var(--verde)';
+                const txt=sd>0.004?`A receber: ${R$(sd)}`:sd<-0.004?`Crédito com você: ${R$(-sd)}`:'Contas em dia';
+                return `<div style="margin-top:10px;padding:9px 11px;background:var(--cinza-ultra);border-radius:6px;border-left:3px solid ${cor}">
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cinza-med)">
+                    <span>Vendido total</span><span class="fw-bold" style="color:var(--cinza-escuro)">${R$(tv)}</span></div>
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cinza-med);margin-top:2px">
+                    <span>Repassado total</span><span class="fw-bold" style="color:var(--cinza-escuro)">${R$(tr)}</span></div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px;padding-top:5px;border-top:1px solid var(--cinza-claro)">
+                    <span class="fw-bold">${txt}</span>
+                    <span style="font-size:10px;color:var(--cinza-med)">${vs.length} visita${vs.length>1?'s':''}</span></div>
+                </div>`;})()}
+              ${ultVis?`<div style="margin-top:6px;font-size:10px;color:var(--cinza-med)">🕐 Última visita: ${ultVis.data}${(+ultVis.valor_vendido||0)>0?` · Vendido: ${R$(ultVis.valor_vendido)}`:''}${(+ultVis.valor_recebido||0)>0?` · Recebido: ${R$(ultVis.valor_recebido)}`:''}</div>`:''}
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-primary btn-sm" onclick="regVisita('${c.id}')" style="flex:1">📝 Visita</button>
@@ -3831,6 +3886,12 @@ function regVisita(consigId){
               </div>
             </div>
           </div>`).join('')}
+        <div class="form-group full" style="background:#FFF8E7;border-left:3px solid var(--amarelo);border-radius:6px;padding:9px 11px;margin-bottom:2px">
+          <div style="font-size:11.5px;color:var(--cinza-escuro);line-height:1.5">
+            <strong>Só recebendo dinheiro de venda anterior?</strong> Preencha apenas "Valor Recebido" e
+            <strong>não mexa nas quantidades</strong> — assim não conta venda nova.
+          </div>
+        </div>
         <div class="form-group full"><label class="form-label">Observações</label><textarea class="form-textarea" id="vis-obs"></textarea></div>
       </div>
     </div>`,
@@ -3855,9 +3916,13 @@ function regVisita(consigId){
         it.qtd_atual=qtdDepois;
       });
       if(!c.visitas)c.visitas=[];
-      c.visitas.push({data,valor_vendido:vendido||valR,valor_recebido:valR,obs,itens_vendidos:itensVendidos});
+      c.visitas.push({data,valor_vendido:vendido,valor_recebido:valR,obs,itens_vendidos:itensVendidos,
+        tipo:(vendido>0&&valR>0)?'venda+repasse':(vendido>0?'venda':(valR>0?'repasse':'visita'))});
       await salvarItem('consignados',c);
-      toast(`Visita registrada! Vendido: ${R$(vendido)}`);closeModal();render('consignados');
+      toast(vendido>0&&valR>0?`Visita registrada! Vendido ${R$(vendido)} · Recebido ${R$(valR)}`
+        :vendido>0?`Venda registrada: ${R$(vendido)}`
+        :valR>0?`Repasse registrado: ${R$(valR)}`
+        :'Visita registrada (sem venda e sem repasse)');closeModal();render('consignados');
     },'✅ Confirmar Visita');
   setTimeout(()=>{
     (c.itens||[]).forEach((it,idx)=>{
