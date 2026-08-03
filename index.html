@@ -3690,6 +3690,7 @@ SECTIONS.consignados = () => {
                     <span style="font-size:10px;color:var(--cinza-med)">${vs.length} visita${vs.length>1?'s':''}</span></div>
                 </div>`;})()}
               ${ultVis?`<div style="margin-top:6px;font-size:10px;color:var(--cinza-med)">🕐 Última visita: ${ultVis.data}${(+ultVis.valor_vendido||0)>0?` · Vendido: ${R$(ultVis.valor_vendido)}`:''}${(+ultVis.valor_recebido||0)>0?` · Recebido: ${R$(ultVis.valor_recebido)}`:''}</div>`:''}
+              ${(c.visitas||[]).length>0?`<button onclick="verHistoricoVisitas('${c.id}')" style="margin-top:6px;background:none;border:none;color:var(--azul-claro);font-size:11px;text-decoration:underline;cursor:pointer;padding:2px 0">📋 Ver histórico de visitas (${(c.visitas||[]).length})</button>`:''}
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-primary btn-sm" onclick="regVisita('${c.id}')" style="flex:1">📝 Visita</button>
@@ -3848,6 +3849,44 @@ function autoPrecoCSG(prodId){
         ${varInfo.variantes.map(v=>`<option value="${v.nome}">${v.nome}</option>`).join('')}
       </select>`:'';
   }
+}
+// Mostra cada visita registrada num consignado, com opção de excluir uma
+// específica — útil pra corrigir quando uma visita foi registrada errada
+// (ex: quantidade mexida sem querer, ou duplicada)
+function verHistoricoVisitas(consigId){
+  const c=getItem(DB.consignados,consigId);if(!c)return;
+  const vs=[...(c.visitas||[])].map((v,i)=>({...v,_idxOriginal:i})).reverse(); // mais recente primeiro
+  openModal(`📋 Histórico de Visitas — ${c.nome}`,
+    `<div class="tbl-wrap"><table>
+      <thead><tr><th>Data</th><th>Tipo</th><th class="text-center">Vendido</th><th class="text-center">Recebido</th><th></th></tr></thead>
+      <tbody>${vs.map(v=>{
+        const tipoLabel={'venda':'💰 Venda','repasse':'🏦 Repasse','venda+repasse':'💰🏦 Venda+Repasse','visita':'📝 Visita (sem venda)'}[v.tipo]||(v.itens_vendidos?.length?'💰 Venda':'📝 Visita');
+        return `<tr>
+          <td>${formatarDataBR(v.data)}</td>
+          <td style="font-size:11px">${tipoLabel}${v.itens_vendidos?.length?'':' <span style="color:var(--cinza-med)">(estimado)</span>'}</td>
+          <td class="text-center">${R$(v.valor_vendido||0)}</td>
+          <td class="text-center">${R$(v.valor_recebido||0)}</td>
+          <td><button onclick="excluirVisita('${consigId}',${v._idxOriginal})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:11px">🗑️</button></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <p style="font-size:11px;color:var(--cinza-med);margin-top:10px">⚠️ Excluir uma visita <strong>não devolve quantidade</strong> pro estoque em loja automaticamente — se a visita excluída tinha marcado peças como vendidas, ajuste a quantidade manualmente com os botões +/- se precisar.</p>`,
+    null, ''); // sem botão de salvar — essa tela é só consulta/exclusão
+  document.getElementById('modal-save-btn').style.display='none';
+}
+async function excluirVisita(consigId,idx){
+  const c=getItem(DB.consignados,consigId);if(!c)return;
+  const v=c.visitas?.[idx];if(!v)return;
+  openModal('🗑️ Excluir Visita',
+    `<p>Excluir a visita de <strong>${formatarDataBR(v.data)}</strong>?</p>
+     <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">Vendido: ${R$(v.valor_vendido||0)} · Recebido: ${R$(v.valor_recebido||0)}</p>
+     <p style="font-size:11.5px;color:var(--vermelho);margin-top:8px">⚠️ Isso NÃO devolve peças pro estoque em loja — se precisar corrigir a quantidade, use os botões +/- do produto depois.</p>`,
+    async()=>{
+      c.visitas.splice(idx,1);
+      await salvarItem('consignados',c);
+      toast('Visita excluída!');closeModal();
+      setTimeout(()=>verHistoricoVisitas(consigId),200);
+    },'🗑️ Excluir');
 }
 async function ajustCSG(consigId,idx,delta){
   const c=getItem(DB.consignados,consigId);if(!c)return;
