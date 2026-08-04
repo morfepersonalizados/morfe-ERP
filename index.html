@@ -24,17 +24,34 @@
   --laranja:#C05621; --laranja-claro:#FBE9DC;
   --cinza-escuro:#282420; --cinza-med:#7A7267;
   --cinza-claro:#E8E1D3; --cinza-ultra:#FBF8F2;
+  --bg-input:#FFFFFF; --bg-pagina:#F3EEE3;
+  --txt-azul:var(--azul); --txt-verde:var(--verde); --txt-vermelho:var(--vermelho);
+  --txt-amarelo:var(--amarelo); --txt-roxo:var(--roxo);
   --radius:14px; --radius-sm:9px;
   --sombra-sm:0 1px 2px rgba(24,46,98,0.06), 0 1px 3px rgba(24,46,98,0.08);
   --sombra-md:0 2px 6px rgba(24,46,98,0.06), 0 8px 20px rgba(24,46,98,0.09);
   --sombra-lg:0 20px 50px rgba(15,31,68,0.28);
 }
+body.tema-escuro {
+  --cinza-escuro:#E7E3DA; --cinza-med:#A69C8C;
+  --cinza-claro:#3A3630; --cinza-ultra:#252118;
+  --bg-input:#2E2A22; --bg-pagina:#1A1712;
+  --dourado-claro:#3D3423; --azul-claro:#5B87CC;
+  --verde-claro:#1E3B2A; --vermelho-claro:#3D2024; --amarelo-claro:#3D3117; --roxo-claro:#2C2440; --laranja-claro:#3D2A18;
+  /* Cores base (--azul, --verde etc.) continuam escuras de propósito — elas
+     também são usadas como FUNDO SÓLIDO com texto branco em cima (botões,
+     cabeçalhos de tabela, toasts) e escurecer o texto ali seria pior, não
+     melhor. Essas variáveis --txt-* são só pra texto colorido em cima de
+     fundo claro/tintado, que senão ficaria ilegível no escuro. */
+  --txt-azul:#7CA6E0; --txt-verde:#4ADE80; --txt-vermelho:#F87171;
+  --txt-amarelo:#FBBF24; --txt-roxo:#C4AAF5;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:#F3EEE3;color:var(--cinza-escuro);min-height:100vh;-webkit-font-smoothing:antialiased}
+body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:var(--bg-pagina);color:var(--cinza-escuro);min-height:100vh;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
 #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:radial-gradient(circle at 20% 20%,var(--azul-claro) 0%,var(--azul) 42%,var(--azul-escuro) 100%);padding:20px}
 .login-box{background:var(--cinza-ultra);border-radius:20px;padding:40px 34px;width:100%;max-width:380px;box-shadow:var(--sombra-lg)}
 .login-logo{text-align:center;margin-bottom:22px}
-.login-logo h1{font-size:25px;font-weight:800;color:var(--azul);margin-top:14px;letter-spacing:-.3px}
+.login-logo h1{font-size:25px;font-weight:800;color:var(--txt-azul);margin-top:14px;letter-spacing:-.3px}
 .login-logo p{font-size:12px;color:var(--cinza-med);margin-top:5px;font-weight:500}
 .login-divisor{width:56px;height:2px;background:var(--dourado);margin:12px auto 0;border-radius:2px}
 .login-input{width:100%;padding:13px 14px;border:1.5px solid var(--cinza-claro);border-radius:10px;font-size:16px;margin-bottom:12px;font-family:inherit;background:white;transition:border-color .15s,box-shadow .15s}
@@ -43,7 +60,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .login-btn:hover{background:var(--azul-escuro)}
 .login-btn:active{transform:scale(.98)}
 .login-btn:disabled{opacity:.6}
-.login-error{background:var(--vermelho-claro);color:var(--vermelho);padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none;font-weight:600}
+.login-error{background:var(--vermelho-claro);color:var(--txt-vermelho);padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none;font-weight:600}
 #sidebar{position:fixed;left:0;top:0;bottom:0;width:230px;background:linear-gradient(180deg,var(--azul) 0%,var(--azul-escuro) 100%);color:white;display:flex;flex-direction:column;z-index:100;overflow-y:auto;transition:transform .25s;padding-top:env(safe-area-inset-top,0px)}
 #sidebar-logo{padding:18px 16px 14px;display:flex;align-items:center;gap:10px;position:relative}
 #sidebar-logo img{width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid rgba(201,172,125,0.5);flex-shrink:0}
@@ -58,27 +75,27 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .nav-icon{font-size:15px;width:20px;text-align:center}
 #main{margin-left:230px;min-height:100vh}
 #topbar{background:var(--cinza-ultra);padding:0 16px;padding-top:env(safe-area-inset-top,0px);height:calc(56px + env(safe-area-inset-top,0px));display:flex;align-items:center;justify-content:space-between;box-shadow:var(--sombra-sm);position:sticky;top:0;z-index:50}
-#page-title{font-size:16px;font-weight:700;color:var(--azul);letter-spacing:-.1px}
+#page-title{font-size:16px;font-weight:700;color:var(--txt-azul);letter-spacing:-.1px}
 #topbar-right{display:flex;gap:8px;align-items:center}
-#menu-toggle{display:flex;align-items:center;justify-content:center;background:none;border:none;font-size:22px;cursor:pointer;color:var(--azul);padding:8px;min-width:44px;min-height:44px;border-radius:8px}
+#menu-toggle{display:flex;align-items:center;justify-content:center;background:none;border:none;font-size:22px;cursor:pointer;color:var(--txt-azul);padding:8px;min-width:44px;min-height:44px;border-radius:8px}
 #menu-toggle:hover{background:var(--cinza-claro)}
 #sync-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;white-space:nowrap}
-#sync-badge.ok{background:var(--verde-claro);color:var(--verde)}
-#sync-badge.loading{background:var(--amarelo-claro);color:var(--amarelo)}
-#sync-badge.error{background:var(--vermelho-claro);color:var(--vermelho)}
+#sync-badge.ok{background:var(--verde-claro);color:var(--txt-verde)}
+#sync-badge.loading{background:var(--amarelo-claro);color:var(--txt-amarelo)}
+#sync-badge.error{background:var(--vermelho-claro);color:var(--txt-vermelho)}
 #content{padding:18px 20px calc(40px + env(safe-area-inset-bottom,0px)) 20px}
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
 .kpi-card{background:var(--cinza-ultra);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--sombra-sm);border-left:4px solid var(--azul-claro);transition:box-shadow .15s,transform .15s}
 .kpi-card:hover{box-shadow:var(--sombra-md);transform:translateY(-1px)}
-.kpi-card.verde{border-left-color:var(--verde-med)}.kpi-card.roxo{border-left-color:var(--roxo)}
-.kpi-card.laranja{border-left-color:var(--laranja)}.kpi-card.vermelho{border-left-color:var(--vermelho)}
-.kpi-card.amarelo{border-left-color:var(--amarelo)}
+.kpi-card.verde{border-left-color:var(--verde-med)}.kpi-card.roxo{border-left-color:var(--txt-roxo)}
+.kpi-card.laranja{border-left-color:var(--laranja)}.kpi-card.vermelho{border-left-color:var(--txt-vermelho)}
+.kpi-card.amarelo{border-left-color:var(--txt-amarelo)}
 .kpi-label{font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;letter-spacing:.6px}
 .kpi-value{font-size:21px;font-weight:800;color:var(--cinza-escuro);margin-top:4px;letter-spacing:-.3px}
 .kpi-sub{font-size:11px;color:var(--cinza-med);margin-top:2px}
 .panel{background:var(--cinza-ultra);border-radius:var(--radius);box-shadow:var(--sombra-sm);margin-bottom:18px;overflow:hidden}
 .panel-header{padding:14px 18px;border-bottom:1px solid var(--cinza-claro);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
-.panel-title{font-size:14px;font-weight:700;color:var(--azul);letter-spacing:-.1px}
+.panel-title{font-size:14px;font-weight:700;color:var(--txt-azul);letter-spacing:-.1px}
 .btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:none;transition:filter .15s,transform .1s;min-height:36px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;font-family:inherit}
 .btn:hover{filter:brightness(1.06)}
 .btn:active{transform:scale(.97)}
@@ -86,7 +103,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .btn-success{background:var(--verde-med);color:white}
 .btn-danger{background:var(--vermelho);color:white}
 .btn-warning{background:var(--dourado-escuro);color:white}
-.btn-outline{background:var(--cinza-ultra);color:var(--azul);border:1.5px solid var(--azul-claro)}
+.btn-outline{background:var(--cinza-ultra);color:var(--txt-azul);border:1.5px solid var(--azul-claro)}
 .btn-sm{padding:5px 12px;font-size:11px;min-height:30px}
 .btn-xs{padding:4px 8px;font-size:10px;border-radius:5px;min-height:28px}
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -99,11 +116,11 @@ tbody tr:nth-child(even){background:var(--cinza-ultra)}
 tbody td{padding:9px 12px;vertical-align:middle}
 .td-actions{display:flex;gap:4px;flex-wrap:nowrap}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.2px}
-.badge-ok{background:var(--verde-claro);color:var(--verde)}
-.badge-warn{background:var(--amarelo-claro);color:var(--amarelo)}
-.badge-danger{background:var(--vermelho-claro);color:var(--vermelho)}
-.badge-info{background:var(--dourado-claro);color:var(--azul)}
-.badge-roxo{background:var(--roxo-claro);color:var(--roxo)}
+.badge-ok{background:var(--verde-claro);color:var(--txt-verde)}
+.badge-warn{background:var(--amarelo-claro);color:var(--txt-amarelo)}
+.badge-danger{background:var(--vermelho-claro);color:var(--txt-vermelho)}
+.badge-info{background:var(--dourado-claro);color:var(--txt-azul)}
+.badge-roxo{background:var(--roxo-claro);color:var(--txt-roxo)}
 .badge-gray{background:var(--cinza-claro);color:var(--cinza-med)}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,31,68,0.55);z-index:500;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)}
 .modal-overlay.open{display:flex}
@@ -118,11 +135,11 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .form-group{display:flex;flex-direction:column;gap:5px}
 .form-group.full{grid-column:1/-1}
 .form-label{font-size:11px;font-weight:600;color:var(--cinza-escuro);text-transform:uppercase;letter-spacing:.4px}
-.form-input,.form-select,.form-textarea{padding:10px 12px;border:1.5px solid var(--cinza-claro);border-radius:var(--radius-sm);font-size:16px;color:var(--cinza-escuro);background:white;font-family:inherit;width:100%;-webkit-appearance:none;transition:border-color .15s,box-shadow .15s}
+.form-input,.form-select,.form-textarea{padding:10px 12px;border:1.5px solid var(--cinza-claro);border-radius:var(--radius-sm);font-size:16px;color:var(--cinza-escuro);background:var(--bg-input);font-family:inherit;width:100%;-webkit-appearance:none;transition:border-color .15s,box-shadow .15s}
 .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--dourado);box-shadow:0 0 0 3px rgba(201,172,125,0.2)}
 .form-textarea{resize:vertical;min-height:70px}
 .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237A7267' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
-.search-input{padding:9px 12px;border:1.5px solid var(--cinza-claro);border-radius:var(--radius-sm);font-size:16px;flex:1;min-width:0;font-family:inherit}
+.search-input{padding:9px 12px;border:1.5px solid var(--cinza-claro);border-radius:var(--radius-sm);font-size:16px;flex:1;min-width:0;font-family:inherit;background:var(--bg-input);color:var(--cinza-escuro)}
 .search-input:focus{outline:none;border-color:var(--dourado)}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--azul-escuro);color:white;padding:12px 20px;border-radius:var(--radius);font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:all .3s;white-space:nowrap;max-width:90vw;text-align:center;box-shadow:var(--sombra-lg)}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
@@ -132,7 +149,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 #loading-bar{position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--dourado),var(--azul-claro));z-index:9999;display:none;animation:loadbar 1.5s infinite}
 @keyframes loadbar{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
 #loading-bar.show{display:block}
-.text-verde{color:var(--verde-med)}.text-vermelho{color:var(--vermelho)}.text-azul{color:var(--azul-claro)}.text-roxo{color:var(--roxo)}.text-muted{color:var(--cinza-med)}.fw-bold{font-weight:700}.text-center{text-align:center}
+.text-verde{color:var(--verde-med)}.text-vermelho{color:var(--txt-vermelho)}.text-azul{color:var(--azul-claro)}.text-roxo{color:var(--txt-roxo)}.text-muted{color:var(--cinza-med)}.fw-bold{font-weight:700}.text-center{text-align:center}
 
 /* CALENDARIO */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
@@ -148,8 +165,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .cal-com-venda:hover{background:#C4EBD1}
 .cal-hoje.cal-com-venda{background:#EDE4C8;border-color:var(--dourado)}
 .cal-dia-info{margin-top:auto;text-align:center}
-.cal-dia-qtd{font-size:15px;font-weight:900;color:var(--verde)}
-.cal-dia-valor{font-size:9px;color:var(--verde);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-dia-qtd{font-size:15px;font-weight:900;color:var(--txt-verde)}
+.cal-dia-valor{font-size:9px;color:var(--txt-verde);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:768px){
   .cal-dia{min-height:46px;padding:3px}
   .cal-dia-valor{display:none}
@@ -161,7 +178,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .dre-row.total{background:var(--azul);color:white;font-weight:700;font-size:14px}
 .dre-row.lucro{background:var(--verde);color:white;font-weight:700;font-size:15px}
 .dre-row.subtotal{background:var(--cinza-ultra);font-weight:600}
-.dre-row.deducao{color:var(--vermelho)}
+.dre-row.deducao{color:var(--txt-vermelho)}
 .overlay-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:90}
 .overlay-bg.open{display:block}
 
@@ -243,6 +260,8 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
   body * { visibility: hidden; }
   #orc-print-area, #orc-print-area * { visibility: visible; }
   #orc-print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  #rel-print-area, #rel-print-area * { visibility: visible; }
+  #rel-print-area { position: absolute; left: 0; top: 0; width: 100%; }
   #orc-preview-actions, #sidebar, #topbar, .modal-overlay { display: none !important; }
 }
 </style>
@@ -254,6 +273,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 <script src="https://accounts.google.com/gsi/client" async defer onload="inicializarLoginGoogle()"></script>
 </head>
 <body class="sidebar-hidden">
+<script>if(localStorage.getItem('morfe_tema_escuro')==='1')document.body.classList.add('tema-escuro');</script>
 
 <div id="loading-bar"></div>
 <div class="overlay-bg" id="overlay" onclick="closeSidebar()"></div>
@@ -347,6 +367,8 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
         <span id="page-title">Dashboard</span>
       </div>
       <div id="topbar-right">
+        <button class="btn btn-outline btn-sm" onclick="abrirBuscaGlobal()" title="Busca Global">🔍</button>
+        <button class="btn btn-outline btn-sm" id="btn-tema" onclick="alternarTemaEscuro()" title="Alternar modo escuro">🌙</button>
         <span id="sync-badge" class="ok" onclick="verPendencias()" style="cursor:pointer" title="Clica pra ver detalhes">✅ Salvo</span>
         <button class="btn btn-outline btn-sm" onclick="sincronizarAgora()" title="Sincronizar com Google Sheets">🔄</button>
       </div>
@@ -539,6 +561,7 @@ function finalizarLogin(){
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   inicializarSidebar();
+  inicializarTema();
   restaurarEstadoGruposNav();
   garantirGrupoAberto('dashboard');
   render('dashboard');
@@ -594,7 +617,7 @@ function verPendencias(){
         <td>${NOMES_ACAO[op.acao]||op.acao}</td>
         <td>${op.tabela||'—'}</td>
         <td style="font-size:11px">${op.tentadoEm?new Date(op.tentadoEm).toLocaleString('pt-BR'):'ainda não tentou de novo'}</td>
-        <td style="font-size:11px;color:var(--vermelho)">${op.ultimoErro||'—'}</td>
+        <td style="font-size:11px;color:var(--txt-vermelho)">${op.ultimoErro||'—'}</td>
       </tr>`).join('')}</tbody>
     </table></div>`,
     async()=>{ closeModal(); await sincronizarAgora(); }, '🔄 Tentar Sincronizar Agora');
@@ -987,9 +1010,9 @@ function sselHTML(id, options, selectedValue, placeholder, onChangeJS){
   return `<div style="position:relative">
     <input type="text" id="${id}_txt" placeholder="🔍 ${placeholder}" value="${labelEsc}" autocomplete="off"
       oninput="sselInput('${id}')" onfocus="this.select();sselShowAll('${id}')"
-      style="width:100%;padding:8px 10px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:14px;background:white">
+      style="width:100%;padding:8px 10px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:14px;background:var(--bg-input);color:var(--cinza-escuro)">
     <input type="hidden" id="${id}_val" value="${selectedValue||''}">
-    <div id="${id}_drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--azul-claro);border-top:none;border-radius:0 0 8px 8px;max-height:230px;overflow-y:auto;z-index:300;box-shadow:0 10px 24px rgba(0,0,0,0.18)"></div>
+    <div id="${id}_drop" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-input);border:1.5px solid var(--azul-claro);border-top:none;border-radius:0 0 8px 8px;max-height:230px;overflow-y:auto;z-index:300;box-shadow:0 10px 24px rgba(0,0,0,0.18)"></div>
   </div>`;
 }
 // Renderiza a lista de opções filtrada (ou completa) dentro do dropdown
@@ -999,7 +1022,7 @@ function sselRenderLista(id, filtered){
   if(filtered.length===0){
     drop.innerHTML=`<div style="padding:10px 12px;color:var(--cinza-med);font-size:13px">Nada encontrado</div>`;
   } else {
-    drop.innerHTML=filtered.slice(0,60).map(o=>`<div onclick="sselPick('${id}','${String(o.value).replace(/'/g,"\\'")}')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--cinza-claro)" onmouseover="this.style.background='#F5EDDD'" onmouseout="this.style.background='white'">${o.label}</div>`).join('');
+    drop.innerHTML=filtered.slice(0,60).map(o=>`<div onclick="sselPick('${id}','${String(o.value).replace(/'/g,"\\'")}')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--cinza-claro)" onmouseover="this.style.background='var(--dourado-claro)'" onmouseout="this.style.background='var(--bg-input)'">${o.label}</div>`).join('');
   }
   drop.style.display='block';
 }
@@ -1128,6 +1151,22 @@ function inicializarSidebar(){
   document.body.classList.toggle('sidebar-hidden', escondida);
 }
 
+// Modo escuro — a classe já é aplicada por um script inline logo após
+// <body> (evita "flash" de tela clara antes do login aparecer); aqui só
+// sincroniza o ícone do botão com o estado atual
+function alternarTemaEscuro(){
+  const ativo = document.body.classList.toggle('tema-escuro');
+  localStorage.setItem('morfe_tema_escuro', ativo?'1':'0');
+  const btn=document.getElementById('btn-tema');
+  if(btn) btn.textContent = ativo?'☀️':'🌙';
+}
+function inicializarTema(){
+  const ativo = localStorage.getItem('morfe_tema_escuro')==='1';
+  document.body.classList.toggle('tema-escuro', ativo);
+  const btn=document.getElementById('btn-tema');
+  if(btn) btn.textContent = ativo?'☀️':'🌙';
+}
+
 // Abre/fecha um grupo do menu (Cadastros, Operações etc) — lembra a escolha
 function toggleNavGroup(labelEl){
   const grupo=labelEl.closest('.nav-group');
@@ -1167,18 +1206,62 @@ function filtrar(inputId, tblId) {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════
+// BUSCA GLOBAL — acha cliente/produto/pedido/consignado/fornecedor/insumo
+// de qualquer tela, sem precisar saber em qual cadastro ele está
+// ═══════════════════════════════════════════════════════════════
+function abrirBuscaGlobal(){
+  openModal('🔍 Busca Global',
+    `<input class="form-input" id="busca-global-input" placeholder="Digite pelo menos 2 letras (cliente, produto, pedido, insumo...)" oninput="executarBuscaGlobal(this.value)" autocomplete="off">
+     <div id="busca-global-resultados" style="margin-top:12px"></div>`,
+    ()=>closeModal(),'Fechar');
+  document.getElementById('modal-save-btn').style.display='none';
+  setTimeout(()=>document.getElementById('busca-global-input')?.focus(),150);
+}
+function executarBuscaGlobal(q){
+  const resEl=document.getElementById('busca-global-resultados');
+  if(!resEl) return;
+  q=(q||'').trim().toLowerCase();
+  if(q.length<2){
+    resEl.innerHTML='<p style="text-align:center;color:var(--cinza-med);padding:16px;font-size:12px">Digite pelo menos 2 letras pra buscar.</p>';
+    return;
+  }
+  const resultados=[];
+  DB.clientes.forEach(c=>{ if((c.nome||'').toLowerCase().includes(q)) resultados.push({tipo:'👤 Cliente', nome:c.nome, acao:`editarCli('${c.id}')`}); });
+  DB.produtos.forEach(p=>{ if((p.nome||'').toLowerCase().includes(q)) resultados.push({tipo:'📦 Produto', nome:p.nome, acao:`editarProduto('${p.id}')`}); });
+  DB.pedidos.forEach(p=>{ if(String(p.id||'').toLowerCase().includes(q) || nomeVenda(p).toLowerCase().includes(q)) resultados.push({tipo:'📋 Pedido', nome:`${p.id} — ${nomeVenda(p)}`, acao:`verPedidoOrc('${p.id}')`}); });
+  DB.consignados.forEach(c=>{ if((c.nome||'').toLowerCase().includes(q)) resultados.push({tipo:'🤝 Consignado', nome:c.nome, acao:`goTo('consignados')`}); });
+  DB.fornecedores.forEach(f=>{ if((f.nome||'').toLowerCase().includes(q)) resultados.push({tipo:'🏭 Fornecedor', nome:f.nome, acao:`editarForn('${f.id}')`}); });
+  DB.materias.forEach(m=>{ if((m.nome||'').toLowerCase().includes(q)) resultados.push({tipo:'🧱 Insumo', nome:m.nome, acao:`editarMP('${m.id}')`}); });
+  const total=resultados.length;
+  const limitados=resultados.slice(0,30);
+  resEl.innerHTML = limitados.length===0
+    ? '<p style="text-align:center;color:var(--cinza-med);padding:16px;font-size:12px">Nada encontrado.</p>'
+    : `<div class="tbl-wrap"><table><tbody>${limitados.map(r=>`
+        <tr style="cursor:pointer" onclick="closeModal();${r.acao}">
+          <td style="width:110px"><span class="badge badge-info" style="font-size:10px;white-space:nowrap">${r.tipo}</span></td>
+          <td class="fw-bold">${r.nome}</td>
+        </tr>`).join('')}</tbody></table></div>
+       ${total>30?`<p style="text-align:center;color:var(--cinza-med);font-size:11px;margin-top:6px">Mostrando 30 de ${total} resultados.</p>`:''}`;
+}
+
 function excluirItem(tabela, id) {
   const isPedido = tabela === 'pedidos';
   const pdRef = isPedido ? getItem(DB.pedidos, id) : null;
-  const vaiRestaurar = isPedido && pdRef?.estoque_baixado;
+  const vaiRestaurarPedido = isPedido && pdRef?.estoque_baixado;
+  const isCompra = tabela === 'compras';
+  const cpRef = isCompra ? getItem(DB.compras, id) : null;
+  const vaiRestaurarCompra = isCompra && cpRef?.estoque_aplicado;
   openModal('🗑️ Confirmar Exclusão',
     `<p style="font-size:14px;line-height:1.6">Excluir <strong>${id}</strong>?<br>
-    ${vaiRestaurar?'<span style="color:var(--verde-med);font-weight:600">📦 O estoque de insumos usado neste pedido será devolvido automaticamente.</span><br>':''}
+    ${vaiRestaurarPedido?'<span style="color:var(--verde-med);font-weight:600">📦 O estoque de insumos usado neste pedido será devolvido automaticamente.</span><br>':''}
+    ${vaiRestaurarCompra?'<span style="color:var(--txt-vermelho);font-weight:600">📦 O estoque somado por essa compra será RETIRADO de volta automaticamente.</span><br>':''}
     <span style="color:var(--cinza-med);font-size:12px">Esta ação não pode ser desfeita.</span></p>`,
     async () => {
-      if(vaiRestaurar){ await reverterBaixaEstoque(pdRef.consumo_insumos||{}); }
+      if(vaiRestaurarPedido){ await reverterBaixaEstoque(pdRef.consumo_insumos||{}); }
+      if(vaiRestaurarCompra){ await reverterEntradaEstoque({[cpRef.estoque_aplicado.mpId]:cpRef.estoque_aplicado.qtd}); }
       await excluirItem_db(tabela, id);
-      toast('Item excluído!'+(vaiRestaurar?' Estoque devolvido.':''));
+      toast('Item excluído!'+(vaiRestaurarPedido?' Estoque devolvido.':vaiRestaurarCompra?' Estoque retirado de volta.':''));
       closeModal();
       render(currentSection);
     }, '🗑️ Excluir');
@@ -1209,6 +1292,35 @@ function exportarCSV(dados, nome) {
 // ═══════════════════════════════════════════════════════════════
 // MÉTRICAS FINANCEIRAS — metas, caixa, capital de giro, valor parado
 // ═══════════════════════════════════════════════════════════════
+// Deixa você corrigir o "Caixa Disponível" pro valor exato que tem de
+// verdade na conta — o sistema calcula sozinho pelos lançamentos, mas às
+// vezes a conta real diverge (taxa de banco, saque não registrado, etc).
+// Isso guarda a DIFERENÇA necessária, então continua funcionando certo
+// conforme novos lançamentos forem entrando dali pra frente.
+function ajustarSaldoCaixa(){
+  const fm=metricasFinanceiras();
+  openModal('💰 Ajustar Saldo de Caixa',
+    `<div style="background:var(--cinza-ultra);border-radius:8px;padding:12px;margin-bottom:14px">
+      <div style="font-size:11px;color:var(--cinza-med)">O sistema calculou, pelos lançamentos:</div>
+      <div style="font-size:22px;font-weight:900;color:${fm.caixaDisponivel>=0?'var(--azul)':'var(--vermelho)'}">${R$(fm.caixaDisponivel)}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Quanto você tem DE VERDADE na conta agora?</label>
+      <input class="form-input" id="ajc-valor" type="number" step="0.01" placeholder="0,00" value="${fm.caixaDisponivel.toFixed(2)}">
+    </div>
+    <p style="font-size:11px;color:var(--cinza-med);margin-top:8px">O sistema guarda só a diferença necessária — os próximos lançamentos (vendas, compras, etc) continuam somando/descontando normalmente a partir desse ponto.</p>`,
+    async()=>{
+      const valorReal=parseFloat(document.getElementById('ajc-valor').value);
+      if(isNaN(valorReal)){toast('Digita um valor válido','error');return;}
+      const semAjusteAtual=fm.caixaDisponivel-(+(DB.config?.ajuste_caixa||0));
+      if(!DB.config) DB.config={};
+      DB.config.ajuste_caixa=parseFloat((valorReal-semAjusteAtual).toFixed(2));
+      salvarLocal();
+      const obj={...DB.config,id:1};
+      await enviarParaSheets('upsert','config',obj).catch((e)=>{_pendingQueue.push({acao:'upsert',tabela:'config',dados:obj,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()});salvarLocal();});
+      toast('Saldo de caixa ajustado!');closeModal();render(currentSection);
+    },'💾 Salvar');
+}
 function metricasFinanceiras(){
   const hoje=new Date();
   const mes=hoje.getMonth()+1, ano=hoje.getFullYear();
@@ -1246,7 +1358,11 @@ function metricasFinanceiras(){
   const recebidoConsignados=DB.consignados.reduce((s,c)=>s+(c.visitas||[]).reduce((ss,v)=>ss+(+v.valor_recebido||0),0),0);
   const pagoCompras=DB.compras.filter(c=>c.status==='Pago').reduce((s,c)=>s+(+c.qtd||0)*(+c.custo||0),0);
   const pagoAP=DB.apagar.reduce((s,x)=>s+(+x.pago||0),0);
-  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR+recebidoConsignados)-(pagoCompras+pagoAP+custoFixoMes);
+  // ajusteCaixa é uma correção manual (ver "Ajustar Saldo de Caixa") pra
+  // quando o valor calculado pelos lançamentos não bate com o que tem de
+  // verdade na conta — sem isso não tinha como "corrigir" o número
+  const ajusteCaixa=+(DB.config?.ajuste_caixa||0);
+  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR+recebidoConsignados)-(pagoCompras+pagoAP+custoFixoMes)+ajusteCaixa;
 
   // Valor parado — dinheiro "preso" em cada frente, ainda não virou caixa
   const valorEstoqueInsumos=DB.materias.reduce((s,m)=>s+Math.max(0,(+m.estoque||0))*(+m.custo||0),0);
@@ -1361,8 +1477,8 @@ function abrirDetalheDia(dataStr){
   const dataFormatada=dataObj.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   openModal(`📅 ${dataFormatada}`,
     `<div style="background:var(--verde-claro);padding:12px;border-radius:8px;margin-bottom:12px;display:flex;justify-content:space-between">
-      <div><div style="font-size:11px;color:var(--verde)">Vendas no dia</div><div style="font-size:22px;font-weight:900;color:var(--verde)">${efetivas.length}</div></div>
-      <div style="text-align:right"><div style="font-size:11px;color:var(--verde)">Faturamento</div><div style="font-size:22px;font-weight:900;color:var(--verde)">${R$(total)}</div></div>
+      <div><div style="font-size:11px;color:var(--txt-verde)">Vendas no dia</div><div style="font-size:22px;font-weight:900;color:var(--txt-verde)">${efetivas.length}</div></div>
+      <div style="text-align:right"><div style="font-size:11px;color:var(--txt-verde)">Faturamento</div><div style="font-size:22px;font-weight:900;color:var(--txt-verde)">${R$(total)}</div></div>
     </div>
     ${efetivas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:24px">Nenhuma venda registrada nesse dia.</p>`:
     `<div class="tbl-wrap"><table>
@@ -1396,11 +1512,32 @@ SECTIONS.dashboard = () => {
   const aReceber = DB.areceber.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
   const aPagar = DB.apagar.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
   const criticosMP = DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0)).length;
+  const hojeStrAR = new Date().toISOString().slice(0,10);
+  const arVencidas = DB.areceber.filter(x=>x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeStrAR).length;
+  const em7dias=new Date(); em7dias.setDate(em7dias.getDate()+7);
+  const em7diasStr=em7dias.toISOString().slice(0,10);
+  const proximasEntregas=DB.pedidos.filter(p=>p.entrega && p.status!=='Entregue' && p.status!=='Cancelado'
+    && normalizarData(p.entrega)>=hojeStrAR && normalizarData(p.entrega)<=em7diasStr)
+    .sort((a,b)=>normalizarData(a.entrega).localeCompare(normalizarData(b.entrega)));
+  const rotuloEntrega=(dataEntregaStr)=>{
+    const dias=Math.round((new Date(normalizarData(dataEntregaStr)+'T00:00:00')-new Date(hojeStrAR+'T00:00:00'))/86400000);
+    const label=dias<=0?'Hoje':dias===1?'Amanhã':`Em ${dias} dias`;
+    return {label, cor:dias<=1?'var(--vermelho)':'var(--amarelo)', bg:dias<=1?'var(--vermelho-claro)':'var(--amarelo-claro)'};
+  };
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const porMes={};
-  efetivas.forEach(v=>{const m=new Date(normalizarData(v.data)).getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;});
-  const barMax=Math.max(...Object.values(porMes),1);
+  const porMes={}, lucroPorMes={};
+  efetivas.forEach(v=>{const m=new Date(normalizarData(v.data)).getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;lucroPorMes[m]=(lucroPorMes[m]||0)+(v.valorTotal-v.custoTotal);});
+  const barMax=Math.max(...Object.values(porMes),...Object.values(lucroPorMes).map(v=>Math.abs(v)),1);
+
+  // Comparativo de receita com o mesmo intervalo relativo de dias do mês
+  // anterior (do dia 1 até o dia de hoje) — nunca compara mês inteiro
+  // contra mês em andamento, pra não distorcer a variação
+  const mesAnt=periodoPreset('mesant');
+  const diaAtual=new Date().getDate();
+  const fimComparavelMesAnt=`${mesAnt.inicio.slice(0,7)}-${String(Math.min(diaAtual,+mesAnt.fim.slice(8,10))).padStart(2,'0')}`;
+  const receitaMesAntComparavel=vendasNoPeriodo(mesAnt.inicio,fimComparavelMesAnt).reduce((s,v)=>s+v.valorTotal,0);
+  const variacaoReceita=receitaMesAntComparavel>0?((receitaPeriodo-receitaMesAntComparavel)/receitaMesAntComparavel*100):null;
 
   const vendProd={};
   efetivas.forEach(v=>{if(!v.produto) return; vendProd[v.produto]=(vendProd[v.produto]||0)+v.valorTotal;});
@@ -1412,7 +1549,7 @@ SECTIONS.dashboard = () => {
     📅 ${per.label} — ${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)}
   </div>
   <div class="kpi-grid">
-    <div class="kpi-card verde"><div class="kpi-label">Receita</div><div class="kpi-value">${R$(receitaPeriodo)}</div><div class="kpi-sub">${vendasPeriodo.length} venda${vendasPeriodo.length!==1?'s':''}</div></div>
+    <div class="kpi-card verde"><div class="kpi-label">Receita</div><div class="kpi-value">${R$(receitaPeriodo)}</div><div class="kpi-sub">${vendasPeriodo.length} venda${vendasPeriodo.length!==1?'s':''}${variacaoReceita!==null?` · <span style="color:${variacaoReceita>=0?'var(--verde-med)':'var(--vermelho)'};font-weight:700">${variacaoReceita>=0?'↑':'↓'} ${Math.abs(variacaoReceita).toFixed(0)}%</span> vs mês ant.`:''}</div></div>
     <div class="kpi-card ${lucroLiquidoPeriodo>=0?'':'vermelho'}"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${lucroLiquidoPeriodo>=0?'text-verde':'text-vermelho'}">${R$(lucroLiquidoPeriodo)}</div><div class="kpi-sub">Receita − CPV − Custos Fixos</div></div>
     <div class="kpi-card laranja"><div class="kpi-label">Receita Mês (atual)</div><div class="kpi-value">${R$(vendaMes)}</div><div class="kpi-sub">${pctMeta}% da meta</div></div>
     <div class="kpi-card roxo"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticketPeriodo)}</div></div>
@@ -1420,7 +1557,21 @@ SECTIONS.dashboard = () => {
     <div class="kpi-card ${aPagar>0?'vermelho':'verde'}"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
   </div>
 
-  ${criticosMP>0?`<div style="background:var(--vermelho-claro);color:var(--vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('materias')">⚠️ ${criticosMP} matéria(s)-prima em estoque crítico</div>`:''}
+  ${criticosMP>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('materias')">⚠️ ${criticosMP} matéria(s)-prima em estoque crítico</div>`:''}
+  ${arVencidas>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('areceber')">⚠️ ${arVencidas} conta(s) a receber vencida(s)</div>`:''}
+
+  ${proximasEntregas.length>0?`<div class="panel">
+    <div class="panel-header"><span class="panel-title">🚚 Próximas Entregas (7 dias)</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Cliente</th><th>Itens</th><th>Entrega</th></tr></thead>
+      <tbody>${proximasEntregas.map(p=>{const r=rotuloEntrega(p.entrega);return`
+        <tr style="cursor:pointer" onclick="verPedidoOrc('${p.id}')" title="Clique pra abrir">
+          <td class="fw-bold">${nomeVenda(p)}</td>
+          <td class="text-center">${(p.itens||[]).length}</td>
+          <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
+        </tr>`;}).join('')}</tbody>
+    </table></div>
+  </div>`:''}
 
   ${(()=>{const fm=metricasFinanceiras();return `
   <div class="panel">
@@ -1447,15 +1598,28 @@ SECTIONS.dashboard = () => {
         <div style="font-size:11px;color:var(--laranja)">Base: ${todasVendasEfetivas().length} vendas</div>
       </div>
       <div style="background:var(--roxo-claro);border-radius:8px;padding:12px">
-        <div style="font-size:10px;color:var(--roxo);text-transform:uppercase;font-weight:600">Pedidos p/ bater meta do mês</div>
-        <div style="font-size:17px;font-weight:800;color:var(--roxo)">${fm.pedidosParaMeta}</div>
-        <div style="font-size:11px;color:var(--roxo)">Faltam ${R$(fm.faltaMes)}</div>
+        <div style="font-size:10px;color:var(--txt-roxo);text-transform:uppercase;font-weight:600">Pedidos p/ bater meta do mês</div>
+        <div style="font-size:17px;font-weight:800;color:var(--txt-roxo)">${fm.pedidosParaMeta}</div>
+        <div style="font-size:11px;color:var(--txt-roxo)">Faltam ${R$(fm.faltaMes)}</div>
       </div>
+      ${(()=>{const metaLucro=+(DB.config?.meta_lucro_mensal||0);
+        if(metaLucro>0){
+          const pctLucro=(fm.lucroLiquidoMes/metaLucro*100);
+          return `<div style="background:${fm.lucroLiquidoMes>=metaLucro?'var(--verde-claro)':'var(--cinza-ultra)'};border-radius:8px;padding:12px">
+            <div style="font-size:10px;color:var(--cinza-med);text-transform:uppercase;font-weight:600">🎯 Meta de Lucro Mensal</div>
+            <div style="font-size:17px;font-weight:800">${R$(metaLucro)}</div>
+            <div style="font-size:11px;color:${pctLucro>=100?'var(--verde-med)':'var(--cinza-med)'}">Lucro: ${R$(fm.lucroLiquidoMes)} (${pctLucro.toFixed(0)}%)</div>
+          </div>`;
+        }
+        return `<div style="background:var(--cinza-ultra);border-radius:8px;padding:12px;display:flex;align-items:center;justify-content:center">
+          <span style="font-size:12px;color:var(--azul-claro);cursor:pointer;text-decoration:underline" onclick="goTo('config')">+ Definir meta de lucro</span>
+        </div>`;
+      })()}
     </div>
   </div>
 
   <div class="kpi-grid">
-    <div class="kpi-card ${fm.caixaDisponivel>=0?'azul':'vermelho'}" style="border-left-color:${fm.caixaDisponivel>=0?'var(--azul-claro)':'var(--vermelho)'}"><div class="kpi-label">Caixa Disponível</div><div class="kpi-value ${fm.caixaDisponivel>=0?'':'text-vermelho'}">${R$(fm.caixaDisponivel)}</div><div class="kpi-sub">Estimado pelos lançamentos</div></div>
+    <div class="kpi-card ${fm.caixaDisponivel>=0?'azul':'vermelho'}" style="border-left-color:${fm.caixaDisponivel>=0?'var(--azul-claro)':'var(--vermelho)'};cursor:pointer" onclick="ajustarSaldoCaixa()"><div class="kpi-label">Caixa Disponível</div><div class="kpi-value ${fm.caixaDisponivel>=0?'':'text-vermelho'}">${R$(fm.caixaDisponivel)}</div><div class="kpi-sub">Estimado pelos lançamentos · <span style="text-decoration:underline;color:var(--azul-claro)">✏️ ajustar</span></div></div>
     <div class="kpi-card ${fm.capitalGiro>=0?'roxo':'vermelho'}"><div class="kpi-label">Capital de Giro</div><div class="kpi-value">${R$(fm.capitalGiro)}</div><div class="kpi-sub">Ativo circulante − A Pagar</div></div>
   </div>
 
@@ -1466,9 +1630,9 @@ SECTIONS.dashboard = () => {
       <tbody>
         <tr><td>🧱 Insumos em estoque</td><td class="text-center fw-bold text-azul">${R$(fm.valorEstoqueInsumos)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('materias')">Ver</button></td></tr>
         <tr><td>🤝 Produtos em consignação</td><td class="text-center fw-bold text-roxo">${R$(fm.valorConsignados)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('consignados')">Ver</button></td></tr>
-        <tr><td>📥 A Receber (pendente)</td><td class="text-center fw-bold" style="color:var(--amarelo)">${R$(fm.aReceberPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('areceber')">Ver</button></td></tr>
-        <tr><td>📋 Saldo de pedidos em aberto</td><td class="text-center fw-bold" style="color:var(--amarelo)">${R$(fm.saldoPedidosPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('pedidos')">Ver</button></td></tr>
-        <tr><td>🤝 Vendido no consignado, ainda não repassado</td><td class="text-center fw-bold" style="color:var(--amarelo)">${R$(fm.saldoConsignadoPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('consignados')">Ver</button></td></tr>
+        <tr><td>📥 A Receber (pendente)</td><td class="text-center fw-bold" style="color:var(--txt-amarelo)">${R$(fm.aReceberPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('areceber')">Ver</button></td></tr>
+        <tr><td>📋 Saldo de pedidos em aberto</td><td class="text-center fw-bold" style="color:var(--txt-amarelo)">${R$(fm.saldoPedidosPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('pedidos')">Ver</button></td></tr>
+        <tr><td>🤝 Vendido no consignado, ainda não repassado</td><td class="text-center fw-bold" style="color:var(--txt-amarelo)">${R$(fm.saldoConsignadoPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('consignados')">Ver</button></td></tr>
       </tbody>
     </table></div>
     <div style="padding:10px 16px;font-size:11px;color:var(--cinza-med)">💡 "Parado" = dinheiro que já foi gasto ou está garantido, mas ainda não virou caixa disponível na sua mão.</div>
@@ -1477,16 +1641,23 @@ SECTIONS.dashboard = () => {
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">📈 Receita por Mês</span></div>
+      <div class="panel-header"><span class="panel-title">📈 Receita & Lucro por Mês</span></div>
       <div style="padding:14px">
+        ${Object.keys(porMes).length===0?'':`<div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-bottom:8px;font-size:10px;color:var(--cinza-med)">
+          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:var(--azul-claro);border-radius:2px;display:inline-block"></span>Receita</span>
+          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:var(--verde-med);border-radius:2px;display:inline-block"></span>Lucro</span>
+        </div>`}
         <div style="display:flex;align-items:flex-end;gap:5px;height:90px">
           ${Object.keys(porMes).length===0?'<div style="color:var(--cinza-med);font-size:12px;margin:auto">Sem vendas ainda</div>':
-          Object.entries(porMes).map(([m,v])=>`
+          Object.entries(porMes).map(([m,v])=>{const lucro=lucroPorMes[m]||0;return`
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
-              <div style="font-size:8px;color:var(--cinza-med)">${R$(v)}</div>
-              <div style="width:100%;background:var(--azul-claro);border-radius:4px 4px 0 0;height:${Math.round(v/barMax*70)}px;min-height:4px"></div>
+              <div style="font-size:7px;color:var(--cinza-med)">${R$(v)}</div>
+              <div style="display:flex;align-items:flex-end;gap:2px;width:100%;justify-content:center">
+                <div style="width:45%;background:var(--azul-claro);border-radius:3px 3px 0 0;height:${Math.round(v/barMax*70)}px;min-height:4px"></div>
+                <div style="width:45%;background:${lucro>=0?'var(--verde-med)':'var(--vermelho)'};border-radius:3px 3px 0 0;height:${Math.max(4,Math.round(Math.abs(lucro)/barMax*70))}px"></div>
+              </div>
               <div style="font-size:9px;color:var(--cinza-med)">${mesesNome[+m]}</div>
-            </div>`).join('')}
+            </div>`;}).join('')}
         </div>
       </div>
     </div>
@@ -1700,9 +1871,41 @@ async function salvarForn(id=null){
 // ═══════════════════════════════════════════════════════════════
 const UNIDADES_MP = ['un','cm','m','ml','l','g','kg','h','folha','par'];
 
+// Consumo médio diário de um insumo, baseado no que foi de fato usado em
+// pedidos dos últimos N dias (padrão 60) — ignora pedidos cancelados, que
+// nunca chegaram a consumir estoque de verdade.
+function consumoMedioDiario(mpId, dias=60){
+  const hoje=new Date().toISOString().slice(0,10);
+  const desde=new Date(); desde.setDate(desde.getDate()-dias);
+  const desdeStr=desde.toISOString().slice(0,10);
+  let total=0;
+  DB.pedidos.forEach(p=>{
+    if(p.status==='Cancelado') return;
+    const d=normalizarData(p.data);
+    if(!d || d<desdeStr || d>hoje) return;
+    total+=+(p.consumo_insumos?.[mpId]||0);
+  });
+  return total/dias;
+}
 SECTIONS.materias = () => {
   const stMP = m => (+m.estoque||0)<0?['badge-danger','🔴 Negativo!']:(+m.estoque||0)===0?['badge-danger','🔴 Zerado']:(+m.estoque||0)<=(+m.est_min||0)?['badge-danger','🟠 Crítico']:['badge-ok','🟢 OK'];
+  const criticos=DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0));
   return `
+  ${criticos.length>0?`<div class="panel">
+    <div class="panel-header"><span class="panel-title">📉 Sugestão de Reposição (estoque crítico)</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Insumo</th><th>Estoque</th><th>Consumo médio/dia</th><th>Sugestão p/ 30 dias</th></tr></thead>
+      <tbody>${ordNome(criticos).map(m=>{
+        const consumoDia=consumoMedioDiario(m.id,60);
+        return `<tr>
+          <td class="fw-bold">${m.nome}</td>
+          <td class="text-center text-vermelho fw-bold">${m.estoque||0} ${m.unidade||'un'}</td>
+          <td class="text-center">${consumoDia>0?consumoDia.toFixed(2)+' '+(m.unidade||'un'):'sem histórico'}</td>
+          <td class="text-center fw-bold text-azul">${consumoDia>0?Math.ceil(consumoDia*30)+' '+(m.unidade||'un'):'sem histórico'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+  </div>`:''}
   <div class="panel">
     <div class="panel-header"><span class="panel-title">🧱 Insumos / Matérias-Primas (${DB.materias.length})</span>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1749,8 +1952,8 @@ function formMP(m={}){
       <div><label class="form-label" style="font-weight:400;font-size:10px">Valor Total Pago (R$)</label><input class="form-input" id="f-mpvalc" type="number" step="0.01" placeholder="Ex: 16,90" value="${m.valor_comprado||''}" oninput="calcCustoMP()"></div>
     </div>
     <div style="margin-top:10px;text-align:center;background:var(--verde-claro);border-radius:6px;padding:8px">
-      <span style="font-size:11px;color:var(--verde)">CUSTO UNITÁRIO CALCULADO</span><br>
-      <span id="mp-custo-calc" style="font-size:20px;font-weight:900;color:var(--verde)">${R$(custoInicial)}</span>
+      <span style="font-size:11px;color:var(--txt-verde)">CUSTO UNITÁRIO CALCULADO</span><br>
+      <span id="mp-custo-calc" style="font-size:20px;font-weight:900;color:var(--txt-verde)">${R$(custoInicial)}</span>
     </div>
   </div>
   <input type="hidden" id="f-mpcu" value="${custoInicial}">
@@ -1951,6 +2154,11 @@ function enviarAjusteEstoqueBackground(itens){
 // Aplica o consumo no estoque — SUBTRAI. Manda só o DELTA pro Sheets (não o valor
 // final calculado no aparelho), pra planilha somar em cima do valor mais atual dela.
 // Isso evita que dois aparelhos com dados desatualizados apaguem a baixa um do outro.
+// Aumenta o estoque (usado quando uma Compra é registrada) — por baixo usa
+// o mesmo mecanismo seguro de delta que já existe, só com nome mais claro
+// pro contexto de "entrada" em vez de "reverter uma baixa"
+async function aplicarEntradaEstoque(consumo){ return reverterBaixaEstoque(consumo); }
+async function reverterEntradaEstoque(consumo){ return aplicarBaixaEstoque(consumo); }
 async function aplicarBaixaEstoque(consumo){
   const itens=[];
   for(const mpId of Object.keys(consumo)){
@@ -2172,8 +2380,8 @@ function abrirFormPedido(editId){
             <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--cinza-med)" id="ped-subtotal-val">${R$(calc.somaItens)}</td>
           </tr>
           <tr id="ped-row-desc" style="${calc.descGeral>0?'':'display:none'}">
-            <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--vermelho)">Desconto Geral</td>
-            <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--vermelho)" id="ped-descgeral-val">− ${R$(calc.descGeral)}</td>
+            <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--txt-vermelho)">Desconto Geral</td>
+            <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--txt-vermelho)" id="ped-descgeral-val">− ${R$(calc.descGeral)}</td>
           </tr>
           <tr style="background:var(--verde);color:white">
             <td colspan="5" style="padding:9px;font-weight:700;text-align:right;font-size:14px">TOTAL</td>
@@ -2561,7 +2769,7 @@ SECTIONS.compras = () => `
       <tbody>${DB.compras.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhuma compra.</td></tr>`:
       DB.compras.slice().reverse().map(c=>`<tr>
         <td class="fw-bold text-azul">${c.id}</td><td>${c.data||'—'}</td>
-        <td>${nomeForn(c.fornecedor)}</td><td>${c.produto}</td>
+        <td>${nomeForn(c.fornecedor)}</td><td>${c.produto}${c.materia_prima_id?' <span class="badge badge-ok" style="font-size:9px">📦 estoque</span>':''}</td>
         <td class="text-center">${c.qtd}</td>
         <td class="fw-bold text-vermelho">${R$((+c.qtd||0)*(+c.custo||0))}</td>
         <td><span class="badge badge-info">${c.forma||'—'}</span></td>
@@ -2576,20 +2784,75 @@ SECTIONS.compras = () => `
 
 function novaCompra(){openModal('➕ Nova Compra',formCompra(),()=>salvarCompra());}
 function editarCompra(id){openModal('✏️ Editar',formCompra(getItem(DB.compras,id)),()=>salvarCompra(id));}
-function formCompra(c={}){const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');return`<div class="form-grid">
+function formCompra(c={}){
+  const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');
+  const mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} (estoque atual: ${m.estoque||0} ${m.unidade||'un'})`}));
+  return`<div class="form-grid">
+  <div class="form-group full">
+    <label class="form-label">Matéria-Prima (escolhe se essa compra for repor estoque)</label>
+    ${sselHTML('c-mp', mpOpts, c.materia_prima_id||'', 'Buscar matéria-prima...', 'autoPreencherCompra(value)')}
+  </div>
   <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-cdata" type="date" value="${c.data||new Date().toISOString().slice(0,10)}"></div>
   <div class="form-group"><label class="form-label">Fornecedor</label><select class="form-select" id="f-cforn"><option value="">—</option>${fo}</select></div>
-  <div class="form-group full"><label class="form-label">Produto/MP</label><input class="form-input" id="f-cprod" value="${c.produto||''}"></div>
+  <div class="form-group full"><label class="form-label">Descrição</label><input class="form-input" id="f-cprod" value="${c.produto||''}"></div>
   <div class="form-group"><label class="form-label">Quantidade</label><input class="form-input" id="f-cqtd" type="number" value="${c.qtd||1}"></div>
   <div class="form-group"><label class="form-label">Custo Un. (R$)</label><input class="form-input" id="f-ccu" type="number" step="0.01" value="${c.custo||''}"></div>
   <div class="form-group"><label class="form-label">Forma</label><select class="form-select" id="f-cforma">${['PIX','Débito','Crédito','Boleto','Dinheiro'].map(f=>`<option ${c.forma===f?'selected':''}>${f}</option>`).join('')}</select></div>
   <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="f-cst">${['Pago','Em aberto','Atrasado'].map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+  <div class="form-group full" id="compra-aviso-estoque" style="display:${c.materia_prima_id?'block':'none'};background:var(--verde-claro);color:var(--txt-verde);padding:9px 11px;border-radius:6px;font-size:11.5px">📦 Isso soma a quantidade comprada direto no estoque dessa matéria-prima quando salvar, e mexe no Caixa Disponível se marcar "Pago".</div>
 </div>`;}
+function autoPreencherCompra(mpId){
+  const m=getItem(DB.materias,mpId);
+  const elAviso=document.getElementById('compra-aviso-estoque');
+  const elProd=document.getElementById('f-cprod');
+  if(m){
+    if(elProd && !elProd.value.trim()) elProd.value=m.nome;
+    if(elAviso) elAviso.style.display='block';
+  } else if(elAviso) elAviso.style.display='none';
+}
 async function salvarCompra(id=null){
-  const obj={id:id||nextId(DB.compras,'CMP'),data:document.getElementById('f-cdata').value,fornecedor:document.getElementById('f-cforn').value,produto:document.getElementById('f-cprod').value.trim(),qtd:parseFloat(document.getElementById('f-cqtd').value)||1,custo:parseFloat(document.getElementById('f-ccu').value)||0,forma:document.getElementById('f-cforma').value,status:document.getElementById('f-cst').value,criado_em:id?getItem(DB.compras,id)?.criado_em:new Date().toISOString()};
+  const existente=id?getItem(DB.compras,id):null;
+  const mpId=document.getElementById('c-mp_val')?.value||'';
+  const qtd=parseFloat(document.getElementById('f-cqtd').value)||1;
+  const obj={
+    id:id||nextId(DB.compras,'CMP'),
+    data:document.getElementById('f-cdata').value,
+    fornecedor:document.getElementById('f-cforn').value,
+    produto:document.getElementById('f-cprod').value.trim(),
+    materia_prima_id:mpId||undefined,
+    qtd,
+    custo:parseFloat(document.getElementById('f-ccu').value)||0,
+    forma:document.getElementById('f-cforma').value,
+    status:document.getElementById('f-cst').value,
+    criado_em:id?existente?.criado_em:new Date().toISOString()
+  };
   if(!obj.produto){toast('Informe o produto','error');return;}
+
+  // Reconcilia o estoque: devolve o que essa compra já tinha somado antes
+  // (se estiver editando), e aplica de novo com os dados atuais
+  if(existente?.estoque_aplicado){
+    await reverterEntradaEstoque({[existente.estoque_aplicado.mpId]:existente.estoque_aplicado.qtd});
+  }
+  // Custo médio ponderado: só em compra NOVA (não edição), pra não distorcer
+  // o custo em reedições. Precisa rodar ANTES do aplicarEntradaEstoque, pra
+  // pegar o estoque de ANTES dessa compra entrar no cálculo.
+  if(mpId && !existente && obj.custo>0){
+    const mp=getItem(DB.materias,mpId);
+    if(mp){
+      const estoqueAntes=Math.max(0,+mp.estoque||0);
+      const custoAntes=+mp.custo||0;
+      const novoCustoMedio=(estoqueAntes*custoAntes+qtd*obj.custo)/(estoqueAntes+qtd);
+      mp.custo=parseFloat(novoCustoMedio.toFixed(4));
+      await salvarItem('materias',mp);
+    }
+  }
+  if(mpId){
+    await aplicarEntradaEstoque({[mpId]:qtd});
+    obj.estoque_aplicado={mpId,qtd};
+  }
+
   await salvarItem('compras',obj);
-  toast(id?'Atualizada!':'Registrada!');closeModal();render('compras');
+  toast(id?'Atualizada!':mpId?'Compra registrada e estoque atualizado!':'Registrada!');closeModal();render('compras');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2636,26 +2899,30 @@ async function salvarProd(id=null){
 // ═══════════════════════════════════════════════════════════════
 // A RECEBER
 // ═══════════════════════════════════════════════════════════════
-SECTIONS.areceber = () => `
+SECTIONS.areceber = () => {
+  const hojeStr=new Date().toISOString().slice(0,10);
+  const isVencida=x=>x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeStr;
+  return`
   <div class="panel">
     <div class="panel-header"><span class="panel-title">📥 A Receber</span><button class="btn btn-success" onclick="novoAR()">+ Novo</button></div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Descrição</th><th>Valor</th><th>Recebido</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody>${DB.areceber.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum lançamento.</td></tr>`:
-      DB.areceber.slice().reverse().map(x=>`<tr>
+      DB.areceber.slice().reverse().map(x=>{const vencida=isVencida(x);return`<tr ${vencida?'style="background:var(--vermelho-claro)"':''}>
         <td class="fw-bold text-azul">${x.id}</td><td>${x.data||'—'}</td>
         <td>${nomeCli(x.cliente)}</td><td>${x.descricao||'—'}</td>
         <td class="fw-bold">${R$(x.valor)}</td><td class="text-verde">${R$(x.recebido)}</td>
         <td class="${(+x.valor||0)-(+x.recebido||0)>0?'text-vermelho':'text-verde'} fw-bold">${R$((+x.valor||0)-(+x.recebido||0))}</td>
-        <td>${statusBadge(x.status)}</td>
+        <td>${vencida?'<span class="badge badge-danger">⚠️ Vencida</span>':statusBadge(x.status)}</td>
         <td class="td-actions">
           <button class="btn btn-success btn-xs" onclick="marcarRecAR('${x.id}')" title="Marcar recebido">✅</button>
           <button class="btn btn-primary btn-xs" onclick="editarAR('${x.id}')">✏️</button>
           <button class="btn btn-danger btn-xs" onclick="excluirItem('areceber','${x.id}')">🗑️</button>
         </td>
-      </tr>`).join('')}</tbody>
+      </tr>`;}).join('')}</tbody>
     </table></div>
   </div>`;
+};
 
 function novoAR(){openModal('➕ A Receber',formAR(),()=>salvarAR());}
 function editarAR(id){openModal('✏️ Editar',formAR(getItem(DB.areceber,id)),()=>salvarAR(id));}
@@ -2791,12 +3058,14 @@ function renderSeletorPeriodo(prefixo,presetAtual,customIni,customFim){
 }
 let _dashPeriodo='mes', _dashCustomIni=null, _dashCustomFim=null;
 let _drePeriodo='mes', _dreCustomIni=null, _dreCustomFim=null;
+let _relPeriodo='tudo', _relCustomIni=null, _relCustomFim=null;
 function setPeriodo(prefixo,preset){
-  if(prefixo==='dash') _dashPeriodo=preset; else _drePeriodo=preset;
+  if(prefixo==='dash') _dashPeriodo=preset; else if(prefixo==='rel') _relPeriodo=preset; else _drePeriodo=preset;
   render(currentSection);
 }
 function setPeriodoCustom(prefixo,campo,valor){
   if(prefixo==='dash'){ if(campo==='inicio') _dashCustomIni=valor; else _dashCustomFim=valor; }
+  else if(prefixo==='rel'){ if(campo==='inicio') _relCustomIni=valor; else _relCustomFim=valor; }
   else { if(campo==='inicio') _dreCustomIni=valor; else _dreCustomFim=valor; }
   render(currentSection);
 }
@@ -2823,7 +3092,7 @@ SECTIONS.custos = () => {
     <div class="kpi-card roxo"><div class="kpi-label">Rateio por Unidade</div><div class="kpi-value">${R$(rateio)}</div><div class="kpi-sub">÷ ${vendas} vendas/mês</div></div>
   </div>
 
-  <div style="background:var(--amarelo-claro);color:var(--amarelo);padding:12px 14px;border-radius:8px;font-size:12.5px;font-weight:600;margin-bottom:16px">
+  <div style="background:var(--amarelo-claro);color:var(--txt-amarelo);padding:12px 14px;border-radius:8px;font-size:12.5px;font-weight:600;margin-bottom:16px">
     💡 <strong>Como funciona:</strong> Custos <strong>fixos mensais</strong> (aluguel, assinaturas, softwares) são divididos pela sua estimativa de vendas/mês e somados ao custo de cada produto. Já os <strong>percentuais</strong> (impostos, taxa de cartão, taxa de delivery) são aplicados direto sobre o preço de venda. Tudo isso já entra automático no cálculo da aba <strong>Fichas Técnicas</strong>.
   </div>
 
@@ -3057,7 +3326,7 @@ function renderDlBucketsForm(){
         <span style="font-size:12px;color:var(--cinza-med)">%</span>
         <button onclick="removerBucketDl(${i})" style="background:var(--vermelho);color:white;border:none;border-radius:5px;width:30px;height:30px;cursor:pointer;font-size:15px;flex-shrink:0">×</button>
       </div>`).join('')}</div>
-    <button onclick="adicionarBucketDl()" style="background:none;border:1.5px dashed var(--roxo);color:var(--roxo);border-radius:6px;padding:8px;cursor:pointer;font-size:13px;font-weight:600;width:100%;margin:6px 0 12px">+ Adicionar Pote</button>
+    <button onclick="adicionarBucketDl()" style="background:none;border:1.5px dashed var(--roxo);color:var(--txt-roxo);border-radius:6px;padding:8px;cursor:pointer;font-size:13px;font-weight:600;width:100%;margin:6px 0 12px">+ Adicionar Pote</button>
     <div id="dl-total-pct" style="font-size:13px;font-weight:700;color:${total===100?'var(--verde-med)':'var(--vermelho)'}">Total: ${total}% ${total===100?'✅':'⚠️ precisa somar 100%'}</div>
     <button class="btn btn-primary" style="margin-top:12px" onclick="salvarDivisaoPercentuais()">💾 Salvar Potes</button>`;
 }
@@ -3285,7 +3554,7 @@ SECTIONS.fichas = () => `
           const temFicha=DB.fichas.some(f=>f.produto===p.id);
           const custo=DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>{const mp=getItem(DB.materias,f.mp);return s+(+f.qtd||0)*(+(mp?.custo)||0);},0);
           return`<div onclick="selFicha('${p.id}')" id="ftc-${p.id}" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--cinza-claro);display:flex;justify-content:space-between;align-items:center">
-            <div><div style="font-size:12px;font-weight:700;color:var(--azul)">${p.nome}</div><div style="font-size:10px;color:var(--cinza-med)">${p.categoria||'—'}</div></div>
+            <div><div style="font-size:12px;font-weight:700;color:var(--txt-azul)">${p.nome}</div><div style="font-size:10px;color:var(--cinza-med)">${p.categoria||'—'}</div></div>
             <div style="text-align:right">${temFicha?`<div style="font-size:11px;font-weight:700;color:var(--verde-med)">${R$(custo)}</div><span class="badge badge-ok" style="font-size:9px">✅</span>`:`<span class="badge badge-gray" style="font-size:9px">Sem ficha</span>`}</div>
           </div>`;}).join('')}
       </div>
@@ -3402,7 +3671,7 @@ function addInsFicha(prodId){
     `<div class="form-grid cols-1">
       <div class="form-group"><label class="form-label">Insumo</label>${sselHTML('fi-mp', mpOpts, '', 'Buscar insumo...', '')}</div>
       <div class="form-group"><label class="form-label">Quantidade para 1 unidade</label><input class="form-input" id="fi-qtd" type="number" step="0.01" value="1"></div>
-      <div style="background:var(--amarelo-claro);padding:10px;border-radius:6px;font-size:12px;color:var(--amarelo)">💡 Não achou? Cadastre em <strong>Insumos</strong> primeiro.</div>
+      <div style="background:var(--amarelo-claro);padding:10px;border-radius:6px;font-size:12px;color:var(--txt-amarelo)">💡 Não achou? Cadastre em <strong>Insumos</strong> primeiro.</div>
     </div>`,
     async()=>{
       const mp=document.getElementById('fi-mp_val').value;
@@ -3444,11 +3713,11 @@ function gerenciarVariantes(fichaId, prodId){
   window._varTemp={fichaId, prodId, variantes: JSON.parse(JSON.stringify(f.variantes||[]))};
   const mpBase=getItem(DB.materias,f.mp);
   openModal(`🔀 Variantes — ${mpBase?.nome||f.mp}`,
-    `<div style="background:var(--roxo-claro);color:var(--roxo);padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px">
+    `<div style="background:var(--roxo-claro);color:var(--txt-roxo);padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px">
       💡 Pode ser <strong>cor, tamanho, modelo, sabor</strong>... o que fizer sentido pra esse insumo. Cada opção aponta pra um insumo diferente em <strong>🧱 Insumos</strong>. Na hora do pedido, você escolhe a versão e o sistema abate do insumo certo.
     </div>
     <div id="var-rows">${renderVarRows()}</div>
-    <button onclick="addVarRow()" style="background:none;border:1.5px dashed var(--roxo);color:var(--roxo);border-radius:6px;padding:8px;cursor:pointer;font-size:13px;font-weight:600;width:100%;margin-top:8px">+ Adicionar variante</button>`,
+    <button onclick="addVarRow()" style="background:none;border:1.5px dashed var(--roxo);color:var(--txt-roxo);border-radius:6px;padding:8px;cursor:pointer;font-size:13px;font-weight:600;width:100%;margin-top:8px">+ Adicionar variante</button>`,
     async()=>{
       const fRef=getItem(DB.fichas, window._varTemp.fichaId);
       if(!fRef)return;
@@ -3516,17 +3785,17 @@ SECTIONS.kits = () => `
           const lucro=(+k.preco_venda||0)-custoTotal;
           return`<div class="panel" style="border-top:4px solid var(--verde-med);margin:0">
             <div class="panel-header" style="padding:12px 14px">
-              <div><div style="font-size:14px;font-weight:800;color:var(--azul)">${k.nome}</div><div style="font-size:11px;color:var(--cinza-med)">${k.descricao||''}</div></div>
+              <div><div style="font-size:14px;font-weight:800;color:var(--txt-azul)">${k.nome}</div><div style="font-size:11px;color:var(--cinza-med)">${k.descricao||''}</div></div>
               ${statusBadge(k.status)}
             </div>
             <div style="padding:10px 14px">
               ${(k.itens||[]).map(i=>{const p=getProd(i.prod);return`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px"><span>${i.qtd}x ${p?.nome||i.prod}</span><span style="color:var(--cinza-med)">${R$((+p?.preco||0)*(+i.qtd||1))}</span></div>`;}).join('')}
               <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
                 <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Sem desconto</div><div style="font-size:13px;font-weight:700;text-decoration:line-through;color:var(--cinza-med)">${R$(semDesc)}</div></div>
-                <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--verde)">Desconto ${k.desconto_pct||0}%</div><div style="font-size:18px;font-weight:900;color:var(--verde)">${R$(k.preco_venda)}</div></div>
+                <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-verde)">Desconto ${k.desconto_pct||0}%</div><div style="font-size:18px;font-weight:900;color:var(--txt-verde)">${R$(k.preco_venda)}</div></div>
               </div>
               <div style="margin-top:8px;display:flex;justify-content:space-between;font-size:12px">
-                <span>Custo: <strong style="color:var(--vermelho)">${R$(custoTotal)}</strong></span>
+                <span>Custo: <strong style="color:var(--txt-vermelho)">${R$(custoTotal)}</strong></span>
                 <span>Lucro: <strong style="color:var(--verde-med)">${R$(lucro)}</strong></span>
               </div>
             </div>
@@ -3572,7 +3841,7 @@ function abrirFormKit(editId=null){
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:var(--cinza-ultra);padding:12px;border-radius:8px">
       <div><div style="font-size:10px;color:var(--cinza-med)">Preço cheio</div><div style="font-size:16px;font-weight:800" id="kit-cheio">R$ 0,00</div></div>
       <div><label style="font-size:10px;color:var(--cinza-med);display:block">Desconto (%)</label><input type="number" step="1" min="0" max="99" value="${kit.desconto_pct||10}" id="kit-dpct" oninput="recalcKit()" style="width:75px;padding:6px;border:1.5px solid var(--amarelo);border-radius:5px;font-size:14px;font-weight:700;text-align:center"></div>
-      <div><label style="font-size:10px;color:var(--verde);font-weight:700;display:block">Preço Kit</label><input type="number" step="0.01" value="${kit.preco_venda||0}" id="kit-pf" oninput="window._kitTemp.preco_venda=+this.value" style="width:95px;padding:6px;border:1.5px solid var(--verde-med);border-radius:5px;font-size:14px;font-weight:800;color:var(--verde);text-align:center"></div>
+      <div><label style="font-size:10px;color:var(--txt-verde);font-weight:700;display:block">Preço Kit</label><input type="number" step="0.01" value="${kit.preco_venda||0}" id="kit-pf" oninput="window._kitTemp.preco_venda=+this.value" style="width:95px;padding:6px;border:1.5px solid var(--verde-med);border-radius:5px;font-size:14px;font-weight:800;color:var(--txt-verde);text-align:center"></div>
     </div>`,
     ()=>salvarKit(editId),'💾 Salvar Kit');
   setTimeout(()=>recalcKit(),50);
@@ -3630,6 +3899,31 @@ SECTIONS.consignados = () => {
   <div style="background:var(--dourado-claro);border-left:4px solid var(--dourado-escuro);padding:12px 14px;border-radius:8px;font-size:12.5px;color:var(--cinza-escuro);margin-bottom:16px">
     💡 <strong>Preço de Repasse</strong> é o valor que você cobra do parceiro (diferente do preço normal de venda) — eles colocam a margem deles em cima pra revender. Clique em ✏️ num item pra ajustar o repasse, quantidade ou trocar o produto.
   </div>
+  ${(()=>{
+    if(DB.consignados.length<2) return '';
+    const ranking=DB.consignados.map(c=>{
+      const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
+      const lucro=(c.itens||[]).reduce((s,i)=>{const custo=+(getProd(i.prod)?.custo)||0;return s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*((+i.preco||0)-custo);},0);
+      return {c,vendido,lucro};
+    }).sort((a,b)=>b.vendido-a.vendido);
+    const maiorVendido=Math.max(...ranking.map(r=>r.vendido),1);
+    const medalhas=['🥇','🥈','🥉'];
+    return `<div class="panel">
+      <div class="panel-header"><span class="panel-title">🏆 Comparar Pontos de Consignação</span></div>
+      <div style="padding:14px">
+        ${ranking.map((r,i)=>`
+          <div style="margin-bottom:${i<ranking.length-1?'14px':'0'}">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:4px">
+              <span class="fw-bold">${medalhas[i]||(i+1)} ${r.c.nome}</span>
+              <span class="text-verde fw-bold">${R$(r.vendido)} <span style="color:var(--cinza-med);font-weight:400">· lucro ${R$(r.lucro)}</span></span>
+            </div>
+            <div style="background:var(--cinza-claro);border-radius:6px;height:10px;overflow:hidden">
+              <div style="background:var(--roxo);height:100%;width:${Math.max(2,Math.round(r.vendido/maiorVendido*100))}%;border-radius:6px"></div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  })()}
   <div class="panel"><div class="panel-header"><span class="panel-title">🤝 Pontos de Consignação</span><button class="btn btn-success" onclick="novoCSG()">+ Novo Ponto</button></div>
     <div style="padding:16px">
       ${DB.consignados.length===0?`<div class="empty-state"><div class="empty-icon">🤝</div>Nenhum ponto de consignação cadastrado.</div>`:
@@ -3642,14 +3936,14 @@ SECTIONS.consignados = () => {
           const ultVis=(c.visitas||[]).slice(-1)[0];
           return`<div class="panel" style="border-top:4px solid var(--roxo);margin:0">
             <div class="panel-header" style="padding:12px 14px">
-              <div style="flex:1"><div style="font-size:14px;font-weight:800;color:var(--azul)">${c.nome}</div><div style="font-size:11px;color:var(--cinza-med)">${c.responsavel||''} ${c.telefone?'· '+c.telefone:''}</div><div style="font-size:10px;color:var(--cinza-med);margin-top:2px">📍 ${c.endereco||'Endereço não informado'}</div></div>
+              <div style="flex:1"><div style="font-size:14px;font-weight:800;color:var(--txt-azul)">${c.nome}</div><div style="font-size:11px;color:var(--cinza-med)">${c.responsavel||''} ${c.telefone?'· '+c.telefone:''}</div><div style="font-size:10px;color:var(--cinza-med);margin-top:2px">📍 ${c.endereco||'Endereço não informado'}</div></div>
               <span class="badge badge-${c.ativo?'ok':'gray'}">${c.ativo?'Ativo':'Inativo'}</span>
             </div>
             <div style="padding:10px 14px">
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px">
-                <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:20px;font-weight:900;color:var(--azul)">${pecas}</div></div>
-                <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--roxo)">Valor lá</div><div style="font-size:13px;font-weight:800;color:var(--roxo)">${R$(valor)}</div></div>
-                <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--verde)">Vendido</div><div style="font-size:13px;font-weight:800;color:var(--verde)">${R$(vendido)}</div></div>
+                <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:20px;font-weight:900;color:var(--txt-azul)">${pecas}</div></div>
+                <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-roxo)">Valor lá</div><div style="font-size:13px;font-weight:800;color:var(--txt-roxo)">${R$(valor)}</div></div>
+                <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-verde)">Vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-verde)">${R$(vendido)}</div></div>
                 <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--amarelo,#B8860B)">Repassado</div><div style="font-size:13px;font-weight:800;color:var(--amarelo,#B8860B)">${R$(repassado)}</div></div>
               </div>
               <div style="font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;margin-bottom:4px">Produtos na loja</div>
@@ -3914,7 +4208,7 @@ async function excluirVisita(consigId,idx){
   openModal('🗑️ Excluir Visita',
     `<p>Excluir a visita de <strong>${formatarDataBR(v.data)}</strong>?</p>
      <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">Vendido: ${R$(v.valor_vendido||0)} · Recebido: ${R$(v.valor_recebido||0)}</p>
-     <p style="font-size:11.5px;color:var(--vermelho);margin-top:8px">⚠️ Isso NÃO devolve peças pro estoque em loja — se precisar corrigir a quantidade, use os botões +/- do produto depois.</p>`,
+     <p style="font-size:11.5px;color:var(--txt-vermelho);margin-top:8px">⚠️ Isso NÃO devolve peças pro estoque em loja — se precisar corrigir a quantidade, use os botões +/- do produto depois.</p>`,
     async()=>{
       c.visitas.splice(idx,1);
       await salvarItem('consignados',c);
@@ -3949,7 +4243,7 @@ function regVisita(consigId){
         <div style="font-size:12px;color:var(--cinza-med);margin-bottom:6px">Situação atual antes da visita:</div>
         <div style="display:flex;gap:16px">
           <div><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:18px;font-weight:800">${(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0),0)}</div></div>
-          <div><div style="font-size:10px;color:var(--cinza-med)">Valor</div><div style="font-size:18px;font-weight:800;color:var(--roxo)">${R$(valorLoja)}</div></div>
+          <div><div style="font-size:10px;color:var(--cinza-med)">Valor</div><div style="font-size:18px;font-weight:800;color:var(--txt-roxo)">${R$(valorLoja)}</div></div>
         </div>
       </div>
       <div class="form-grid">
@@ -3963,7 +4257,7 @@ function regVisita(consigId){
               <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
                 <div style="font-size:10px;color:var(--cinza-med)">Qtd que restou</div>
                 <input type="number" min="0" max="${it.qtd_atual}" value="${it.qtd_atual}" id="vis-q-${idx}" style="width:70px;padding:6px;border:1.5px solid var(--verde-med);border-radius:5px;font-size:16px;font-weight:700;text-align:center">
-                <div style="font-size:10px;color:var(--verde)">Vendidas: <strong id="vnd-${idx}">0</strong></div>
+                <div style="font-size:10px;color:var(--txt-verde)">Vendidas: <strong id="vnd-${idx}">0</strong></div>
               </div>
             </div>
           </div>`).join('')}
@@ -4199,8 +4493,10 @@ SECTIONS.pendencias = () => {
 };
 
 SECTIONS.relatorios = () => {
+  const per=getPeriodoAtual(_relPeriodo,_relCustomIni,_relCustomFim);
+  const baseVendas=_relPeriodo==='tudo'?todasVendasEfetivas():vendasNoPeriodo(per.inicio,per.fim);
   const pC={},pP={};
-  todasVendasEfetivas().forEach(v=>{
+  baseVendas.forEach(v=>{
     // Agrupa por cliente cadastrado quando existe; senão usa um "balde"
     // que faz sentido pro caso (consignação, ou nome digitado sem cadastro,
     // ou genuinamente não identificado) — evita mostrar "null" na tela.
@@ -4228,13 +4524,19 @@ SECTIONS.relatorios = () => {
     if(chave.startsWith('__NOME__')) return chave.slice(8);
     return getCli(chave)?.nome||chave;
   };
+  window._relatorioAtual={rC,rP,nomeChaveCliente,per};
   return`
+  ${renderSeletorPeriodo('rel',_relPeriodo,_relCustomIni,_relCustomFim)}
+  <div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:8px 14px;border-radius:8px;font-size:12px;margin-bottom:12px">
+    📅 ${per.label} — ${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)}
+  </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <button class="btn btn-outline btn-sm" onclick="exportarCSV(DB.vendas,'vendas')">📊 Vendas CSV</button>
     <button class="btn btn-outline btn-sm" onclick="exportarCSV(DB.clientes,'clientes')">📊 Clientes CSV</button>
     <button class="btn btn-outline btn-sm" onclick="exportarCSV(DB.produtos,'produtos')">📊 Produtos CSV</button>
     <button class="btn btn-outline btn-sm" onclick="exportarCSV(DB.compras,'compras')">📊 Compras CSV</button>
     <button class="btn btn-outline btn-sm" onclick="exportarCSV(DB.pedidos,'pedidos')">📊 Pedidos CSV</button>
+    <button class="btn btn-primary btn-sm" onclick="exportarRelatorioPDF()">📄 Exportar PDF</button>
   </div>
   <div class="panel">
     <div class="panel-header"><span class="panel-title">🏆 Top Clientes</span></div>
@@ -4268,6 +4570,59 @@ SECTIONS.relatorios = () => {
   </div>`;
 };
 
+// Exporta o relatório de Top Clientes/Produtos em PDF usando a função de
+// imprimir do navegador — mais confiável que gerar PDF via biblioteca
+function exportarRelatorioPDF(){
+  const info=window._relatorioAtual;
+  if(!info){toast('Abra a tela de Relatórios primeiro','error');return;}
+  const {rC,rP,nomeChaveCliente,per}=info;
+  const empresa=DB.config?.empresa||'Morfê Personalizados';
+  const cidade=DB.config?.cidade||'';
+  const geradoEm=new Date().toLocaleDateString('pt-BR');
+  const linhasClientes=rC.map(([chave,d],i)=>`<tr>
+    <td>${i+1}</td><td><b>${nomeChaveCliente(chave)}</b></td>
+    <td class="orc-num">${d.ped}</td><td class="orc-val">${R$(d.total)}</td><td class="orc-val">${R$(d.lucro)}</td>
+  </tr>`).join('');
+  const linhasProdutos=rP.map(([id,d],i)=>`<tr>
+    <td>${i+1}</td><td><b>${nomeProd(id)}</b></td>
+    <td class="orc-num">${d.qtd}</td><td class="orc-val">${R$(d.total)}</td><td class="orc-val">${R$(d.lucro)}</td>
+  </tr>`).join('');
+  const html=`<div class="orc-doc">
+    <div class="orc-header">
+      <div class="orc-header-brand">
+        <img src="data:image/png;base64,${LOGO_ORC_B64}" alt="${empresa}">
+        <div><h1>${empresa}</h1><p>${cidade||'Relatório de Desempenho'}</p></div>
+      </div>
+      <div class="orc-header-tag">
+        <div>Período</div><b>${per.label}</b>
+        <div>Gerado em</div><b>${geradoEm}</b>
+      </div>
+    </div>
+    <div class="orc-titulo-doc">Relatório · Top Clientes e Produtos</div>
+    <div class="orc-tbl-wrap">
+      <table class="orc-tbl">
+        <thead><tr><th>#</th><th>Cliente</th><th class="orc-num">Pedidos</th><th class="orc-val">Receita</th><th class="orc-val">Lucro</th></tr></thead>
+        <tbody>${linhasClientes||'<tr><td colspan="5" style="text-align:center">Sem vendas no período.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="orc-tbl-wrap" style="margin-top:18px">
+      <table class="orc-tbl">
+        <thead><tr><th>#</th><th>Produto</th><th class="orc-num">Qtd</th><th class="orc-val">Receita</th><th class="orc-val">Lucro</th></tr></thead>
+        <tbody>${linhasProdutos||'<tr><td colspan="5" style="text-align:center">Sem vendas no período.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="orc-footer">
+      <div class="orc-footer-linha"></div>
+      <p><b>${empresa}</b>${cidade?' · '+cidade:''}</p>
+    </div>
+  </div>`;
+  let area=document.getElementById('rel-print-area');
+  if(!area){ area=document.createElement('div'); area.id='rel-print-area'; document.body.appendChild(area); }
+  area.innerHTML=html;
+  toast('Abrindo impressão... escolha "Salvar como PDF"','success');
+  setTimeout(()=>window.print(),300);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURAÇÕES (com CATEGORIAS EDITÁVEIS)
 // ═══════════════════════════════════════════════════════════════
@@ -4288,6 +4643,7 @@ SECTIONS.config = () => {
       <hr style="margin:20px 0;border:none;border-top:1px solid var(--cinza-claro)">
       <div class="form-grid">
         <div class="form-group"><label class="form-label">Meta Mensal (R$)</label><input class="form-input" id="cfg-meta" type="number" value="${DB.config?.meta_mensal||5000}"></div>
+        <div class="form-group"><label class="form-label">Meta de Lucro Mensal (R$) — opcional</label><input class="form-input" id="cfg-metalucro" type="number" value="${DB.config?.meta_lucro_mensal||''}" placeholder="Ex: 2000"></div>
         <div class="form-group"><label class="form-label">Taxa PIX (%)</label><input class="form-input" id="cfg-pix" type="number" step="0.1" value="${DB.config?.taxa_pix||0}"></div>
         <div class="form-group"><label class="form-label">Taxa Débito (%)</label><input class="form-input" id="cfg-deb" type="number" step="0.1" value="${DB.config?.taxa_debito||1.5}"></div>
         <div class="form-group"><label class="form-label">Taxa Crédito 1x (%)</label><input class="form-input" id="cfg-cr1" type="number" step="0.1" value="${DB.config?.taxa_credito1||2.5}"></div>
@@ -4309,10 +4665,10 @@ SECTIONS.config = () => {
           <div style="display:inline-flex;align-items:center;gap:6px;background:var(--cinza-ultra);border:1.5px solid var(--cinza-claro);border-radius:20px;padding:8px 12px">
             <span style="font-size:13px;font-weight:600">${c}</span>
             <button onclick="editarCategoria(${i},'${c.replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer;color:var(--azul-claro);font-size:14px;padding:0 2px;line-height:1" title="Editar">✏️</button>
-            <button onclick="excluirCategoria(${i})" style="background:none;border:none;cursor:pointer;color:var(--vermelho);font-size:18px;padding:0 2px;line-height:1;font-weight:700" title="Excluir">×</button>
+            <button onclick="excluirCategoria(${i})" style="background:none;border:none;cursor:pointer;color:var(--txt-vermelho);font-size:18px;padding:0 2px;line-height:1;font-weight:700" title="Excluir">×</button>
           </div>`).join('')}
       </div>
-      <div style="background:var(--amarelo-claro);color:var(--amarelo);padding:10px 12px;border-radius:6px;font-size:12px;font-weight:600">
+      <div style="background:var(--amarelo-claro);color:var(--txt-amarelo);padding:10px 12px;border-radius:6px;font-size:12px;font-weight:600">
         💡 As categorias aparecem no cadastro de produtos. Adicione, edite ou remova como quiser.
       </div>
     </div>
@@ -4361,6 +4717,7 @@ async function salvarConfig(){
   DB.config.email=document.getElementById('cfg-email').value;
   DB.config.cidade=document.getElementById('cfg-cidade').value;
   DB.config.meta_mensal=parseFloat(document.getElementById('cfg-meta').value)||5000;
+  DB.config.meta_lucro_mensal=parseFloat(document.getElementById('cfg-metalucro').value)||0;
   DB.config.taxa_pix=parseFloat(document.getElementById('cfg-pix').value)||0;
   DB.config.taxa_debito=parseFloat(document.getElementById('cfg-deb').value)||1.5;
   DB.config.taxa_credito1=parseFloat(document.getElementById('cfg-cr1').value)||2.5;
@@ -4421,7 +4778,7 @@ function excluirCategoria(idx){
   const emUso=DB.produtos.filter(p=>p.categoria===nome).length;
   openModal('🗑️ Excluir Categoria',
     `<p style="font-size:14px;margin-bottom:12px">Excluir <strong>"${nome}"</strong>?</p>
-    ${emUso>0?`<div style="background:var(--amarelo-claro);color:var(--amarelo);padding:10px;border-radius:6px;font-size:12px;font-weight:600">⚠️ ${emUso} produto(s) usam esta categoria. Eles ficarão sem categoria definida.</div>`:'<p style="color:var(--cinza-med);font-size:12px">Esta categoria não está em uso.</p>'}`,
+    ${emUso>0?`<div style="background:var(--amarelo-claro);color:var(--txt-amarelo);padding:10px;border-radius:6px;font-size:12px;font-weight:600">⚠️ ${emUso} produto(s) usam esta categoria. Eles ficarão sem categoria definida.</div>`:'<p style="color:var(--cinza-med);font-size:12px">Esta categoria não está em uso.</p>'}`,
     async()=>{
       const c=getCategorias();c.splice(idx,1);
       await salvarCategoriasNoDB(c);
@@ -4532,7 +4889,7 @@ function importarBackup(){
       if(!valido){
         openModal('❌ Arquivo inválido — nada foi alterado',
           `<p style="margin-bottom:10px">Este arquivo não pode ser importado com segurança:</p>
-           <ul style="color:var(--vermelho);font-size:13px;padding-left:20px">${erros.map(x=>`<li>${x}</li>`).join('')}</ul>`,
+           <ul style="color:var(--txt-vermelho);font-size:13px;padding-left:20px">${erros.map(x=>`<li>${x}</li>`).join('')}</ul>`,
           ()=>closeModal(),'Entendi');
         return;
       }
@@ -4541,7 +4898,7 @@ function importarBackup(){
       const contagemAtual=Object.keys(DB).map(t=>`${t}: ${Array.isArray(DB[t])?DB[t].length:'—'}`).join(', ');
 
       openModal('⚠️ Confirmar Restauração de Backup',
-        `<div style="background:var(--amarelo-claro);color:var(--amarelo);padding:10px;border-radius:6px;font-size:12.5px;margin-bottom:12px">
+        `<div style="background:var(--amarelo-claro);color:var(--txt-amarelo);padding:10px;border-radius:6px;font-size:12.5px;margin-bottom:12px">
           Isso vai <strong>substituir</strong> os dados atuais pelas tabelas presentes neste arquivo. Um backup de segurança do que está AGORA será baixado automaticamente antes de aplicar qualquer coisa.
         </div>
         ${avisos.length>0?`<div style="background:var(--dourado-claro);color:var(--dourado-escuro);padding:10px;border-radius:6px;font-size:12px;margin-bottom:12px"><strong>Avisos:</strong><br>${avisos.join('<br>')}</div>`:''}
