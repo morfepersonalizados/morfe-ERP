@@ -26,7 +26,7 @@
   --cinza-claro:#E8E1D3; --cinza-ultra:#FBF8F2;
   --bg-input:#FFFFFF; --bg-pagina:#F3EEE3;
   --txt-azul:var(--azul); --txt-verde:var(--verde); --txt-vermelho:var(--vermelho);
-  --txt-amarelo:var(--amarelo); --txt-roxo:var(--roxo);
+  --txt-amarelo:var(--amarelo); --txt-roxo:var(--roxo); --txt-laranja:var(--laranja);
   --radius:14px; --radius-sm:9px;
   --sombra-sm:0 1px 2px rgba(24,46,98,0.06), 0 1px 3px rgba(24,46,98,0.08);
   --sombra-md:0 2px 6px rgba(24,46,98,0.06), 0 8px 20px rgba(24,46,98,0.09);
@@ -44,7 +44,7 @@ body.tema-escuro {
      melhor. Essas variáveis --txt-* são só pra texto colorido em cima de
      fundo claro/tintado, que senão ficaria ilegível no escuro. */
   --txt-azul:#7CA6E0; --txt-verde:#4ADE80; --txt-vermelho:#F87171;
-  --txt-amarelo:#FBBF24; --txt-roxo:#C4AAF5;
+  --txt-amarelo:#FBBF24; --txt-roxo:#C4AAF5; --txt-laranja:#FB923C;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:var(--bg-pagina);color:var(--cinza-escuro);min-height:100vh;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
@@ -87,9 +87,9 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
 .kpi-card{background:var(--cinza-ultra);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--sombra-sm);border-left:4px solid var(--azul-claro);transition:box-shadow .15s,transform .15s}
 .kpi-card:hover{box-shadow:var(--sombra-md);transform:translateY(-1px)}
-.kpi-card.verde{border-left-color:var(--verde-med)}.kpi-card.roxo{border-left-color:var(--txt-roxo)}
-.kpi-card.laranja{border-left-color:var(--laranja)}.kpi-card.vermelho{border-left-color:var(--txt-vermelho)}
-.kpi-card.amarelo{border-left-color:var(--txt-amarelo)}
+.kpi-card.verde{border-left-color:var(--verde-med)}.kpi-card.roxo{border-left-color:var(--roxo)}
+.kpi-card.laranja{border-left-color:var(--laranja)}.kpi-card.vermelho{border-left-color:var(--vermelho)}
+.kpi-card.amarelo{border-left-color:var(--amarelo)}
 .kpi-label{font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;letter-spacing:.6px}
 .kpi-value{font-size:21px;font-weight:800;color:var(--cinza-escuro);margin-top:4px;letter-spacing:-.3px}
 .kpi-sub{font-size:11px;color:var(--cinza-med);margin-top:2px}
@@ -164,6 +164,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .cal-com-venda{background:var(--verde-claro)}
 .cal-com-venda:hover{background:#C4EBD1}
 .cal-hoje.cal-com-venda{background:#EDE4C8;border-color:var(--dourado)}
+.cal-com-entrega{border-left:4px solid var(--laranja)}
+.cal-dia-entrega{font-size:9px;font-weight:800;color:var(--txt-laranja);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-dia-info{margin-top:auto;text-align:center}
 .cal-dia-qtd{font-size:15px;font-weight:900;color:var(--txt-verde)}
 .cal-dia-valor{font-size:9px;color:var(--txt-verde);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1408,6 +1410,25 @@ function diasComVendas(mes, ano){
   return porDia;
 }
 
+// Dias do mês com ENTREGA agendada (campo pd.entrega) — diferente de
+// diasComVendas, que olha a data do pedido/venda. Ignora pedidos já
+// Entregues ou Cancelados, que não precisam mais de atenção no calendário.
+function diasComEntregas(mes, ano){
+  const porDia = {};
+  DB.pedidos.forEach(p=>{
+    if(!p.entrega || p.status==='Entregue' || p.status==='Cancelado') return;
+    const d = new Date(normalizarData(p.entrega)+'T00:00:00');
+    if(isNaN(d)) return;
+    if(d.getMonth()===mes && d.getFullYear()===ano){
+      const dia = d.getDate();
+      if(!porDia[dia]) porDia[dia] = {qtd:0, pedidos:[]};
+      porDia[dia].qtd++;
+      porDia[dia].pedidos.push(p.id);
+    }
+  });
+  return porDia;
+}
+
 SECTIONS.calendario = () => {
   const hoje = new Date();
   const mesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -1418,6 +1439,7 @@ SECTIONS.calendario = () => {
   const diaSemanaInicio = primeiroDia.getDay();
 
   const dados = diasComVendas(_calMesAtual, _calAnoAtual);
+  const entregas = diasComEntregas(_calMesAtual, _calAnoAtual);
   const totalMes = Object.values(dados).reduce((s,d)=>s+d.valor,0);
   const qtdMes = Object.values(dados).reduce((s,d)=>s+d.qtd,0);
   const diaMaisForte = Object.entries(dados).sort((a,b)=>b[1].valor-a[1].valor)[0];
@@ -1427,11 +1449,14 @@ SECTIONS.calendario = () => {
   for(let dia=1; dia<=diasNoMes; dia++){
     const ehHoje = dia===hoje.getDate() && _calMesAtual===hoje.getMonth() && _calAnoAtual===hoje.getFullYear();
     const info = dados[dia];
+    const infoEntrega = entregas[dia];
     const dataStr = `${_calAnoAtual}-${String(_calMesAtual+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+    const titulo=[info?info.qtd+' venda(s) — '+R$(info.valor):'', infoEntrega?infoEntrega.qtd+' entrega(s) agendada(s)':''].filter(Boolean).join(' · ')||'Nada nesse dia';
     celulas.push(`
-      <div class="cal-dia ${ehHoje?'cal-hoje':''} ${info?'cal-com-venda':''}" onclick="abrirDetalheDia('${dataStr}')" title="${info?info.qtd+' venda(s) — '+R$(info.valor):'Nenhuma venda'}">
+      <div class="cal-dia ${ehHoje?'cal-hoje':''} ${info?'cal-com-venda':''} ${infoEntrega?'cal-com-entrega':''}" onclick="abrirDetalheDia('${dataStr}')" title="${titulo}">
         <div class="cal-dia-num">${dia}${ehHoje?' <span style=\"font-size:8px\">●hoje</span>':''}</div>
         ${info?`<div class="cal-dia-info"><div class="cal-dia-qtd">${info.qtd}</div><div class="cal-dia-valor">${R$(info.valor)}</div></div>`:''}
+        ${infoEntrega?`<div class="cal-dia-entrega">🚚 ${infoEntrega.qtd}</div>`:''}
       </div>`);
   }
 
@@ -1454,7 +1479,7 @@ SECTIONS.calendario = () => {
       <div class="cal-grid cal-header">${diasSemana.map(d=>`<div class="cal-dia-semana">${d}</div>`).join('')}</div>
       <div class="cal-grid">${celulas.join('')}</div>
     </div>
-    <div style="padding:10px 16px;font-size:11px;color:var(--cinza-med);border-top:1px solid var(--cinza-claro)">💡 Dias com fundo verde tiveram venda. Clique em qualquer dia pra ver o detalhe. O dia de hoje sempre aparece marcado sozinho, sem precisar mexer em nada.</div>
+    <div style="padding:10px 16px;font-size:11px;color:var(--cinza-med);border-top:1px solid var(--cinza-claro)">💡 Fundo verde = teve venda. Barra laranja na lateral = tem entrega agendada. Clique em qualquer dia pra ver o detalhe. O dia de hoje sempre aparece marcado sozinho, sem precisar mexer em nada.</div>
   </div>`;
 };
 
@@ -1491,7 +1516,24 @@ function abrirDetalheDia(dataStr){
         <td class="fw-bold text-verde">${R$(v.valorTotal)}</td>
         <td>${statusBadge(v.status)}</td>
       </tr>`).join('')}</tbody>
-    </table></div>`}`,
+    </table></div>`}
+    ${(()=>{
+      const entregasDia=DB.pedidos.filter(p=>p.entrega && normalizarData(p.entrega)===dataStr && p.status!=='Entregue' && p.status!=='Cancelado');
+      if(entregasDia.length===0) return '';
+      return `<div style="margin-top:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--txt-laranja);margin-bottom:6px">🚚 Entregas agendadas pra esse dia</div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Pedido</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Status</th></tr></thead>
+          <tbody>${entregasDia.map(p=>`<tr style="cursor:pointer" onclick="closeModal();verPedidoOrc('${p.id}')">
+            <td class="fw-bold text-azul">${p.id}</td>
+            <td>${nomeVenda(p)}</td>
+            <td class="text-center">${(p.itens||[]).length}</td>
+            <td class="fw-bold">${R$(p.total)}</td>
+            <td>${statusBadge(p.status)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
+    })()}`,
     ()=>closeModal(),'Fechar');
   document.getElementById('modal-save-btn').style.display='none';
 }
@@ -1514,15 +1556,20 @@ SECTIONS.dashboard = () => {
   const criticosMP = DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0)).length;
   const hojeStrAR = new Date().toISOString().slice(0,10);
   const arVencidas = DB.areceber.filter(x=>x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeStrAR).length;
-  const em7dias=new Date(); em7dias.setDate(em7dias.getDate()+7);
-  const em7diasStr=em7dias.toISOString().slice(0,10);
+  const janelaEntregaDias = +(DB.config?.aviso_entrega_dias || 7);
+  const emJaneladias=new Date(); emJaneladias.setDate(emJaneladias.getDate()+janelaEntregaDias);
+  const emJanelaDiasStr=emJaneladias.toISOString().slice(0,10);
   const proximasEntregas=DB.pedidos.filter(p=>p.entrega && p.status!=='Entregue' && p.status!=='Cancelado'
-    && normalizarData(p.entrega)>=hojeStrAR && normalizarData(p.entrega)<=em7diasStr)
+    && normalizarData(p.entrega)>=hojeStrAR && normalizarData(p.entrega)<=emJanelaDiasStr)
     .sort((a,b)=>normalizarData(a.entrega).localeCompare(normalizarData(b.entrega)));
+  // Quanto mais perto o dia da entrega, mais "chamativa" fica a cor —
+  // vermelho (hoje/amanhã) → laranja (2-3 dias) → amarelo (4+ dias) —
+  // pra dar aquele alerta visual crescente conforme o prazo aperta
   const rotuloEntrega=(dataEntregaStr)=>{
     const dias=Math.round((new Date(normalizarData(dataEntregaStr)+'T00:00:00')-new Date(hojeStrAR+'T00:00:00'))/86400000);
     const label=dias<=0?'Hoje':dias===1?'Amanhã':`Em ${dias} dias`;
-    return {label, cor:dias<=1?'var(--vermelho)':'var(--amarelo)', bg:dias<=1?'var(--vermelho-claro)':'var(--amarelo-claro)'};
+    const nivel=dias<=1?'vermelho':dias<=3?'laranja':'amarelo';
+    return {label, cor:`var(--txt-${nivel})`, bg:`var(--${nivel}-claro)`};
   };
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -1560,9 +1607,15 @@ SECTIONS.dashboard = () => {
   ${criticosMP>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('materias')">⚠️ ${criticosMP} matéria(s)-prima em estoque crítico</div>`:''}
   ${arVencidas>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('areceber')">⚠️ ${arVencidas} conta(s) a receber vencida(s)</div>`:''}
 
-  ${proximasEntregas.length>0?`<div class="panel">
-    <div class="panel-header"><span class="panel-title">🚚 Próximas Entregas (7 dias)</span></div>
-    <div class="tbl-wrap"><table>
+  ${DB.pedidos.some(p=>p.entrega && p.status!=='Entregue' && p.status!=='Cancelado')?`<div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">🚚 Próximas Entregas</span>
+      <div style="display:flex;gap:5px">
+        ${[3,7,14,30].map(d=>`<button class="btn ${janelaEntregaDias===d?'btn-primary':'btn-outline'} btn-sm" onclick="mudarJanelaEntregas(${d})">${d}d</button>`).join('')}
+      </div>
+    </div>
+    ${proximasEntregas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:20px;font-size:13px">Nenhuma entrega agendada nos próximos ${janelaEntregaDias} dias.</p>`:
+    `<div class="tbl-wrap"><table>
       <thead><tr><th>Cliente</th><th>Itens</th><th>Entrega</th></tr></thead>
       <tbody>${proximasEntregas.map(p=>{const r=rotuloEntrega(p.entrega);return`
         <tr style="cursor:pointer" onclick="verPedidoOrc('${p.id}')" title="Clique pra abrir">
@@ -1570,7 +1623,7 @@ SECTIONS.dashboard = () => {
           <td class="text-center">${(p.itens||[]).length}</td>
           <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
         </tr>`;}).join('')}</tbody>
-    </table></div>
+    </table></div>`}
   </div>`:''}
 
   ${(()=>{const fm=metricasFinanceiras();return `
@@ -2614,8 +2667,17 @@ async function confirmarEntrada(pedidoId){
   pd.entradas.push({valor,forma,data});
   const pago=pd.entradas.reduce((s,e)=>s+(+e.valor||0),0);
   pd.status_pgto=pago>=(+pd.total||0)?'Pago integral':pago>0?'Parcial':'Pendente';
+  // Confirma o pedido sozinho assim que bate 50% pago — só sobe de "Em
+  // aberto" pra "Confirmado". Nunca mexe se o status já estiver mais
+  // avançado (Em produção, Pronto, Entregue) ou Cancelado, que foram
+  // escolhas manuais e não devem ser sobrescritas automaticamente.
+  let confirmouAgora=false;
+  if(pd.status==='Em aberto' && (+pd.total||0)>0 && pago>=(+pd.total||0)*0.5){
+    pd.status='Confirmado';
+    confirmouAgora=true;
+  }
   await salvarItem('pedidos',pd);
-  toast(`${R$(valor)} registrado!`);
+  toast(`${R$(valor)} registrado!`+(confirmouAgora?' 🎉 Pedido confirmado automaticamente (50% pago)!':''));
   closeModal();
   setTimeout(()=>abrirPagamentos(pedidoId),100);
 }
@@ -3068,6 +3130,16 @@ function setPeriodoCustom(prefixo,campo,valor){
   else if(prefixo==='rel'){ if(campo==='inicio') _relCustomIni=valor; else _relCustomFim=valor; }
   else { if(campo==='inicio') _dreCustomIni=valor; else _dreCustomFim=valor; }
   render(currentSection);
+}
+
+// Janela de dias do painel "Próximas Entregas" do Dashboard — fica salva
+// em DB.config pra lembrar da preferência entre uma visita e outra
+function mudarJanelaEntregas(dias){
+  if(!DB.config) DB.config={};
+  DB.config.aviso_entrega_dias=dias;
+  salvarLocal();
+  enviarParaSheetsBackground('upsert','config',{...DB.config,id:1});
+  render('dashboard');
 }
 function custoFixoRateado(){
   const vendas = +(DB.config?.vendas_esperadas_mes||100)||100;
