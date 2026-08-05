@@ -852,6 +852,18 @@ const nomeProd = id => getProd(id)?.nome || id || '—';
 const ordNome = (arr, campo='nome') => [...(arr||[])].sort((a,b) => String(a?.[campo]||'').localeCompare(String(b?.[campo]||''), 'pt-BR', {sensitivity:'base'}));
 const nomeCli = id => getCli(id)?.nome || id || '—';
 const nomeVenda = v => (v.cliente && getCli(v.cliente)?.nome) || v.cliente_nome || v.cliente || '—';
+// Resumo curto dos itens de um pedido pra mostrar em listas (em vez de só
+// a quantidade de linhas) — ex: "2× Caneca Personalizada, 1× Chaveiro"
+function resumoItensPedido(p){
+  const itens=(p.itens||[]).filter(it=>it.prod||it.desc);
+  if(itens.length===0) return '—';
+  const partes=itens.map(it=>{
+    const nome=it.desc || (it.prod?(String(it.prod).startsWith('KIT:')?getItem(DB.kits,String(it.prod).replace('KIT:',''))?.nome:nomeProd(it.prod)):'Item');
+    return `${it.qtd||1}× ${nome||'Item'}`;
+  });
+  const texto=partes.join(', ');
+  return texto.length>60 ? texto.slice(0,57)+'…' : texto;
+}
 const nomeForn = id => getForn(id)?.nome || id || '—';
 // Verifica se um valor está de verdade definido — trata "undefined", "null"
 // E também "" (texto vazio) como "não definido". Isso importa porque o
@@ -1527,7 +1539,7 @@ function abrirDetalheDia(dataStr){
           <tbody>${entregasDia.map(p=>`<tr style="cursor:pointer" onclick="closeModal();verPedidoOrc('${p.id}')">
             <td class="fw-bold text-azul">${p.id}</td>
             <td>${nomeVenda(p)}</td>
-            <td class="text-center">${(p.itens||[]).length}</td>
+            <td style="font-size:12px">${resumoItensPedido(p)}</td>
             <td class="fw-bold">${R$(p.total)}</td>
             <td>${statusBadge(p.status)}</td>
           </tr>`).join('')}</tbody>
@@ -1620,7 +1632,7 @@ SECTIONS.dashboard = () => {
       <tbody>${proximasEntregas.map(p=>{const r=rotuloEntrega(p.entrega);return`
         <tr style="cursor:pointer" onclick="verPedidoOrc('${p.id}')" title="Clique pra abrir">
           <td class="fw-bold">${nomeVenda(p)}</td>
-          <td class="text-center">${(p.itens||[]).length}</td>
+          <td style="font-size:12px">${resumoItensPedido(p)}</td>
           <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
         </tr>`;}).join('')}</tbody>
     </table></div>`}
@@ -2318,8 +2330,8 @@ SECTIONS.pedidos = () => {
       <tbody>${lista.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido.</td></tr>`:
       lista.slice().reverse().map(p=>`<tr>
         <td class="fw-bold text-azul">${p.id}</td><td>${p.data||'—'}</td>
-        <td class="fw-bold">${nomeCli(p.cliente)||p.cliente_nome||'—'}</td>
-        <td class="text-center">${(p.itens||[]).length}</td>
+        <td class="fw-bold">${nomeVenda(p)}</td>
+        <td style="font-size:12px">${resumoItensPedido(p)}</td>
         <td class="fw-bold text-verde">${R$(p.total||0)}</td>
         <td>${statusPgto(p)}</td>
         <td>${statusBadge(p.status)}</td>
@@ -2611,7 +2623,7 @@ function abrirPagamentos(pedidoId){
     `<div>
       <div style="background:var(--azul);color:white;border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <div><div style="font-size:11px;opacity:.7">Cliente</div><div style="font-size:15px;font-weight:800">${nomeCli(pd.cliente)||pd.cliente_nome||'—'}</div></div>
+          <div><div style="font-size:11px;opacity:.7">Cliente</div><div style="font-size:15px;font-weight:800">${nomeVenda(pd)}</div></div>
           <div style="text-align:right"><div style="font-size:11px;opacity:.7">Total</div><div style="font-size:20px;font-weight:900">${R$(total)}</div></div>
         </div>
         <div style="margin-top:10px">
@@ -4759,6 +4771,16 @@ SECTIONS.config = () => {
         <button class="btn btn-outline" onclick="verLogSincronizacao()">📋 Ver Log de Sincronização</button>
       </div>
     </div>
+  </div>
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">🗂️ Histórico de Pedidos Antigos</span></div>
+    <div style="padding:20px">
+      <p style="font-size:13px;color:var(--cinza-med);margin-bottom:14px">Importa de uma vez os 33 pedidos antigos (dez/2025 a jul/2026) reconstruídos a partir de conversas — com prévia antes de gravar e sem mexer no estoque.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="abrirImportacaoHistorico()">🗂️ Importar Histórico de Pedidos</button>
+        ${DB.pedidos.some(p=>String(p.id||'').startsWith('HIST-'))?`<button class="btn btn-danger" onclick="desfazerImportacaoHistorico()">🗑️ Desfazer Importação</button>`:''}
+      </div>
+    </div>
   </div>`;
 };
 
@@ -4777,6 +4799,177 @@ function verLogSincronizacao(){
           </tr>`).join('')}</tbody>
         </table></div>`,
     ()=>closeModal(),'Fechar');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// IMPORTAÇÃO DE HISTÓRICO — pedidos antigos (dez/2025 a jul/2026)
+// reconstruídos a partir de conversas. Roda uma vez só, sob confirmação
+// explícita do usuário, NUNCA mexe no estoque (são vendas que já
+// aconteceram de verdade, não é pra abater matéria-prima de novo) e
+// tira um backup de segurança automático antes de gravar qualquer coisa.
+// ═══════════════════════════════════════════════════════════════
+const HISTORICO_IMPORT_DATA = [
+  {data:'2025-12-02', cliente:'stefany', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca com interior vermelho (Ayrton Senna)'},
+  {data:'2025-12-04', cliente:'Polyana', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca personalizada'},
+  {data:'2026-01-22', cliente:'Gabrieli', itens:{caneca:2}, valor:0, tipo:'sem_valor', obs:'Pelo menos 2 canecas personalizadas'},
+  {data:'2026-01-30', cliente:'Márcia Tavares', itens:{caneca:2}, valor:0, tipo:'sem_valor', obs:'Pelo menos 2 canecas personalizadas'},
+  {data:'2026-02-11', cliente:'Priscila', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'Pelo menos 1 caneca personalizada'},
+  {data:'2026-02-13', cliente:'Isa', itens:{mousepad:1}, valor:0, tipo:'sem_valor', obs:'1 mouse pad personalizado'},
+  {data:'2026-02-26', cliente:'Michiles Jucilene', itens:{caneca:1}, valor:55, tipo:'exato', obs:'1 caneca Palmeiras com interior e alça verde'},
+  {data:'2026-02-26', cliente:'Kvra MARTINS', itens:{caneca:2}, valor:0, tipo:'sem_valor', obs:'Pelo menos 2 canecas, incluindo caneca mágica'},
+  {data:'2026-02-27', cliente:'B.P', itens:{caneca:1}, valor:30, tipo:'estimado', obs:'1 caneca personalizada'},
+  {data:'2026-03-09', cliente:'Yasmim', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca Vasco personalizada'},
+  {data:'2026-03-20', cliente:'Lucia', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca de chope fosca'},
+  {data:'2026-03-20', cliente:'Sara Oliveira', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca personalizada'},
+  {data:'2026-04-19', cliente:'mira', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca personalizada'},
+  {data:'2026-05-18', cliente:'Ailton Carvalho', itens:{azulejo:2}, valor:0, tipo:'sem_valor', obs:'Pelo menos 2 azulejos decorativos'},
+  {data:'2026-05-27', cliente:'Jogan Hemnani Amg Cindy', itens:{quebracabeca:1}, valor:30, tipo:'exato', obs:'1 quebra-cabeça personalizado de 60 peças'},
+  {data:'2026-05-27', cliente:'Maissa Viana', itens:{mousepad:1}, valor:0, tipo:'sem_valor', obs:'1 item para setup (provável mouse pad)'},
+  {data:'2026-05-28', cliente:'Maiene', itens:{caneca:1}, valor:55, tipo:'exato', obs:'1 caneca com interior e alça vermelha + arte'},
+  {data:'2026-06-05', cliente:'Sérgio Ricardo', itens:{mousepad:1}, valor:35, tipo:'exato', obs:'1 item retangular (provável mouse pad)'},
+  {data:'2026-06-06', cliente:'Jose', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca personalizada'},
+  {data:'2026-06-06', cliente:'layze', itens:{caneca:1}, valor:50, tipo:'exato', obs:'1 caneca de chope Cruzeiro'},
+  {data:'2026-06-08', cliente:'Joas Lima', itens:{caneca:1}, valor:55, tipo:'exato', obs:'1 caneca com interior e alça vermelha'},
+  {data:'2026-06-10', cliente:'THAIS', itens:{caneca:1,chaveiro:2}, valor:55, tipo:'exato', obs:'1 caneca branca + 2 chaveiros'},
+  {data:'2026-06-10', cliente:'Fernando Cecchini', itens:{caneca:1,chaveiro:1}, valor:50, tipo:'exato', obs:'1 caneca branca + 1 chaveiro'},
+  {data:'2026-06-11', cliente:'Victor.Drakarys', itens:{caneca:2,chaveiro:2}, valor:140, tipo:'exato', obs:'2 canecas com interior e alça + 2 chaveiros'},
+  {data:'2026-06-12', cliente:'Andrade', itens:{caneca:2}, valor:110, tipo:'exato', obs:'2 canecas com interior e alça'},
+  {data:'2026-06-12', cliente:'Ingrid', itens:{caneca:1}, valor:35, tipo:'exato', obs:'1 caneca branca personalizada'},
+  {data:'2026-06-13', cliente:'Gabii Guedes', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca personalizada'},
+  {data:'2026-06-16', cliente:'Lucia Martins', itens:{caneca:1}, valor:0, tipo:'sem_valor', obs:'1 caneca personalizada'},
+  {data:'2026-06-17', cliente:'Suellen Silva', itens:{caneca:1}, valor:60, tipo:'estimado', obs:'1 caneca personalizada'},
+  {data:'2026-06-19', cliente:'Antonio Fabio', itens:{caneca:1}, valor:50, tipo:'exato', obs:'1 caneca de chope Caprichoso'},
+  {data:'2026-06-24', cliente:'Anny', itens:{caneca:1}, valor:45, tipo:'exato', obs:'1 caneca com interior azul'},
+  {data:'2026-06-25', cliente:'Suelen Moreira', itens:{caneca:4}, valor:180, tipo:'exato', obs:'4 canecas (2 brancas + 2 coloridas; descrição final diverge)'},
+  {data:'2026-07-08', cliente:'Cindy (resumo interno)', itens:{caneca:1}, valor:35, tipo:'exato', obs:'1 caneca branca'}
+];
+// 11 pedidos ficaram de fora desses dados de propósito, por não terem
+// produto identificado: Shirley Ranna, Gideão Migues, Ana Braga, Joao
+// Souza, Lorena, Beatriz, Luh, Duda, Tarcy, Jade Carol, Gisele.
+
+const _CATEGORIA_LABEL = {caneca:'Caneca personalizada', chaveiro:'Chaveiro personalizado', mousepad:'Mouse pad personalizado', azulejo:'Azulejo personalizado', quebracabeca:'Quebra-cabeça personalizado'};
+function _matchProdutoCategoria(categoria){
+  const termos = {caneca:['caneca'], chaveiro:['chaveiro'], mousepad:['mouse pad','mousepad'], azulejo:['azulejo'], quebracabeca:['quebra-cabeça','quebra cabeça','puzzle']}[categoria]||[];
+  const p = DB.produtos.find(p=>p.status==='Ativo' && termos.some(t=>(p.nome||'').toLowerCase().includes(t)));
+  return p?p.id:null;
+}
+function _matchClienteNome(nome){
+  const norm=(nome||'').trim().toLowerCase();
+  const c = DB.clientes.find(c=>(c.nome||'').trim().toLowerCase()===norm);
+  return c?c.id:null;
+}
+
+// Monta os objetos de pedido prontos (sem salvar nada ainda) — usado tanto
+// pra montar a prévia quanto pra gravar de verdade, garantindo que os dois
+// usam exatamente a mesma lógica.
+function prepararImportacaoHistorico(incluirSemValor){
+  return HISTORICO_IMPORT_DATA
+    .filter(row=>incluirSemValor || row.tipo!=='sem_valor')
+    .map((row,idx)=>{
+      const categorias=Object.entries(row.itens).filter(([,q])=>q>0);
+      const totalUnidades=categorias.reduce((s,[,q])=>s+q,0);
+      // Divide o valor entre as categorias por unidade, mas ajusta a ÚLTIMA
+      // categoria pra fechar exatamente o valor original — sem isso, uma
+      // divisão como R$55/3 vira 18,33+18,33+18,33=54,99 e perde 1 centavo
+      const valorPorUnidadeBase=totalUnidades>0?Math.floor((row.valor/totalUnidades)*100)/100:0;
+      let somaAlocada=0;
+      const itens=categorias.map(([cat,qtd],i)=>{
+        const ehUltima=i===categorias.length-1;
+        let valorUnit=valorPorUnidadeBase;
+        if(ehUltima && totalUnidades>0){
+          valorUnit=parseFloat(((row.valor-somaAlocada)/qtd).toFixed(2));
+        }
+        somaAlocada+=valorUnit*qtd;
+        const prodId=_matchProdutoCategoria(cat);
+        // Sempre preenche a descrição do item — com a descrição específica
+        // original quando o pedido tem só uma categoria de produto (ex: "1
+        // caneca Palmeiras com interior e alça verde", que é bem mais útil
+        // que só repetir o nome genérico do produto), ou o rótulo genérico
+        // da categoria quando o pedido misturou mais de um tipo de item.
+        // Sem isso o campo "Arte/Desc." fica em branco na tela de edição,
+        // que quebra o padrão do resto do app (lá o campo sempre vem
+        // preenchido, com o nome do produto ou uma nota).
+        const descText=categorias.length===1?row.obs:_CATEGORIA_LABEL[cat];
+        return {prod:prodId||'', desc:descText, qtd, valor:valorUnit, desc_tipo:'nenhum', desc_valor:0};
+      });
+      const clienteId=_matchClienteNome(row.cliente);
+      return {
+        id:'HIST-'+String(idx+1).padStart(3,'0'),
+        cliente:clienteId||'', cliente_nome:clienteId?'':row.cliente,
+        data:row.data, status:'Entregue', forma:'Histórico', itens, total:row.valor, subtotal:row.valor,
+        entradas: row.valor>0?[{valor:row.valor,forma:'Histórico',data:row.data}]:[],
+        consumo_insumos:{}, estoque_baixado:false,
+        obs:`Importado do histórico reconstruído a partir de conversas antigas. Descrição original: "${row.obs}"${row.tipo!=='exato'?' · Valor '+(row.tipo==='sem_valor'?'não registrado':'estimado'):''}.`,
+        criado_em:new Date().toISOString(),
+        _tipoValor:row.tipo, _origCliente:row.cliente
+      };
+    });
+}
+
+function abrirImportacaoHistorico(){
+  const jaImportado=DB.pedidos.some(p=>String(p.id||'').startsWith('HIST-'));
+  const semValorCount=HISTORICO_IMPORT_DATA.filter(r=>r.tipo==='sem_valor').length;
+  const comValorCount=HISTORICO_IMPORT_DATA.length-semValorCount;
+  openModal('🗂️ Importar Histórico de Pedidos',
+    `${jaImportado?`<div style="background:var(--amarelo-claro);color:var(--txt-amarelo);padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px">⚠️ Parece que esse histórico já foi importado antes (encontrei pedidos com ID começando em <b>HIST-</b>). Importar de novo vai duplicar. Se quiser refazer, use "🗑️ Desfazer Importação" primeiro.</div>`:''}
+    <p style="font-size:13px;color:var(--cinza-med);margin-bottom:12px">Isso NÃO mexe no estoque atual (são pedidos antigos, já vendidos de verdade) e NÃO altera nenhum outro dado do sistema. Antes de gravar, um backup de segurança é baixado automaticamente — e depois de importar, dá pra desfazer com 1 clique.</p>
+    <div style="background:var(--cinza-ultra);border-radius:8px;padding:12px;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="hist-incluir-semvalor" checked onchange="atualizarPreviaHistorico()">
+        Incluir também os <b>${semValorCount} pedidos sem valor registrado</b> (contam pra "o que mais saiu", mas entram como R$ 0,00 — não puxam nem derrubam suas médias de faturamento)
+      </label>
+    </div>
+    <div id="hist-previa"></div>`,
+    ()=>confirmarImportacaoHistorico(),'✅ Confirmar Importação');
+  atualizarPreviaHistorico();
+}
+
+function atualizarPreviaHistorico(){
+  const incluirSemValor=document.getElementById('hist-incluir-semvalor')?.checked!==false;
+  const pedidos=prepararImportacaoHistorico(incluirSemValor);
+  const totalValor=pedidos.reduce((s,p)=>s+(+p.total||0),0);
+  const el=document.getElementById('hist-previa');
+  if(!el)return;
+  el.innerHTML=`
+    <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="background:var(--verde-claro);color:var(--txt-verde);padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">${pedidos.length} pedidos serão importados</div>
+      <div style="background:var(--azul-claro);color:var(--txt-azul);padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">${R$(totalValor)} em receita histórica</div>
+      <div style="background:var(--cinza-claro);color:var(--cinza-escuro);padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">11 ignorados (produto não identificado)</div>
+    </div>
+    <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
+      <table>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Valor</th></tr></thead>
+        <tbody>${pedidos.map(p=>`<tr>
+          <td style="white-space:nowrap">${p.data}</td>
+          <td>${p.cliente_nome||nomeCli(p.cliente)}</td>
+          <td>${p.itens.map(it=>`${it.qtd}× ${it.prod?nomeProd(it.prod):it.desc}`).join(', ')}</td>
+          <td class="${p.total>0?'fw-bold':''}" style="${p.total===0?'color:var(--cinza-med)':''}">${R$(p.total)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+async function confirmarImportacaoHistorico(){
+  const incluirSemValor=document.getElementById('hist-incluir-semvalor')?.checked!==false;
+  const pedidos=prepararImportacaoHistorico(incluirSemValor);
+  criarBackupSeguranca('antes de importar histórico de pedidos ('+pedidos.length+' registros)');
+  for(const pd of pedidos){
+    await salvarItem('pedidos', pd);
+  }
+  closeModal();
+  toast(`✅ ${pedidos.length} pedidos históricos importados! Um backup de segurança foi baixado antes de gravar.`);
+  render('pedidos');
+}
+
+function desfazerImportacaoHistorico(){
+  const alvos=DB.pedidos.filter(p=>String(p.id||'').startsWith('HIST-'));
+  if(alvos.length===0){toast('Não encontrei nenhum pedido importado (HIST-) pra desfazer.','error');return;}
+  if(!confirm(`Isso vai APAGAR ${alvos.length} pedidos importados do histórico (IDs começando em HIST-). Os outros dados do sistema não são afetados. Confirma?`))return;
+  alvos.forEach(p=>{ const i=DB.pedidos.indexOf(p); if(i>=0) DB.pedidos.splice(i,1); });
+  salvarLocal();
+  alvos.forEach(p=>enviarParaSheetsBackground('excluir','pedidos',null,p.id));
+  toast(`${alvos.length} pedidos do histórico removidos.`);
+  render(currentSection);
 }
 
 async function salvarConfig(){
