@@ -166,6 +166,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .cal-hoje.cal-com-venda{background:#EDE4C8;border-color:var(--dourado)}
 .cal-com-entrega{border-left:4px solid var(--laranja)}
 .cal-dia-entrega{font-size:9px;font-weight:800;color:var(--txt-laranja);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-com-conta{border-right:4px solid var(--vermelho)}
+.cal-dia-conta{font-size:9px;font-weight:800;color:var(--txt-vermelho);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-dia-info{margin-top:auto;text-align:center}
 .cal-dia-qtd{font-size:15px;font-weight:900;color:var(--txt-verde)}
 .cal-dia-valor{font-size:9px;color:var(--txt-verde);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -407,7 +409,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURAÇÃO — ALTERE AQUI
 // ═══════════════════════════════════════════════════════════════
-const SENHA_APP = 'Morfe2105@';
+const SENHA_APP = 'morfe2105';
 // Login com Google (Fase 2, preparado mas OPCIONAL por enquanto). Troque
 // pelo Client ID de verdade quando configurar no Google Cloud Console —
 // enquanto estiver com esse valor de exemplo, o botão de login com Google
@@ -878,6 +880,17 @@ function normalizarData(str){
   if(!str) return '';
   const m = String(str).match(/^(\d{4}-\d{2}-\d{2})/);
   return m ? m[1] : String(str);
+}
+
+// Rótulo + cor de urgência crescente conforme uma data se aproxima —
+// reaproveitado tanto pras entregas de pedido quanto pras contas fixas a
+// pagar, pra manter a mesma linguagem visual (vermelho=urgente,
+// laranja=perto, amarelo=de olho) em vez de reinventar em cada painel.
+function rotuloUrgencia(dataAlvoStr, hojeStr){
+  const dias=Math.round((new Date(normalizarData(dataAlvoStr)+'T00:00:00')-new Date(hojeStr+'T00:00:00'))/86400000);
+  const label=dias<0?`${Math.abs(dias)}d atrasado`:dias===0?'Hoje':dias===1?'Amanhã':`Em ${dias} dias`;
+  const nivel=dias<=1?'vermelho':dias<=3?'laranja':'amarelo';
+  return {label, dias, cor:`var(--txt-${nivel})`, bg:`var(--${nivel}-claro)`};
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1441,7 +1454,26 @@ function diasComEntregas(mes, ano){
   return porDia;
 }
 
+// Dias do mês com CONTA FIXA vencendo (a partir de DB.apagar gerado por
+// gerarContasFixasDoMes) — mesmo espírito de diasComEntregas
+function diasComContasFixas(mes, ano){
+  const porDia = {};
+  DB.apagar.forEach(x=>{
+    if(!x.custo_fixo_id || !x.venc || x.status==='Pago') return;
+    const d = new Date(normalizarData(x.venc)+'T00:00:00');
+    if(isNaN(d)) return;
+    if(d.getMonth()===mes && d.getFullYear()===ano){
+      const dia = d.getDate();
+      if(!porDia[dia]) porDia[dia] = {qtd:0, valor:0};
+      porDia[dia].qtd++;
+      porDia[dia].valor += (+x.valor||0);
+    }
+  });
+  return porDia;
+}
+
 SECTIONS.calendario = () => {
+  gerarContasFixasDoMes();
   const hoje = new Date();
   const mesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
@@ -1452,6 +1484,7 @@ SECTIONS.calendario = () => {
 
   const dados = diasComVendas(_calMesAtual, _calAnoAtual);
   const entregas = diasComEntregas(_calMesAtual, _calAnoAtual);
+  const contas = diasComContasFixas(_calMesAtual, _calAnoAtual);
   const totalMes = Object.values(dados).reduce((s,d)=>s+d.valor,0);
   const qtdMes = Object.values(dados).reduce((s,d)=>s+d.qtd,0);
   const diaMaisForte = Object.entries(dados).sort((a,b)=>b[1].valor-a[1].valor)[0];
@@ -1462,13 +1495,15 @@ SECTIONS.calendario = () => {
     const ehHoje = dia===hoje.getDate() && _calMesAtual===hoje.getMonth() && _calAnoAtual===hoje.getFullYear();
     const info = dados[dia];
     const infoEntrega = entregas[dia];
+    const infoConta = contas[dia];
     const dataStr = `${_calAnoAtual}-${String(_calMesAtual+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
-    const titulo=[info?info.qtd+' venda(s) — '+R$(info.valor):'', infoEntrega?infoEntrega.qtd+' entrega(s) agendada(s)':''].filter(Boolean).join(' · ')||'Nada nesse dia';
+    const titulo=[info?info.qtd+' venda(s) — '+R$(info.valor):'', infoEntrega?infoEntrega.qtd+' entrega(s) agendada(s)':'', infoConta?infoConta.qtd+' conta(s) a pagar — '+R$(infoConta.valor):''].filter(Boolean).join(' · ')||'Nada nesse dia';
     celulas.push(`
-      <div class="cal-dia ${ehHoje?'cal-hoje':''} ${info?'cal-com-venda':''} ${infoEntrega?'cal-com-entrega':''}" onclick="abrirDetalheDia('${dataStr}')" title="${titulo}">
+      <div class="cal-dia ${ehHoje?'cal-hoje':''} ${info?'cal-com-venda':''} ${infoEntrega?'cal-com-entrega':''} ${infoConta?'cal-com-conta':''}" onclick="abrirDetalheDia('${dataStr}')" title="${titulo}">
         <div class="cal-dia-num">${dia}${ehHoje?' <span style=\"font-size:8px\">●hoje</span>':''}</div>
         ${info?`<div class="cal-dia-info"><div class="cal-dia-qtd">${info.qtd}</div><div class="cal-dia-valor">${R$(info.valor)}</div></div>`:''}
         ${infoEntrega?`<div class="cal-dia-entrega">🚚 ${infoEntrega.qtd}</div>`:''}
+        ${infoConta?`<div class="cal-dia-conta">📤 ${R$(infoConta.valor)}</div>`:''}
       </div>`);
   }
 
@@ -1491,7 +1526,7 @@ SECTIONS.calendario = () => {
       <div class="cal-grid cal-header">${diasSemana.map(d=>`<div class="cal-dia-semana">${d}</div>`).join('')}</div>
       <div class="cal-grid">${celulas.join('')}</div>
     </div>
-    <div style="padding:10px 16px;font-size:11px;color:var(--cinza-med);border-top:1px solid var(--cinza-claro)">💡 Fundo verde = teve venda. Barra laranja na lateral = tem entrega agendada. Clique em qualquer dia pra ver o detalhe. O dia de hoje sempre aparece marcado sozinho, sem precisar mexer em nada.</div>
+    <div style="padding:10px 16px;font-size:11px;color:var(--cinza-med);border-top:1px solid var(--cinza-claro)">💡 Fundo verde = teve venda. Barra laranja à esquerda = tem entrega agendada. Barra vermelha à direita = tem conta fixa vencendo. Clique em qualquer dia pra ver o detalhe. O dia de hoje sempre aparece marcado sozinho, sem precisar mexer em nada.</div>
   </div>`;
 };
 
@@ -1545,6 +1580,21 @@ function abrirDetalheDia(dataStr){
           </tr>`).join('')}</tbody>
         </table></div>
       </div>`;
+    })()}
+    ${(()=>{
+      const contasDia=DB.apagar.filter(x=>x.custo_fixo_id && normalizarData(x.venc)===dataStr && x.status!=='Pago');
+      if(contasDia.length===0) return '';
+      return `<div style="margin-top:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--txt-vermelho);margin-bottom:6px">📤 Contas fixas vencendo nesse dia</div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Conta</th><th>Valor</th><th>Status</th></tr></thead>
+          <tbody>${contasDia.map(x=>`<tr style="cursor:pointer" onclick="closeModal();editarAP('${x.id}')">
+            <td class="fw-bold">${x.credor||x.descricao}</td>
+            <td class="fw-bold text-vermelho">${R$(x.valor)}</td>
+            <td>${statusBadge(x.status)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
     })()}`,
     ()=>closeModal(),'Fechar');
   document.getElementById('modal-save-btn').style.display='none';
@@ -1574,15 +1624,20 @@ SECTIONS.dashboard = () => {
   const proximasEntregas=DB.pedidos.filter(p=>p.entrega && p.status!=='Entregue' && p.status!=='Cancelado'
     && normalizarData(p.entrega)>=hojeStrAR && normalizarData(p.entrega)<=emJanelaDiasStr)
     .sort((a,b)=>normalizarData(a.entrega).localeCompare(normalizarData(b.entrega)));
+
+  // Contas fixas recorrentes (assinaturas, aluguel etc. com dia de
+  // vencimento configurado) — gera o lançamento do mês corrente em "A
+  // Pagar" se ainda não existir, e monta a lista de próximas a vencer
+  gerarContasFixasDoMes();
+  const janelaContasDias = +(DB.config?.aviso_contas_dias || 7);
+  const emJanelaContasStr=(()=>{const d=new Date(); d.setDate(d.getDate()+janelaContasDias); return d.toISOString().slice(0,10);})();
+  const proximasContas=DB.apagar.filter(x=>x.custo_fixo_id && x.status!=='Pago' && x.venc
+    && normalizarData(x.venc)<=emJanelaContasStr)
+    .sort((a,b)=>normalizarData(a.venc).localeCompare(normalizarData(b.venc)));
   // Quanto mais perto o dia da entrega, mais "chamativa" fica a cor —
   // vermelho (hoje/amanhã) → laranja (2-3 dias) → amarelo (4+ dias) —
   // pra dar aquele alerta visual crescente conforme o prazo aperta
-  const rotuloEntrega=(dataEntregaStr)=>{
-    const dias=Math.round((new Date(normalizarData(dataEntregaStr)+'T00:00:00')-new Date(hojeStrAR+'T00:00:00'))/86400000);
-    const label=dias<=0?'Hoje':dias===1?'Amanhã':`Em ${dias} dias`;
-    const nivel=dias<=1?'vermelho':dias<=3?'laranja':'amarelo';
-    return {label, cor:`var(--txt-${nivel})`, bg:`var(--${nivel}-claro)`};
-  };
+  const rotuloEntrega=(dataEntregaStr)=>rotuloUrgencia(dataEntregaStr, hojeStrAR);
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const porMes={}, lucroPorMes={};
@@ -1633,6 +1688,25 @@ SECTIONS.dashboard = () => {
         <tr style="cursor:pointer" onclick="verPedidoOrc('${p.id}')" title="Clique pra abrir">
           <td class="fw-bold">${nomeVenda(p)}</td>
           <td style="font-size:12px">${resumoItensPedido(p)}</td>
+          <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
+        </tr>`;}).join('')}</tbody>
+    </table></div>`}
+  </div>`:''}
+
+  ${DB.custos_fixos.some(c=>+c.dia_vencimento>0)?`<div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">📤 Contas Fixas a Pagar</span>
+      <div style="display:flex;gap:5px">
+        ${[3,7,14,30].map(d=>`<button class="btn ${janelaContasDias===d?'btn-primary':'btn-outline'} btn-sm" onclick="mudarJanelaContas(${d})">${d}d</button>`).join('')}
+      </div>
+    </div>
+    ${proximasContas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:20px;font-size:13px">Nenhuma conta fixa vencendo nos próximos ${janelaContasDias} dias.</p>`:
+    `<div class="tbl-wrap"><table>
+      <thead><tr><th>Conta</th><th>Valor</th><th>Vencimento</th></tr></thead>
+      <tbody>${proximasContas.map(x=>{const r=rotuloUrgencia(x.venc,hojeStrAR);return`
+        <tr style="cursor:pointer" onclick="editarAP('${x.id}')" title="Clique pra abrir">
+          <td class="fw-bold">${x.credor||x.descricao}</td>
+          <td class="fw-bold text-vermelho">${R$(x.valor)}</td>
           <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
         </tr>`;}).join('')}</tbody>
     </table></div>`}
@@ -3062,6 +3136,34 @@ async function marcarPagoAP(id){const x=getItem(DB.apagar,id);x.pago=x.valor;x.s
 // Helpers de cálculo de Custos e Taxas — usados também nas Fichas Técnicas
 function custosFixosMensais(){ return DB.custos_fixos.filter(c=>c.tipo!=='percentual').reduce((s,c)=>s+(+c.valor||0),0); }
 
+// Gera automaticamente o lançamento do mês em "A Pagar" pra cada custo
+// fixo com dia de vencimento configurado — sem duplicar (verifica se já
+// existe um lançamento desse custo_fixo_id pra esse mês antes de criar) e
+// sem nunca mexer em lançamentos que já existem (não sobrescreve status
+// nem valor pago). Roda toda vez que o Dashboard é aberto; é barato
+// quando não tem nada novo pra gerar, já que só lê e compara.
+function gerarContasFixasDoMes(){
+  const hoje=new Date();
+  const mesRef=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const recorrentes=DB.custos_fixos.filter(c=>c.tipo!=='percentual' && +c.dia_vencimento>0);
+  recorrentes.forEach(c=>{
+    const jaExiste=DB.apagar.some(x=>x.custo_fixo_id===c.id && x.mes_ref===mesRef);
+    if(jaExiste) return;
+    const ultimoDiaMes=new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
+    const dia=Math.min(+c.dia_vencimento, ultimoDiaMes);
+    const venc=`${mesRef}-${String(dia).padStart(2,'0')}`;
+    const obj={
+      id:nextId(DB.apagar,'CP'), data:new Date().toISOString().slice(0,10),
+      credor:c.descricao, descricao:`Conta fixa mensal: ${c.descricao}`,
+      valor:+c.valor||0, venc, pago:0, status:'Em aberto',
+      custo_fixo_id:c.id, mes_ref:mesRef, criado_em:new Date().toISOString()
+    };
+    DB.apagar.push(obj);
+    salvarLocal();
+    enviarParaSheetsBackground('upsert','apagar',obj);
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // PERÍODO — usado por Dashboard e DRE (e qualquer outra tela que
 // precisar). Existe UMA fonte só pra "qual o período" e "quanto de
@@ -3149,6 +3251,16 @@ function setPeriodoCustom(prefixo,campo,valor){
 function mudarJanelaEntregas(dias){
   if(!DB.config) DB.config={};
   DB.config.aviso_entrega_dias=dias;
+  salvarLocal();
+  enviarParaSheetsBackground('upsert','config',{...DB.config,id:1});
+  render('dashboard');
+}
+
+// Janela de dias do painel "Contas Fixas a Pagar" — mesmo padrão da janela
+// de entregas, só que salva numa chave separada
+function mudarJanelaContas(dias){
+  if(!DB.config) DB.config={};
+  DB.config.aviso_contas_dias=dias;
   salvarLocal();
   enviarParaSheetsBackground('upsert','config',{...DB.config,id:1});
   render('dashboard');
@@ -3261,8 +3373,13 @@ function formCF(c={}){
     </select>
   </div>
   <div class="form-group" id="f-cfval-wrap"><label class="form-label" id="f-cfval-lbl">${tipo==='percentual'?'Percentual (%)':'Valor Mensal (R$)'}</label><input class="form-input" id="f-cfval" type="number" step="0.01" value="${c.valor||''}"></div>
+  <div class="form-group" id="f-cfdia-wrap" style="${tipo==='percentual'?'display:none':''}">
+    <label class="form-label">Dia de Vencimento (opcional)</label>
+    <input class="form-input" id="f-cfdia" type="number" min="1" max="31" placeholder="Ex: 8" value="${c.dia_vencimento||''}">
+  </div>
   <div class="form-group full"><label class="form-label">Obs</label><input class="form-input" id="f-cfobs" value="${c.obs||''}"></div>
-</div>`;}
+</div>
+${tipo==='percentual'?'':'<p style="font-size:11.5px;color:var(--cinza-med);margin-top:8px">💡 Se preencher o dia, essa conta aparece sozinha em "A Pagar" todo mês nessa data, some no Calendário e vira um aviso no Dashboard conforme o dia se aproxima.</p>'}`;}
 function toggleTipoCF(){
   const tipo=document.getElementById('f-cftipo').value;
   const lbl=document.getElementById('f-cfval-lbl');
@@ -3273,10 +3390,13 @@ function toggleTipoCF(){
       ? `<label class="form-label">Categoria</label><select class="form-select" id="f-cfcat"><option>Custo Fixo Geral</option></select>`
       : `<label class="form-label">Categoria</label><select class="form-select" id="f-cfcat"><option value="Imposto">Imposto</option><option value="Taxa Cartão">Taxa Cartão</option><option value="Taxa Delivery">Taxa Delivery</option><option value="Outro">Outro</option></select>`;
   }
+  const diaWrap=document.getElementById('f-cfdia-wrap');
+  if(diaWrap) diaWrap.style.display = tipo==='percentual'?'none':'';
 }
 async function salvarCF(id=null){
-  const obj={id:id||nextId(DB.custos_fixos,'CF'),descricao:document.getElementById('f-cfdesc').value.trim(),tipo:document.getElementById('f-cftipo').value,categoria:document.getElementById('f-cfcat').value,valor:parseFloat(document.getElementById('f-cfval').value)||0,obs:document.getElementById('f-cfobs').value.trim(),criado_em:id?getItem(DB.custos_fixos,id)?.criado_em:new Date().toISOString()};
+  const obj={id:id||nextId(DB.custos_fixos,'CF'),descricao:document.getElementById('f-cfdesc').value.trim(),tipo:document.getElementById('f-cftipo').value,categoria:document.getElementById('f-cfcat').value,valor:parseFloat(document.getElementById('f-cfval').value)||0,dia_vencimento:parseInt(document.getElementById('f-cfdia')?.value)||0,obs:document.getElementById('f-cfobs').value.trim(),criado_em:id?getItem(DB.custos_fixos,id)?.criado_em:new Date().toISOString()};
   if(!obj.descricao){toast('Informe a descrição','error');return;}
+  if(obj.dia_vencimento && (obj.dia_vencimento<1 || obj.dia_vencimento>31)){toast('Dia de vencimento precisa ser entre 1 e 31','error');return;}
   await salvarItem('custos_fixos',obj);toast(id?'Atualizado!':'Adicionado!');closeModal();render('custos');
 }
 
