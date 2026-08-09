@@ -608,6 +608,15 @@ function setSyncStatus(status, msg) {
 // Mostra o que exatamente está pendente de sincronizar, e por quê —
 // clica no aviso "X pendente(s)" no topo pra abrir isso
 function verPendencias(){
+  if(_tabelasBloqueadasPorSeguranca.length>0){
+    const tabelas=_tabelasBloqueadasPorSeguranca;
+    openModal(`🛡️ Proteção Ativada`,
+      `<p style="font-size:12.5px;color:var(--cinza-med);margin-bottom:12px">O Google devolveu ${tabelas.length===1?'a tabela':'as tabelas'} <b>${tabelas.join(', ')}</b> vazia${tabelas.length===1?'':'s'}, mas seu navegador tem dados aí — então o sistema NÃO apagou nada, só travou a atualização por segurança.</p>
+      <p style="font-size:12.5px;color:var(--cinza-med);margin-bottom:12px">Isso costuma acontecer quando aquela planilha nunca recebeu esses dados de verdade (por exemplo, por causa de um problema de autenticação que já foi corrigido). O jeito de resolver é reenviar o que está salvo aqui no navegador pra planilha.</p>
+      <div style="background:var(--amarelo-claro);color:var(--txt-amarelo);padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:6px">⚠️ Isso vai sobrescrever ${tabelas.length===1?'essa tabela':'essas tabelas'} na planilha do Google com o que está aqui no navegador. Se o navegador é mesmo a versão certa (o normal), pode seguir.</div>`,
+      async()=>{ closeModal(); await reenviarTabelasBloqueadas(tabelas); }, '☁️ Reenviar pro Google Agora');
+    return;
+  }
   if(_pendingQueue.length===0){
     toast('Tudo sincronizado, sem pendências! ✅');
     return;
@@ -627,12 +636,41 @@ function verPendencias(){
     async()=>{ closeModal(); await sincronizarAgora(); }, '🔄 Tentar Sincronizar Agora');
 }
 
+// Reenvia TODOS os registros locais de uma (ou mais) tabelas pro Google,
+// registro por registro — usa o mesmo caminho confiável de sempre
+// (enviarParaSheets, upsert) em vez de um "salvar_tudo" que mexeria em
+// tudo de uma vez. Só usado quando o usuário confirma explicitamente,
+// depois de entender que isso sobrescreve o que está na planilha.
+async function reenviarTabelasBloqueadas(tabelas){
+  toast('Reenviando... não feche o app');
+  let erros=0;
+  for(const tabela of tabelas){
+    const registros=DB[tabela]||[];
+    for(const obj of registros){
+      try{ await enviarParaSheets('upsert', tabela, obj); }
+      catch(e){ erros++; }
+    }
+  }
+  _tabelasBloqueadasPorSeguranca = _tabelasBloqueadasPorSeguranca.filter(t=>!tabelas.includes(t));
+  if(erros===0){
+    setSyncStatus('ok','✅ Sincronizado');
+    toast(`✅ Reenviado! ${tabelas.join(', ')} atualizada${tabelas.length===1?'':'s'} no Google.`);
+  } else {
+    toast(`⚠️ Reenviado com ${erros} erro(s). Confira o Log de Sincronização.`,'error');
+  }
+  registrarLogSync('reenvio_manual', tabelas.join(', ')+' — '+erros+' erro(s)');
+}
+
 function showLoading() { document.getElementById('loading-bar')?.classList.add('show'); }
 function hideLoading() { document.getElementById('loading-bar')?.classList.remove('show'); }
 
 // Controla quais tabelas têm sincronização em andamento — usado pra não deixar
 // o pull automático sobrescrever uma tabela que acabou de ser alterada localmente
 let _tabelasComSyncPendente = new Set();
+// Tabelas que o Google devolveu vazias por segurança (proteção ativada) —
+// guardado aqui fora da função de sync pra dar pra mostrar e agir em cima
+// disso (reenviar) a qualquer momento, não só no instante em que aconteceu
+let _tabelasBloqueadasPorSeguranca = [];
 // Fila de promessas por tabela — garante que dois salvamentos na MESMA tabela
 // nunca cheguem juntos no Google Sheets (evita um sobrescrever o outro)
 let _syncChainPorTabela = {};
@@ -667,8 +705,7 @@ async function sincronizarSheets() {
       // qualquer coisa que ainda esteja na fila de pendências.
       const tabelasComPendenciaNaFila = new Set(_pendingQueue.map(op => op.tabela));
       const CAMPOS_DATA = ['data','entrega','venc','prazo','cadastro'];
-      const tabelasBloqueadasPorSeguranca = [];
-      Object.keys(data.dados).forEach(tabela => {
+      const tabelasBloqueadasPorSeguranca = [];      Object.keys(data.dados).forEach(tabela => {
         if (_tabelasComSyncPendente.has(tabela)) return;
         if (tabelasComPendenciaNaFila.has(tabela)) return;
         if (DB[tabela] === undefined) return;
@@ -705,6 +742,7 @@ async function sincronizarSheets() {
       }
       salvarLocal();
       _ultimaSincronizacao = new Date().toISOString();
+      _tabelasBloqueadasPorSeguranca = tabelasBloqueadasPorSeguranca;
       if (tabelasBloqueadasPorSeguranca.length > 0) {
         setSyncStatus('error', '⚠️ Verifique: ' + tabelasBloqueadasPorSeguranca.join(', '));
         toast('⚠️ Proteção ativada: "'+tabelasBloqueadasPorSeguranca.join(', ')+'" veio vazia do Google, dados locais preservados. Veja o Log de Sincronização.', 'error');
