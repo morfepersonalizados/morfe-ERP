@@ -3181,11 +3181,20 @@ function custosFixosMensais(){ return DB.custos_fixos.filter(c=>c.tipo!=='percen
 // nem valor pago). Roda toda vez que o Dashboard é aberto; é barato
 // quando não tem nada novo pra gerar, já que só lê e compara.
 function gerarContasFixasDoMes(){
+  desduplicarContasFixas();
   const hoje=new Date();
   const mesRef=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
   const recorrentes=DB.custos_fixos.filter(c=>c.tipo!=='percentual' && +c.dia_vencimento>0);
   recorrentes.forEach(c=>{
-    const jaExiste=DB.apagar.some(x=>x.custo_fixo_id===c.id && x.mes_ref===mesRef);
+    // Confere por custo_fixo_id (caminho normal) E por nome+mês como
+    // reforço (caso esse campo tenha se perdido em algum ponto — por
+    // exemplo, dois aparelhos gerando quase ao mesmo tempo antes de
+    // sincronizar um com o outro). Sem esse reforço dá pra duplicar a
+    // mesma conta em vez de só uma vez por mês.
+    const jaExiste=DB.apagar.some(x=>
+      (x.custo_fixo_id===c.id && x.mes_ref===mesRef) ||
+      (!x.custo_fixo_id && x.mes_ref===mesRef && (x.credor||'').trim().toLowerCase()===(c.descricao||'').trim().toLowerCase())
+    );
     if(jaExiste) return;
     const ultimoDiaMes=new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
     const dia=Math.min(+c.dia_vencimento, ultimoDiaMes);
@@ -3200,6 +3209,38 @@ function gerarContasFixasDoMes(){
     salvarLocal();
     enviarParaSheetsBackground('upsert','apagar',obj);
   });
+}
+
+// Limpa duplicatas de contas fixas que às vezes acontecem quando o app é
+// aberto em mais de um aparelho quase ao mesmo tempo, antes de um
+// sincronizar com o outro (cada um gera a conta do mês sem saber que o
+// outro já gerou). Agrupa por custo_fixo_id+mês (ou credor+mês como
+// reforço), e quando acha mais de uma pro mesmo mês, mantém só UMA — a que
+// já estiver paga tem prioridade (não queremos perder um pagamento já
+// registrado); em empate, mantém a mais antiga. As demais são removidas
+// local e remotamente.
+function desduplicarContasFixas(){
+  const grupos={};
+  DB.apagar.forEach(x=>{
+    if(!x.mes_ref) return; // só mexe em contas geradas pelo sistema de recorrência
+    const chave=x.custo_fixo_id ? `id:${x.custo_fixo_id}:${x.mes_ref}` : `nome:${(x.credor||'').trim().toLowerCase()}:${x.mes_ref}`;
+    if(!grupos[chave]) grupos[chave]=[];
+    grupos[chave].push(x);
+  });
+  const remover=[];
+  Object.values(grupos).forEach(grupo=>{
+    if(grupo.length<=1) return;
+    grupo.sort((a,b)=>{
+      const pagoA=a.status==='Pago'?1:0, pagoB=b.status==='Pago'?1:0;
+      if(pagoA!==pagoB) return pagoB-pagoA; // paga primeiro
+      return (a.criado_em||'').localeCompare(b.criado_em||''); // mais antiga primeiro
+    });
+    grupo.slice(1).forEach(x=>remover.push(x.id));
+  });
+  if(remover.length===0) return;
+  DB.apagar = DB.apagar.filter(x=>!remover.includes(x.id));
+  salvarLocal();
+  remover.forEach(id=>enviarParaSheetsBackground('excluir','apagar',null,id));
 }
 
 // ═══════════════════════════════════════════════════════════════
