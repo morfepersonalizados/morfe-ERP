@@ -922,7 +922,13 @@ const getItem = (arr, id) => arr.find(x => String(x.id) === String(id));
 const getProd = id => getItem(DB.produtos, id);
 const getCli = id => getItem(DB.clientes, id);
 const getForn = id => getItem(DB.fornecedores, id);
-const nomeProd = id => getProd(id)?.nome || id || '—';
+const nomeProd = id => {
+  if(id && String(id).startsWith('KIT:')){
+    const k=getItem(DB.kits, String(id).replace('KIT:',''));
+    return k ? '🎁 '+k.nome : id;
+  }
+  return getProd(id)?.nome || id || '—';
+};
 // Ordena uma lista por um campo de nome, respeitando acentos do português (não muda o array original)
 const ordNome = (arr, campo='nome') => [...(arr||[])].sort((a,b) => String(a?.[campo]||'').localeCompare(String(b?.[campo]||''), 'pt-BR', {sensitivity:'base'}));
 const nomeCli = id => getCli(id)?.nome || id || '—';
@@ -1001,9 +1007,8 @@ function todasVendasEfetivas(){
     (p.itens||[]).forEach(it=>{
       const c=itemCalc(it);
       if(c.tot<=0 && (+it.qtd||0)<=0) return;
-      const ehKit=it.prod && String(it.prod).startsWith('KIT:');
       dePedidos.push({
-        data:p.data, cliente:p.cliente, cliente_nome:p.cliente_nome, produto:ehKit||!it.prod?null:it.prod, qtd:+it.qtd||1, valorTotal:c.tot,
+        data:p.data, cliente:p.cliente, cliente_nome:p.cliente_nome, produto:it.prod||null, qtd:+it.qtd||1, valorTotal:c.tot,
         custoTotal:custoItemPedido(it)*(+it.qtd||1), status:p.status, origem:'pedido', id:p.id
       });
     });
@@ -4139,20 +4144,33 @@ SECTIONS.kits = () => `
   <div class="panel">
     <div class="panel-header"><span class="panel-title">🎁 Kits & Combos (${DB.kits.length})</span>
       <button class="btn btn-success" onclick="novoKit()">+ Criar Kit</button></div>
+    ${DB.kits.length>0?`<div style="padding:0 16px;margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <input class="search-input" id="b-kit" style="flex:2;min-width:160px" placeholder="🔍 Buscar kit..." oninput="filtrarKits()">
+      <select class="form-select" id="b-kit-cat" style="flex:1;min-width:130px" onchange="filtrarKits()">
+        <option value="">Todas categorias</option>
+        ${[...new Set(DB.kits.map(k=>k.categoria||'Combo'))].sort().map(c=>`<option value="${c}">${c}</option>`).join('')}
+      </select>
+      <select class="form-select" id="b-kit-st" style="flex:1;min-width:110px" onchange="filtrarKits()">
+        <option value="">Ativos e Inativos</option>
+        <option value="Ativo">Só Ativos</option>
+        <option value="Inativo">Só Inativos</option>
+      </select>
+    </div>`:''}
     <div style="padding:16px">
       ${DB.kits.length===0?`<div class="empty-state"><div class="empty-icon">🎁</div>Nenhum kit criado.</div>`:
-      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+      `<div id="kits-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
         ${ordNome(DB.kits).map(k=>{
-          const semDesc=(k.itens||[]).reduce((s,i)=>{const p=getProd(i.prod);return s+(+(p?.preco)||0)*(+i.qtd||1);},0);
-          const custoTotal=(k.itens||[]).reduce((s,i)=>{const p=getProd(i.prod);return s+(+(p?.custo)||0)*(+i.qtd||1);},0);
+          const semDesc=(k.itens||[]).reduce((s,i)=>s+precoItemKit(i)*(+i.qtd||1),0);
+          const custoTotal=(k.itens||[]).reduce((s,i)=>s+custoItemKit(i)*(+i.qtd||1),0);
           const lucro=(+k.preco_venda||0)-custoTotal;
-          return`<div class="panel" style="border-top:4px solid var(--verde-med);margin:0">
+          const kc=calcKitCompleto(k.id);
+          return`<div class="panel kit-card" data-nome="${(k.nome||'').toLowerCase()}" data-categoria="${k.categoria||'Combo'}" data-status="${k.status||'Ativo'}" style="border-top:4px solid var(--verde-med);margin:0">
             <div class="panel-header" style="padding:12px 14px">
               <div><div style="font-size:14px;font-weight:800;color:var(--txt-azul)">${k.nome}</div><div style="font-size:11px;color:var(--cinza-med)">${k.descricao||''}</div></div>
               ${statusBadge(k.status)}
             </div>
             <div style="padding:10px 14px">
-              ${(k.itens||[]).map(i=>{const p=getProd(i.prod);return`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px"><span>${i.qtd}x ${p?.nome||i.prod}</span><span style="color:var(--cinza-med)">${R$((+p?.preco||0)*(+i.qtd||1))}</span></div>`;}).join('')}
+              ${(k.itens||[]).map(i=>{const p=getProd(i.prod);const temOpcoes=i.opcoes&&i.opcoes.length>1;return`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px"><span>${i.qtd}x ${p?.nome||i.prod}${temOpcoes?` <span style="color:var(--txt-roxo);font-weight:600" title="${i.opcoes.map(pid=>getProd(pid)?.nome).join(', ')}">🔀 modelo atual (${i.opcoes.length} disponíveis)</span>`:''}</span><span style="color:var(--cinza-med)">${R$(precoItemKit(i)*(+i.qtd||1))}</span></div>`;}).join('')}
               <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
                 <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Sem desconto</div><div style="font-size:13px;font-weight:700;text-decoration:line-through;color:var(--cinza-med)">${R$(semDesc)}</div></div>
                 <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-verde)">Desconto ${k.desconto_pct||0}%</div><div style="font-size:18px;font-weight:900;color:var(--txt-verde)">${R$(k.preco_venda)}</div></div>
@@ -4160,6 +4178,10 @@ SECTIONS.kits = () => `
               <div style="margin-top:8px;display:flex;justify-content:space-between;font-size:12px">
                 <span>Custo: <strong style="color:var(--txt-vermelho)">${R$(custoTotal)}</strong></span>
                 <span>Lucro: <strong style="color:var(--verde-med)">${R$(lucro)}</strong></span>
+              </div>
+              <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--cinza-claro);display:flex;justify-content:space-between;align-items:center;font-size:11px" title="Desconta também uma fatia dos custos fixos (aluguel, assinaturas...) e impostos/taxas — a mesma conta que os produtos avulsos já usam">
+                <span style="color:var(--cinza-med)">🔬 Lucro real (c/ custos fixos e taxas)</span>
+                <strong style="color:${kc.lucroReal>=0?'var(--txt-verde)':'var(--txt-vermelho)'}">${R$(kc.lucroReal)} (${kc.margemReal.toFixed(0)}%)</strong>
               </div>
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:8px">
@@ -4170,17 +4192,131 @@ SECTIONS.kits = () => `
       </div>`}
     </div>
   </div>`;
+function filtrarKits(){
+  const q=(document.getElementById('b-kit')?.value||'').toLowerCase();
+  const cat=document.getElementById('b-kit-cat')?.value||'';
+  const st=document.getElementById('b-kit-st')?.value||'';
+  document.querySelectorAll('#kits-grid .kit-card').forEach(el=>{
+    const bateNome=el.dataset.nome.includes(q);
+    const bateCategoria=!cat || el.dataset.categoria===cat;
+    const bateStatus=!st || el.dataset.status===st;
+    el.style.display = (bateNome && bateCategoria && bateStatus) ? '' : 'none';
+  });
+}
+
+// Preço efetivo de um item de kit: se o item tem modelos com preços
+// diferentes configurados (variacoes), usa o preço do modelo escolhido —
+// senão cai no preço normal do produto. Centralizado aqui pra usar o
+// mesmo cálculo tanto na tabela do kit quanto no card e no recálculo.
+// Preço/custo efetivo de um item de kit — vem sempre do produto
+// atualmente escolhido (it.prod). Quando o item tem "opcoes" (modelos
+// alternativos), trocar o produto escolhido já muda os dois sozinho,
+// porque continuam vindo do cadastro de Produtos de verdade.
+function precoItemKit(it){ return +(getProd(it.prod)?.preco)||0; }
+function custoItemKit(it){ return +(getProd(it.prod)?.custo)||0; }
+
+// Mesma fórmula de custo real usada nas Fichas Técnicas (custoFixoRateado +
+// impostos/taxas), só que somando os itens do kit em vez de 1 produto só —
+// assim o kit tem o mesmo "lucro de verdade" que qualquer produto avulso,
+// não só a conta simples de preço menos custo dos itens.
+function calcKitCompleto(kitId){
+  const k=getItem(DB.kits,kitId)||{};
+  const custoInsumos=(k.itens||[]).reduce((s,it)=>s+custoItemKit(it)*(+it.qtd||1),0);
+  const custoFixo=custoFixoRateado();
+  const custoTotal=custoInsumos+custoFixo;
+  const impostosPct=pctImpostos();
+  const outrasPct=pctTaxasCartao();
+  const deliveryPct=pctTaxasDelivery();
+  const precoPraticado=+(k.preco_venda||0);
+  const totalTaxasPct=impostosPct+outrasPct+deliveryPct;
+  const valorTaxas=precoPraticado*(totalTaxasPct/100);
+  const lucroReal=precoPraticado-custoTotal-valorTaxas;
+  const margemReal=precoPraticado>0?(lucroReal/precoPraticado*100):0;
+  return {custoInsumos,custoFixo,custoTotal,impostosPct,outrasPct,deliveryPct,totalTaxasPct,valorTaxas,precoPraticado,lucroReal,margemReal};
+}
 
 function novoKit(){abrirFormKit();}
 function editarKit(id){abrirFormKit(id);}
 function kitItemRow(it,i){
   const prodOpts=ordNome(DB.produtos).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
+  const temOpcoes=it.opcoes && it.opcoes.length>1;
+  const subtotal=precoItemKit(it)*(+it.qtd||1);
   return `<tr style="background:${i%2===0?'#FBF3E4':'white'}">
-    <td style="padding:4px;min-width:150px">${sselHTML(`kitprod${i}`, prodOpts, it.prod, 'Buscar produto...', `onKitProd(${i}, value)`)}</td>
+    <td style="padding:4px;min-width:150px">
+      ${temOpcoes?`<select onchange="onOpcaoEscolhida(${i},this.value)" style="width:100%;padding:6px 8px;border:1.5px solid var(--roxo);border-radius:4px;font-size:13px;background:var(--roxo-claro);color:var(--txt-roxo);font-weight:600">
+        ${it.opcoes.map(pid=>{const p=getProd(pid);return `<option value="${pid}" ${it.prod===pid?'selected':''}>🔀 ${p?.nome||pid} — ${R$(p?.preco)}</option>`;}).join('')}
+      </select>`
+      :sselHTML(`kitprod${i}`, prodOpts, it.prod, 'Buscar produto...', `onKitProd(${i}, value)`)}
+      <button type="button" onclick="toggleModelosKitItem(${i})" style="margin-top:4px;background:none;border:${temOpcoes?'none':'1.5px dashed var(--roxo)'};color:${temOpcoes?'var(--cinza-med)':'var(--txt-roxo)'};border-radius:4px;padding:${temOpcoes?'0':'4px 6px'};cursor:pointer;font-size:${temOpcoes?'10px':'10.5px'};font-weight:600;width:100%;${temOpcoes?'text-decoration:underline':''}">${temOpcoes?'editar modelos alternativos':'🔀 Esse item tem modelos (outros produtos) alternativos?'}</button>
+    </td>
     <td style="padding:4px;width:75px"><input type="number" min="1" value="${it.qtd||1}" oninput="window._kitTemp.itens[${i}].qtd=+this.value;recalcKit()" style="width:65px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
-    <td style="padding:4px;width:85px;font-weight:700;color:var(--verde-med);text-align:center" id="kitsub${i}">${R$((+(getProd(it.prod)?.preco)||0)*(+it.qtd||1))}</td>
+    <td style="padding:4px;width:85px;font-weight:700;color:var(--verde-med);text-align:center" id="kitsub${i}">${R$(subtotal)}</td>
     <td style="padding:4px;width:34px"><button onclick="remKitProd(${i})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">×</button></td>
-  </tr>`;
+  </tr>
+  <tr id="kit-modelos-row-${i}" style="display:none"><td colspan="4" style="padding:8px;background:var(--roxo-claro)">${modelosEditorHtml(it,i)}</td></tr>`;
+}
+function modelosEditorHtml(it,i){
+  const opcoes=it.opcoes||[];
+  const jaEscolhidos=new Set(opcoes);
+  const prodOptsDisponiveis=ordNome(DB.produtos).filter(p=>!jaEscolhidos.has(p.id)).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
+  return `<div style="font-size:11px;font-weight:700;color:var(--txt-roxo);margin-bottom:6px;text-transform:uppercase">Modelos alternativos deste item (produtos já cadastrados)</div>
+    <div id="modelos-lista-${i}">${opcoes.map(pid=>{const p=getProd(pid);return `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--cinza-ultra);border-radius:5px;padding:6px 10px;margin-bottom:5px;font-size:12.5px">
+        <span><b>${p?.nome||pid}</b> — ${R$(p?.preco)} <span style="color:var(--cinza-med)">(custo ${R$(p?.custo)})</span></span>
+        <button type="button" onclick="remOpcaoKitItem(${i},'${pid}')" style="background:var(--vermelho);color:white;border:none;border-radius:4px;padding:2px 9px;cursor:pointer">×</button>
+      </div>`;}).join('') || '<p style="font-size:11.5px;color:var(--cinza-med);margin-bottom:6px">Nenhum modelo alternativo ainda — adicione pelo menos 2 produtos (ex: Caneca Branca, Caneca Interior Colorido).</p>'}</div>
+    <div style="margin-bottom:8px">${sselHTML(`kitopcaonovo${i}`, prodOptsDisponiveis, '', 'Buscar produto pra adicionar como modelo...', `addOpcaoKitItem(${i}, value)`)}</div>
+    <div style="display:flex;gap:8px">
+      <button type="button" onclick="confirmarModelosKitItem(${i})" style="flex:1;background:var(--roxo);color:white;border:none;border-radius:5px;padding:7px;cursor:pointer;font-size:12px;font-weight:700">✅ Confirmar</button>
+      ${opcoes.length>0?`<button type="button" onclick="removerTodosModelosKitItem(${i})" style="background:none;border:1.5px solid var(--cinza-claro);color:var(--cinza-med);border-radius:5px;padding:7px 10px;cursor:pointer;font-size:12px">Remover todos</button>`:''}
+    </div>`;
+}
+function toggleModelosKitItem(i){
+  const row=document.getElementById(`kit-modelos-row-${i}`);
+  if(!row)return;
+  const abrindo=row.style.display==='none';
+  row.style.display=abrindo?'':'none';
+  if(abrindo && (!window._kitTemp.itens[i].opcoes || window._kitTemp.itens[i].opcoes.length===0)){
+    // já começa com o produto atual do item como primeiro modelo, pra não
+    // ter que readicionar ele
+    window._kitTemp.itens[i].opcoes = window._kitTemp.itens[i].prod ? [window._kitTemp.itens[i].prod] : [];
+  }
+  row.querySelector('td').innerHTML=modelosEditorHtml(window._kitTemp.itens[i],i);
+}
+function addOpcaoKitItem(i,prodId){
+  if(!prodId)return;
+  const it=window._kitTemp.itens[i];
+  if(!it.opcoes) it.opcoes=[];
+  if(!it.opcoes.includes(prodId)) it.opcoes.push(prodId);
+  const row=document.getElementById(`kit-modelos-row-${i}`);
+  if(row) row.querySelector('td').innerHTML=modelosEditorHtml(it,i);
+}
+function remOpcaoKitItem(i,prodId){
+  const it=window._kitTemp.itens[i];
+  it.opcoes=(it.opcoes||[]).filter(pid=>pid!==prodId);
+  const row=document.getElementById(`kit-modelos-row-${i}`);
+  if(row) row.querySelector('td').innerHTML=modelosEditorHtml(it,i);
+}
+function removerTodosModelosKitItem(i){
+  if(!confirm('Remover os modelos alternativos desse item? Ele volta a ter só o produto único de antes.'))return;
+  window._kitTemp.itens[i].opcoes=[];
+  toggleModelosKitItem(i);
+  refreshKitTbody();
+  recalcKit();
+}
+function confirmarModelosKitItem(i){
+  const it=window._kitTemp.itens[i];
+  if(!it.opcoes || it.opcoes.length<2){toast('Adicione pelo menos 2 produtos como modelos alternativos','error');return;}
+  if(!it.opcoes.includes(it.prod)) it.prod=it.opcoes[0];
+  toggleModelosKitItem(i);
+  refreshKitTbody();
+  recalcKit();
+}
+function onOpcaoEscolhida(i,val){
+  window._kitTemp.itens[i].prod=val;
+  const el=document.getElementById('kitsub'+i);
+  if(el)el.textContent=R$(precoItemKit(window._kitTemp.itens[i])*(+window._kitTemp.itens[i].qtd||1));
+  recalcKit();
 }
 function abrirFormKit(editId=null){
   const kit=editId?JSON.parse(JSON.stringify(getItem(DB.kits,editId))):{id:nextId(DB.kits,'KIT'),nome:'',categoria:'Combo',descricao:'',itens:[],desconto_pct:10,preco_venda:0,status:'Ativo'};
@@ -4209,7 +4345,7 @@ function abrirFormKit(editId=null){
     ()=>salvarKit(editId),'💾 Salvar Kit');
   setTimeout(()=>recalcKit(),50);
 }
-function onKitProd(i,val){window._kitTemp.itens[i].prod=val;recalcKit();const el=document.getElementById('kitsub'+i);if(el)el.textContent=R$((+(getProd(val)?.preco)||0)*(+window._kitTemp.itens[i].qtd||1));}
+function onKitProd(i,val){window._kitTemp.itens[i].prod=val;window._kitTemp.itens[i].opcoes=[];recalcKit();refreshKitTbody();}
 function addKitProd(){window._kitTemp.itens.push({prod:'',qtd:1});refreshKitTbody();}
 function remKitProd(i){window._kitTemp.itens.splice(i,1);refreshKitTbody();recalcKit();}
 function refreshKitTbody(){
@@ -4218,7 +4354,7 @@ function refreshKitTbody(){
 }
 function recalcKit(){
   const k=window._kitTemp;
-  const cheio=(k.itens||[]).reduce((s,i)=>{const p=getProd(i.prod);return s+(+(p?.preco)||0)*(+i.qtd||1);},0);
+  const cheio=(k.itens||[]).reduce((s,i)=>s+precoItemKit(i)*(+i.qtd||1),0);
   const desc=parseFloat(document.getElementById('kit-dpct')?.value)||0;
   const final=cheio*(1-desc/100);
   const el=document.getElementById('kit-cheio');const elF=document.getElementById('kit-pf');
