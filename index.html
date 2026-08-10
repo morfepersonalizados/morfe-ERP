@@ -2502,13 +2502,24 @@ SECTIONS.pedidos = () => {
 };
 
 function novoPedidoOrc(){
-  window._pedTemp={id:nextId(DB.pedidos,'ORC'),data:new Date().toISOString().slice(0,10),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,total:0};
+  window._pedTemp={id:nextId(DB.pedidos,'ORC'),data:new Date().toISOString().slice(0,10),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:'produto'}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,total:0};
   abrirFormPedido(null);
 }
 function verPedidoOrc(id){const p=getItem(DB.pedidos,id);if(!p)return;window._pedTemp=JSON.parse(JSON.stringify(p));abrirFormPedido(id);}
 
 function pedItemRow(it,i){
-  const prodOpts=[{value:'',label:'— Livre —'},...ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:p.nome})),...ordNome(DB.kits||[]).map(k=>({value:'KIT:'+k.id,label:'[KIT] '+k.nome}))];
+  // Se o item foi criado pelo botão "+ Adicionar Item" ou "🎁 Adicionar Kit",
+  // a busca já vem filtrada só pro tipo certo — evita misturar produto com
+  // kit numa lista só e facilita achar o que quer. Itens de pedidos antigos
+  // (sem esse campo, editados antes dessa mudança) continuam com a lista
+  // mista de sempre, sem quebrar nada.
+  const tipoItem=it._tipoItem;
+  const prodOpts = tipoItem==='kit'
+    ? ordNome(DB.kits||[]).map(k=>({value:'KIT:'+k.id,label:'🎁 '+k.nome+' — '+R$(k.preco_venda)}))
+    : tipoItem==='produto'
+      ? [{value:'',label:'— Livre —'},...ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:p.nome}))]
+      : [{value:'',label:'— Livre —'},...ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:p.nome})),...ordNome(DB.kits||[]).map(k=>({value:'KIT:'+k.id,label:'[KIT] '+k.nome}))];
+  const placeholderBusca = tipoItem==='kit' ? 'Buscar kit...' : 'Buscar produto...';
   const c=itemCalc(it);
   const temDesc=(it.desc_tipo&&it.desc_tipo!=='nenhum'&&(+it.desc_valor||0)>0);
   const varInfo=(it.prod&&!String(it.prod).startsWith('KIT:'))?getVariantesDoProduto(it.prod):null;
@@ -2521,7 +2532,7 @@ function pedItemRow(it,i){
       🏭 Já estava pronta (não abater estoque)
     </label>`:'';
   return `<tr id="pr-${i}" style="background:${i%2===0?'#FBF3E4':'white'}">
-    <td style="padding:4px;min-width:150px">${sselHTML(`pedprod${i}`, prodOpts, it.prod, 'Buscar produto...', `onChangePedProd(${i}, value)`)}</td>
+    <td style="padding:4px;min-width:150px">${sselHTML(`pedprod${i}`, prodOpts, it.prod, placeholderBusca, `onChangePedProd(${i}, value)`)}</td>
     <td style="padding:4px"><input type="text" value="${it.desc||''}" oninput="window._pedTemp.itens[${i}].desc=this.value" style="width:100%;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px">${varSelectHtml}${jaProdHtml}</td>
     <td style="padding:4px;width:56px"><input type="number" min="1" value="${it.qtd||1}" oninput="window._pedTemp.itens[${i}].qtd=+this.value;updSubtotal(${i})" style="width:50px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
     <td style="padding:4px;width:82px"><input type="number" step="0.01" value="${it.valor||''}" oninput="window._pedTemp.itens[${i}].valor=+this.value;updSubtotal(${i})" style="width:76px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
@@ -2579,7 +2590,10 @@ function abrirFormPedido(editId){
         <tbody id="ped-tbody">${renderItens()}</tbody>
         <tfoot>
           <tr><td colspan="7" style="padding:6px">
-            <button onclick="addItemPed()" style="background:none;border:1.5px dashed var(--verde-med);color:var(--verde-med);border-radius:6px;padding:6px;cursor:pointer;font-size:13px;font-weight:600;width:100%">+ Adicionar item</button>
+            <div style="display:flex;gap:6px">
+              <button onclick="addItemPed('produto')" style="flex:1;background:none;border:1.5px dashed var(--verde-med);color:var(--verde-med);border-radius:6px;padding:6px;cursor:pointer;font-size:13px;font-weight:600">+ Adicionar Item</button>
+              <button onclick="addItemPed('kit')" style="flex:1;background:none;border:1.5px dashed var(--roxo);color:var(--txt-roxo);border-radius:6px;padding:6px;cursor:pointer;font-size:13px;font-weight:600">🎁 Adicionar Kit</button>
+            </div>
           </td></tr>
           <tr><td colspan="7" style="padding:8px 10px;background:var(--cinza-ultra)">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2651,8 +2665,8 @@ function calcTotalPed(){
   const rowSub=document.getElementById('ped-row-subtotal');if(rowSub)rowSub.style.display=(calc.descItens+calc.descGeral>0)?'':'none';
   const rowDesc=document.getElementById('ped-row-desc');if(rowDesc)rowDesc.style.display=calc.descGeral>0?'':'none';
 }
-function addItemPed(){
-  window._pedTemp.itens.push({prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0});
+function addItemPed(tipo){
+  window._pedTemp.itens.push({prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:tipo||'produto'});
   const tb=document.getElementById('ped-tbody');if(!tb)return;
   const i=window._pedTemp.itens.length-1;
   tb.insertAdjacentHTML('beforeend', pedItemRow(window._pedTemp.itens[i],i));
@@ -2745,6 +2759,10 @@ async function salvarPedidoOrc(editId){
   pd.consumo_insumos=novoConsumo;
   pd.estoque_baixado=Object.keys(novoConsumo).length>0;
   // ──────────────────────────────────────────────────────────────
+
+  // "_tipoItem" é só uma dica pra tela filtrar produto/kit na hora de
+  // montar — não precisa ir salvo no registro
+  (pd.itens||[]).forEach(it=>{ delete it._tipoItem; });
 
   await salvarItem('pedidos',JSON.parse(JSON.stringify(pd)));
   if(avisoFalta.length>0){
@@ -4186,6 +4204,7 @@ SECTIONS.kits = () => `
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:8px">
               <button class="btn btn-primary btn-sm" onclick="editarKit('${k.id}')" style="flex:1">✏️ Editar</button>
+              <button class="btn btn-outline btn-sm" onclick="abrirPreviewKit('${k.id}')" title="Compartilhar (imagem/PDF/WhatsApp)">📤</button>
               <button class="btn btn-danger btn-xs" onclick="excluirItem('kits','${k.id}')">🗑️</button>
             </div>
           </div>`;}).join('')}
@@ -4374,6 +4393,86 @@ async function salvarKit(editId=null){
   k.criado_em=editId?getItem(DB.kits,editId)?.criado_em:new Date().toISOString();
   await salvarItem('kits',JSON.parse(JSON.stringify(k)));
   toast(editId?'Kit atualizado!':'Kit criado!');closeModal();render('kits');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// KIT — PREVIEW + COMPARTILHAR (Imagem / PDF / WhatsApp)
+// Mesmo padrão já usado no orçamento de pedidos, reaproveitando a mesma
+// área de impressão e overlay — só muda o conteúdo montado.
+// ═══════════════════════════════════════════════════════════════
+function abrirPreviewKit(kitId){
+  const k=getItem(DB.kits,kitId);if(!k)return;
+  const empresa=DB.config?.empresa||'Morfê Personalizados';
+  const instagram=DB.config?.instagram||'';
+  const cidade=DB.config?.cidade||'';
+  const dataEmissao=new Date().toLocaleDateString('pt-BR');
+  const semDesc=(k.itens||[]).reduce((s,i)=>s+precoItemKit(i)*(+i.qtd||1),0);
+
+  const linhasItens=(k.itens||[]).map(it=>{
+    const p=getProd(it.prod);
+    const temOpcoes=it.opcoes&&it.opcoes.length>1;
+    return `<tr>
+      <td><b>${p?.nome||it.prod}</b>${temOpcoes?` <span style="color:#9C7B44;font-weight:600">· modelo à escolha</span>`:''}</td>
+      <td class="orc-num">${it.qtd||1}</td>
+      <td class="orc-val">${R$(precoItemKit(it))}</td>
+      <td class="orc-val" style="font-weight:700">${R$(precoItemKit(it)*(+it.qtd||1))}</td>
+    </tr>`;
+  }).join('');
+
+  const html=`
+    <div class="orc-doc">
+      <div class="orc-header">
+        <div class="orc-header-brand">
+          <img src="data:image/png;base64,${LOGO_ORC_B64}" alt="${empresa}">
+          <div><h1>${empresa}</h1><p>${cidade||'Personalização sob medida'}</p></div>
+        </div>
+        <div class="orc-header-tag">
+          <div>Kit</div><b>${k.id}</b>
+          <div>Emissão</div><b>${dataEmissao}</b>
+        </div>
+      </div>
+      <div class="orc-titulo-doc">🎁 ${k.nome}</div>
+      ${k.descricao?`<p style="text-align:center;color:#7A7267;font-size:12.5px;margin:-8px 0 14px">${k.descricao}</p>`:''}
+
+      <div class="orc-tbl-wrap">
+        <table class="orc-tbl">
+          <thead><tr><th>Item</th><th class="orc-num">Qtd</th><th class="orc-val">Vlr Unit.</th><th class="orc-val">Vlr Total</th></tr></thead>
+          <tbody>${linhasItens}</tbody>
+        </table>
+      </div>
+
+      <div class="orc-totais">
+        ${(k.desconto_pct||0)>0?`<div class="orc-totais-row sub"><span>Preço cheio</span><span>${R$(semDesc)}</span></div>
+        <div class="orc-totais-row desc"><span>Desconto (${k.desconto_pct}%)</span><span>− ${R$(semDesc-(+k.preco_venda||0))}</span></div>`:''}
+        <div class="orc-total-final"><span>Preço do Kit</span><b>${R$(k.preco_venda)}</b></div>
+      </div>
+
+      <div class="orc-footer">
+        <div class="orc-footer-linha"></div>
+        <p><b>${empresa}</b>${instagram?' · '+instagram:''}${cidade?' · '+cidade:''}</p>
+      </div>
+    </div>`;
+
+  document.getElementById('orc-print-area').innerHTML = html;
+
+  const actions=document.getElementById('orc-preview-actions');
+  actions.innerHTML=`
+    <button class="btn btn-success" onclick="baixarOrcamentoImagem()">🖼️ Baixar Imagem</button>
+    <button class="btn btn-primary" onclick="baixarOrcamentoPDF()">📄 Baixar PDF</button>
+    <button class="btn btn-outline" style="background:white" onclick="wppKit('${kitId}')">💬 Enviar WhatsApp</button>
+    <button class="btn btn-outline" style="background:white" onclick="fecharPreviewOrcamento()">✕ Fechar</button>`;
+
+  document.getElementById('orc-preview-overlay').classList.add('open');
+}
+function wppKit(kitId){
+  const k=getItem(DB.kits,kitId);if(!k)return;
+  const itens=(k.itens||[]).map(it=>{
+    const p=getProd(it.prod);
+    const temOpcoes=it.opcoes&&it.opcoes.length>1;
+    return `  • ${it.qtd}x ${p?.nome||it.prod}${temOpcoes?' (modelo à sua escolha)':''}`;
+  }).join('\n');
+  const msg=`Olá! 😊\n\nSegue o kit *${k.nome}* da *Morfê Personalizados*:\n\n🎁 *Itens do kit:*\n${itens}\n\n💰 *VALOR DO KIT: ${R$(k.preco_venda)}*\n\nQualquer dúvida, é só chamar! 🙏\n📍 @morfepersonalizados`;
+  abrirWPP('', msg);
 }
 
 // ═══════════════════════════════════════════════════════════════
