@@ -738,7 +738,14 @@ async function sincronizarSheets() {
         // que ela seja reenviada de novo.
         const JANELA_PROTECAO_EDICAO_MS = 3*60*1000;
         const localPorId = {};
-        (Array.isArray(DB[tabela]) ? DB[tabela] : []).forEach(r => { if (r && r.id != null) localPorId[r.id] = r; });
+        // "config" é um objeto único (não uma lista como as outras tabelas)
+        // — só vira lista temporariamente aqui pra passar pela mesma lógica
+        // de proteção, com id fixo 1 (é sempre um só registro).
+        if (tabela === 'config') {
+          if (DB.config && typeof DB.config === 'object') localPorId[1] = DB.config;
+        } else {
+          (Array.isArray(DB[tabela]) ? DB[tabela] : []).forEach(r => { if (r && r.id != null) localPorId[r.id] = r; });
+        }
         if (Array.isArray(registros)) {
           registros = registros.map(reg => {
             if (reg && typeof reg === 'object') {
@@ -819,6 +826,16 @@ async function processarFila() {
 
 async function enviarParaSheets(acao, tabela, dados, id) {
   if (!SHEETS_API_URL || SHEETS_API_URL === 'COLE_URL_DO_APPS_SCRIPT_AQUI') return true;
+  // Registra AQUI, no ponto único por onde toda gravação passa (upsert de
+  // qualquer tela, direto ou em segundo plano) — protege a edição de ser
+  // revertida por uma sincronização que ler uma versão desatualizada do
+  // Google logo em seguida. Antes só o salvarItem() registrava isso, e
+  // telas que gravam direto (Configurações, Custos Fixos etc.) ficavam
+  // desprotegidas — inclusive a Meta de Lucro Mensal, que é exatamente
+  // esse caso.
+  if (acao === 'upsert' && dados && dados.id != null) {
+    _ultimaEdicaoLocal[`${tabela}:${dados.id}`] = Date.now();
+  }
   const res = await fetch(SHEETS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
@@ -984,7 +1001,10 @@ function custoItemPedidoAoVivo(it){
   if(String(it.prod).startsWith('KIT:')){
     const kit=getItem(DB.kits, it.prod.replace('KIT:',''));
     if(!kit) return 0;
-    return (kit.itens||[]).reduce((s,ki)=>s+(+(getProd(ki.prod)?.custo)||0)*(+ki.qtd||1),0);
+    return (kit.itens||[]).reduce((s,ki,idx)=>{
+      const prodEfetivo=(it.kit_modelos && it.kit_modelos[idx]) || ki.prod;
+      return s+(+(getProd(prodEfetivo)?.custo)||0)*(+ki.qtd||1);
+    },0);
   }
   return +(getProd(it.prod)?.custo)||0;
 }
@@ -2329,8 +2349,9 @@ function calcularConsumoInsumos(pd){
     if(String(it.prod).startsWith('KIT:')){
       const kit=getItem(DB.kits, it.prod.replace('KIT:',''));
       if(!kit) return;
-      (kit.itens||[]).forEach(ki=>{
-        somarConsumoProduto(consumo, ki.prod, (+ki.qtd||1)*qtdPedido, null); // kits ainda não suportam variante
+      (kit.itens||[]).forEach((ki,idx)=>{
+        const prodEfetivo=(it.kit_modelos && it.kit_modelos[idx]) || ki.prod;
+        somarConsumoProduto(consumo, prodEfetivo, (+ki.qtd||1)*qtdPedido, null); // kit já resolve o modelo certo; variante de insumo dentro do produto ainda não se aplica aqui
       });
     } else {
       somarConsumoProduto(consumo, it.prod, qtdPedido, it.variante);
@@ -2462,8 +2483,9 @@ function pedidoCalc(pd){
   const dt=pd.desconto_geral_tipo||'nenhum';
   const dv=+pd.desconto_geral_valor||0;
   const descGeral = dt==='pct' ? somaItens*(dv/100) : dt==='valor' ? dv : 0;
-  const total=Math.max(0, somaItens-descGeral);
-  return {subtotal,descItens,somaItens,descGeral,total};
+  const totalAcrescimos=(pd.acrescimos||[]).reduce((s,a)=>s+(+a.valor||0),0);
+  const total=Math.max(0, somaItens-descGeral+totalAcrescimos);
+  return {subtotal,descItens,somaItens,descGeral,totalAcrescimos,total};
 }
 
 SECTIONS.pedidos = () => {
@@ -2502,7 +2524,7 @@ SECTIONS.pedidos = () => {
 };
 
 function novoPedidoOrc(){
-  window._pedTemp={id:nextId(DB.pedidos,'ORC'),data:new Date().toISOString().slice(0,10),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:'produto'}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,total:0};
+  window._pedTemp={id:nextId(DB.pedidos,'ORC'),data:new Date().toISOString().slice(0,10),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:'produto'}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,acrescimos:[],total:0};
   abrirFormPedido(null);
 }
 function verPedidoOrc(id){const p=getItem(DB.pedidos,id);if(!p)return;window._pedTemp=JSON.parse(JSON.stringify(p));abrirFormPedido(id);}
@@ -2531,6 +2553,8 @@ function pedItemRow(it,i){
       <input type="checkbox" ${it.jaProduzida?'checked':''} onchange="window._pedTemp.itens[${i}].jaProduzida=this.checked" style="width:13px;height:13px;cursor:pointer">
       🏭 Já estava pronta (não abater estoque)
     </label>`:'';
+  const kitInfo=(it.prod && String(it.prod).startsWith('KIT:')) ? getItem(DB.kits, String(it.prod).replace('KIT:','')) : null;
+  const kitModelosRow=kitInfo ? kitModelosPedidoHtml(kitInfo,it,i) : '';
   return `<tr id="pr-${i}" style="background:${i%2===0?'#FBF3E4':'white'}">
     <td style="padding:4px;min-width:150px">${sselHTML(`pedprod${i}`, prodOpts, it.prod, placeholderBusca, `onChangePedProd(${i}, value)`)}</td>
     <td style="padding:4px"><input type="text" value="${it.desc||''}" oninput="window._pedTemp.itens[${i}].desc=this.value" style="width:100%;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px">${varSelectHtml}${jaProdHtml}</td>
@@ -2548,7 +2572,43 @@ function pedItemRow(it,i){
     </td>
     <td style="padding:4px;width:80px;font-weight:700;color:var(--verde-med);text-align:center;font-size:13px" id="sb-${i}">${R$(c.tot)}</td>
     <td style="padding:4px;width:30px"><button onclick="remItemPed(${i})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;padding:4px 7px;cursor:pointer;font-size:14px">×</button></td>
-  </tr>`;
+  </tr>${kitModelosRow}`;
+}
+// Quando um item do pedido é um KIT que tem produtos alternativos
+// configurados (opcoes), mostra um seletor por item flexível — a escolha
+// fica só nesse pedido, sem alterar o kit em si (o próximo pedido volta a
+// oferecer a escolha do zero, com o modelo padrão pré-selecionado).
+function kitModelosPedidoHtml(kit,it,i){
+  const flex=(kit.itens||[]).map((ki,idx)=>({ki,idx})).filter(x=>x.ki.opcoes && x.ki.opcoes.length>1);
+  if(flex.length===0) return '';
+  return `<tr><td colspan="7" style="padding:8px 10px;background:var(--roxo-claro)">
+    <div style="font-size:10.5px;font-weight:700;color:var(--txt-roxo);margin-bottom:6px;text-transform:uppercase">🔀 Escolha o modelo pra esse pedido — "${kit.nome}"</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${flex.map(({ki,idx})=>{
+        const escolhido=(it.kit_modelos && it.kit_modelos[idx]) || ki.prod;
+        return `<div style="min-width:210px;flex:1">
+          <select onchange="onKitModeloPedidoEscolhido(${i},${idx},this.value)" style="width:100%;padding:7px 8px;border:1.5px solid var(--roxo);border-radius:5px;font-size:12.5px;background:white;font-weight:600">
+            ${ki.opcoes.map(pid=>{const p=getProd(pid);return `<option value="${pid}" ${escolhido===pid?'selected':''}>${p?.nome||pid} — ${R$(p?.preco)}</option>`;}).join('')}
+          </select>
+        </div>`;
+      }).join('')}
+    </div>
+  </td></tr>`;
+}
+function onKitModeloPedidoEscolhido(i,idx,prodId){
+  const it=window._pedTemp.itens[i];
+  if(!it.kit_modelos) it.kit_modelos={};
+  it.kit_modelos[idx]=prodId;
+  delete it.custo_snapshot; // modelo mudou — recalcula o custo na hora de salvar
+  const kit=getItem(DB.kits, String(it.prod).replace('KIT:',''));
+  if(kit){
+    const cheio=(kit.itens||[]).reduce((s,ki,ix)=>{
+      const pid=(it.kit_modelos[ix])||ki.prod;
+      return s+(+(getProd(pid)?.preco)||0)*(+ki.qtd||1);
+    },0);
+    it.valor=parseFloat((cheio*(1-(+kit.desconto_pct||0)/100)).toFixed(2));
+  }
+  updSubtotal(i);
 }
 
 function abrirFormPedido(editId){
@@ -2606,6 +2666,11 @@ function abrirFormPedido(editId){
               <input type="number" step="0.01" id="ped-descgeral-valor" value="${pd.desconto_geral_valor||''}" placeholder="0" oninput="calcTotalPed()" style="width:80px;padding:5px 8px;border:1.5px solid var(--laranja);border-radius:5px;font-size:13px;text-align:center">
             </div>
           </td></tr>
+          <tr><td colspan="7" style="padding:8px 10px;background:var(--verde-claro)">
+            <div style="font-size:12px;font-weight:700;color:var(--txt-verde);margin-bottom:6px">➕ Acréscimos (arte personalizada, urgência, etc.)</div>
+            <div id="ped-acrescimos-lista">${(pd.acrescimos||[]).map((a,ai)=>acrescimoRowHtml(a,ai)).join('')}</div>
+            <button type="button" onclick="addAcrescimoPed()" style="background:none;border:1.5px dashed var(--verde-med);color:var(--txt-verde);border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600">+ Adicionar Acréscimo</button>
+          </td></tr>
           <tr id="ped-row-subtotal" style="${calc.descItens+calc.descGeral>0?'':'display:none'}">
             <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--cinza-med)">Subtotal</td>
             <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--cinza-med)" id="ped-subtotal-val">${R$(calc.somaItens)}</td>
@@ -2613,6 +2678,10 @@ function abrirFormPedido(editId){
           <tr id="ped-row-desc" style="${calc.descGeral>0?'':'display:none'}">
             <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--txt-vermelho)">Desconto Geral</td>
             <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--txt-vermelho)" id="ped-descgeral-val">− ${R$(calc.descGeral)}</td>
+          </tr>
+          <tr id="ped-row-acrescimos" style="${calc.totalAcrescimos>0?'':'display:none'}">
+            <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--txt-verde)">Acréscimos</td>
+            <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--txt-verde)" id="ped-acrescimos-val">+ ${R$(calc.totalAcrescimos)}</td>
           </tr>
           <tr style="background:var(--verde);color:white">
             <td colspan="5" style="padding:9px;font-weight:700;text-align:right;font-size:14px">TOTAL</td>
@@ -2638,7 +2707,7 @@ function abrirFormPedido(editId){
 
 function onChangePedCli(id){const c=getCli(id);if(c){document.getElementById('ped-clinome').value=c.nome;document.getElementById('ped-tel').value=c.whatsapp||c.telefone||'';window._pedTemp.cliente=id;}}
 function onChangePedProd(i,val){
-  const it=window._pedTemp.itens[i];it.prod=val;it.variante='';
+  const it=window._pedTemp.itens[i];it.prod=val;it.variante='';it.kit_modelos={};
   delete it.custo_snapshot; // produto mudou — o custo congelado antigo não vale mais, recalcula na hora de salvar
   if(val.startsWith('KIT:')){const k=getItem(DB.kits,val.replace('KIT:',''));if(k){it.desc=k.nome;it.valor=k.preco_venda||0;}}
   else if(val){const p=getProd(val);if(p){it.desc=p.nome;it.valor=p.preco||0;}}
@@ -2664,6 +2733,33 @@ function calcTotalPed(){
   const elD=document.getElementById('ped-descgeral-val');if(elD)elD.textContent='− '+R$(calc.descGeral);
   const rowSub=document.getElementById('ped-row-subtotal');if(rowSub)rowSub.style.display=(calc.descItens+calc.descGeral>0)?'':'none';
   const rowDesc=document.getElementById('ped-row-desc');if(rowDesc)rowDesc.style.display=calc.descGeral>0?'':'none';
+  const elA=document.getElementById('ped-acrescimos-val');if(elA)elA.textContent='+ '+R$(calc.totalAcrescimos);
+  const rowA=document.getElementById('ped-row-acrescimos');if(rowA)rowA.style.display=calc.totalAcrescimos>0?'':'none';
+}
+// Acréscimo = o contrário do desconto — cobrar a mais por algum motivo
+// específico (arte feita do zero, urgência, embalagem especial...). É uma
+// lista porque o motivo muda de pedido pra pedido, e às vezes tem mais de
+// um no mesmo pedido.
+function acrescimoRowHtml(a,ai){
+  return `<div style="display:flex;gap:6px;margin-bottom:6px" id="acr-row-${ai}">
+    <input type="text" placeholder="Motivo (ex: Arte personalizada)" value="${(a.motivo||'').replace(/"/g,'&quot;')}" oninput="window._pedTemp.acrescimos[${ai}].motivo=this.value" style="flex:1;padding:7px 9px;border:1.5px solid var(--verde-med);border-radius:5px;font-size:12.5px;background:white">
+    <input type="number" step="0.01" placeholder="0,00" value="${a.valor||''}" oninput="window._pedTemp.acrescimos[${ai}].valor=+this.value;calcTotalPed()" style="width:90px;padding:7px 9px;border:1.5px solid var(--verde-med);border-radius:5px;font-size:12.5px;text-align:center;background:white">
+    <button type="button" onclick="remAcrescimoPed(${ai})" style="background:var(--vermelho);color:white;border:none;border-radius:5px;padding:0 12px;cursor:pointer;font-weight:700">×</button>
+  </div>`;
+}
+function addAcrescimoPed(){
+  if(!window._pedTemp.acrescimos) window._pedTemp.acrescimos=[];
+  window._pedTemp.acrescimos.push({motivo:'',valor:0});
+  refreshAcrescimosPed();
+}
+function remAcrescimoPed(ai){
+  window._pedTemp.acrescimos.splice(ai,1);
+  refreshAcrescimosPed();
+  calcTotalPed();
+}
+function refreshAcrescimosPed(){
+  const el=document.getElementById('ped-acrescimos-lista');if(!el)return;
+  el.innerHTML=(window._pedTemp.acrescimos||[]).map((a,ai)=>acrescimoRowHtml(a,ai)).join('');
 }
 function addItemPed(tipo){
   window._pedTemp.itens.push({prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:tipo||'produto'});
@@ -2763,6 +2859,9 @@ async function salvarPedidoOrc(editId){
   // "_tipoItem" é só uma dica pra tela filtrar produto/kit na hora de
   // montar — não precisa ir salvo no registro
   (pd.itens||[]).forEach(it=>{ delete it._tipoItem; });
+  // Acréscimos em branco (sem motivo nem valor) não vão salvos — só sujeira
+  // de linha que foi adicionada e não preenchida
+  pd.acrescimos=(pd.acrescimos||[]).filter(a=>(a.motivo||'').trim() || (+a.valor||0)>0);
 
   await salvarItem('pedidos',JSON.parse(JSON.stringify(pd)));
   if(avisoFalta.length>0){
@@ -2879,7 +2978,8 @@ function wppPedido(id){
   const cli=getCli(pd.cliente);
   const wpp=cli?.whatsapp||pd.telefone||'';
   const itens=(pd.itens||[]).filter(i=>i.desc||i.prod).map(i=>`  • ${i.desc||nomeProd(i.prod)} — ${i.qtd}x ${R$(i.valor)} = *${R$((+i.qtd||1)*(+i.valor||0))}*`).join('\n');
-  const msg=`Olá ${cli?.nome||pd.cliente_nome||''}! 😊\n\nSegue o resumo do seu pedido na *Morfê Personalizados*:\n\n📋 *Pedido Nº:* ${pd.id}\n📆 *Data:* ${pd.data||'—'}${pd.entrega?'\n📅 *Entrega:* '+pd.entrega:''}\n\n🛍️ *Itens:*\n${itens}\n\n💰 *TOTAL: ${R$(pd.total||0)}*\n💳 *Pagamento:* ${pd.forma||'A combinar'}${pd.obs?'\n💬 *Obs:* '+pd.obs:''}\n\nObrigado pela preferência! 🙏\n📍 @morfepersonalizados`;
+  const acrescimosTxt=(pd.acrescimos||[]).length>0?'\n\n➕ *Acréscimos:*\n'+(pd.acrescimos||[]).map(a=>`  • ${a.motivo||'Acréscimo'} — +${R$(a.valor)}`).join('\n'):'';
+  const msg=`Olá ${cli?.nome||pd.cliente_nome||''}! 😊\n\nSegue o resumo do seu pedido na *Morfê Personalizados*:\n\n📋 *Pedido Nº:* ${pd.id}\n📆 *Data:* ${pd.data||'—'}${pd.entrega?'\n📅 *Entrega:* '+pd.entrega:''}\n\n🛍️ *Itens:*\n${itens}${acrescimosTxt}\n\n💰 *TOTAL: ${R$(pd.total||0)}*\n💳 *Pagamento:* ${pd.forma||'A combinar'}${pd.obs?'\n💬 *Obs:* '+pd.obs:''}\n\nObrigado pela preferência! 🙏\n📍 @morfepersonalizados`;
   abrirWPP(wpp, msg);
 }
 
@@ -2951,6 +3051,7 @@ function abrirPreviewOrcamento(pedidoId){
       <div class="orc-totais">
         ${calc.descItens+calc.descGeral>0?`<div class="orc-totais-row sub"><span>Subtotal</span><span>${R$(calc.somaItens)}</span></div>`:''}
         ${calc.descGeral>0?`<div class="orc-totais-row desc"><span>Desconto Geral</span><span>− ${R$(calc.descGeral)}</span></div>`:''}
+        ${(pd.acrescimos||[]).map(a=>`<div class="orc-totais-row" style="color:#2F9E5C"><span>➕ ${a.motivo||'Acréscimo'}</span><span>+ ${R$(a.valor)}</span></div>`).join('')}
         <div class="orc-total-final"><span>Valor Total</span><b>${R$(calc.total)}</b></div>
       </div>
 
