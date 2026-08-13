@@ -1024,11 +1024,19 @@ function todasVendasEfetivas(){
   const dePedidos=[];
   DB.pedidos.forEach(p=>{
     if(p.status==='Cancelado') return; // pedido cancelado não conta como venda
+    // O total "de verdade" do pedido pode ser diferente da soma crua dos
+    // itens — desconto geral e acréscimos mexem nisso. Sem ratear esse
+    // ajuste entre os itens, a soma de "valorTotal" de cada item aqui
+    // nunca batia com pd.total (ex: pedido de R$35 com acréscimo de R$10
+    // aparecia como R$35 no Calendário/Dashboard, mas R$45 no pedido em
+    // si — dois números diferentes pra mesma venda).
+    const calc=pedidoCalc(p);
+    const fatorAjuste=calc.somaItens>0?calc.total/calc.somaItens:1;
     (p.itens||[]).forEach(it=>{
       const c=itemCalc(it);
       if(c.tot<=0 && (+it.qtd||0)<=0) return;
       dePedidos.push({
-        data:p.data, cliente:p.cliente, cliente_nome:p.cliente_nome, produto:it.prod||null, qtd:+it.qtd||1, valorTotal:c.tot,
+        data:p.data, cliente:p.cliente, cliente_nome:p.cliente_nome, produto:it.prod||null, qtd:+it.qtd||1, valorTotal:c.tot*fatorAjuste,
         custoTotal:custoItemPedido(it)*(+it.qtd||1), status:p.status, origem:'pedido', id:p.id
       });
     });
@@ -1067,6 +1075,21 @@ function todasVendasEfetivas(){
     });
   });
   return [...deVendas, ...dePedidos, ...deConsignados];
+}
+// Agrupa os registros de todasVendasEfetivas() por "id" (pedido, venda ou
+// visita de consignado) — um pedido com 3 itens é 1 venda de verdade, não
+// 3. Usado em qualquer lugar que precisa CONTAR quantas vendas
+// aconteceram (não somar valor, que já soma certo item por item).
+function agruparVendasPorId(efetivas){
+  const grupos={};
+  const ordem=[];
+  efetivas.forEach(v=>{
+    if(!grupos[v.id]){ grupos[v.id]={id:v.id, origem:v.origem, data:v.data, cliente:v.cliente, cliente_nome:v.cliente_nome, status:v.status, itens:[], valorTotal:0, custoTotal:0}; ordem.push(v.id); }
+    grupos[v.id].itens.push(v);
+    grupos[v.id].valorTotal+=v.valorTotal;
+    grupos[v.id].custoTotal+=v.custoTotal;
+  });
+  return ordem.map(id=>grupos[id]);
 }
 
 
@@ -1466,7 +1489,7 @@ function metricasFinanceiras(){
   const metaSemanal=metaMensal/4.3;
   const metaDiaria=metaMensal/30;
 
-  const ticketMedio=efetivas.length?efetivas.reduce((s,v)=>s+v.valorTotal,0)/efetivas.length:0;
+  const ticketMedio=(()=>{const g=agruparVendasPorId(efetivas);return g.length?efetivas.reduce((s,v)=>s+v.valorTotal,0)/g.length:0;})();
 
   const faltaMes=Math.max(0,metaMensal-receitaMes);
   const pedidosParaMeta=ticketMedio>0?Math.ceil(faltaMes/ticketMedio):0;
@@ -1519,16 +1542,17 @@ let _calAnoAtual = new Date().getFullYear();
 
 function diasComVendas(mes, ano){
   const porDia = {};
-  todasVendasEfetivas().forEach(v=>{
-    if(!v.data) return;
+  const doMes = todasVendasEfetivas().filter(v=>{
+    if(!v.data) return false;
     const d = new Date(normalizarData(v.data)+'T00:00:00');
-    if(isNaN(d)) return;
-    if(d.getMonth()===mes && d.getFullYear()===ano){
-      const dia = d.getDate();
-      if(!porDia[dia]) porDia[dia] = {qtd:0, valor:0};
-      porDia[dia].qtd++;
-      porDia[dia].valor += v.valorTotal;
-    }
+    return !isNaN(d) && d.getMonth()===mes && d.getFullYear()===ano;
+  });
+  agruparVendasPorId(doMes).forEach(g=>{
+    const d = new Date(normalizarData(g.data)+'T00:00:00');
+    const dia = d.getDate();
+    if(!porDia[dia]) porDia[dia] = {qtd:0, valor:0};
+    porDia[dia].qtd++;
+    porDia[dia].valor += g.valorTotal;
   });
   return porDia;
 }
@@ -1643,24 +1667,39 @@ function calIrHoje(){
 function abrirDetalheDia(dataStr){
   const efetivas=todasVendasEfetivas().filter(v=>normalizarData(v.data)===dataStr);
   const total=efetivas.reduce((s,v)=>s+v.valorTotal,0);
+  const lucroDia=efetivas.reduce((s,v)=>s+((+v.valorTotal||0)-(+v.custoTotal||0)),0);
+  // Agrupa por "id" (pedido/venda/consignado) — um pedido com vários itens
+  // é UMA venda só, não uma por item. Sem isso, um pedido de caneca +
+  // chaveiro aparecia como "2 vendas" de duas pessoas diferentes na
+  // mesma hora, quando era um pedido só.
+  const listaGrupos=agruparVendasPorId(efetivas);
   const dataObj=new Date(dataStr+'T00:00:00');
   const dataFormatada=dataObj.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   openModal(`📅 ${dataFormatada}`,
-    `<div style="background:var(--verde-claro);padding:12px;border-radius:8px;margin-bottom:12px;display:flex;justify-content:space-between">
-      <div><div style="font-size:11px;color:var(--txt-verde)">Vendas no dia</div><div style="font-size:22px;font-weight:900;color:var(--txt-verde)">${efetivas.length}</div></div>
-      <div style="text-align:right"><div style="font-size:11px;color:var(--txt-verde)">Faturamento</div><div style="font-size:22px;font-weight:900;color:var(--txt-verde)">${R$(total)}</div></div>
+    `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+      <div style="background:var(--verde-claro);padding:12px;border-radius:8px"><div style="font-size:11px;color:var(--txt-verde)">Vendas no dia</div><div style="font-size:20px;font-weight:900;color:var(--txt-verde)">${listaGrupos.length}</div></div>
+      <div style="background:var(--verde-claro);padding:12px;border-radius:8px"><div style="font-size:11px;color:var(--txt-verde)">Faturamento</div><div style="font-size:20px;font-weight:900;color:var(--txt-verde)">${R$(total)}</div></div>
+      <div style="background:var(--roxo-claro);padding:12px;border-radius:8px"><div style="font-size:11px;color:var(--txt-roxo)">🔬 Lucro</div><div style="font-size:20px;font-weight:900;color:var(--txt-roxo)">${R$(lucroDia)}</div></div>
     </div>
-    ${efetivas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:24px">Nenhuma venda registrada nesse dia.</p>`:
+    ${listaGrupos.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:24px">Nenhuma venda registrada nesse dia.</p>`:
     `<div class="tbl-wrap"><table>
-      <thead><tr><th>Origem</th><th>Cliente</th><th>Produto</th><th>Qtd</th><th>Valor</th><th>Status</th></tr></thead>
-      <tbody>${efetivas.map(v=>`<tr>
-        <td><span class="badge badge-info">${v.origem==='pedido'?'Pedido':'Venda'}</span></td>
-        <td>${nomeCli(v.cliente)}</td>
-        <td>${v.produto?nomeProd(v.produto):'(vários itens)'}</td>
-        <td class="text-center">${v.qtd}</td>
-        <td class="fw-bold text-verde">${R$(v.valorTotal)}</td>
-        <td>${statusBadge(v.status)}</td>
-      </tr>`).join('')}</tbody>
+      <thead><tr><th>Origem</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Lucro</th><th>Status</th></tr></thead>
+      <tbody>${listaGrupos.map(g=>{
+        const lucroG=g.valorTotal-g.custoTotal;
+        const resumoItens=g.itens.length===1
+          ? (g.itens[0].produto?nomeProd(g.itens[0].produto):'(item avulso)')
+          : g.itens.map(it=>it.produto?nomeProd(it.produto):'item avulso').join(', ');
+        const acaoClick=g.origem==='consignado'?`verHistoricoVisitas('${g.id.split(':')[0]}')`
+          :g.origem==='pedido'?`closeModal();verPedidoOrc('${g.id}')`
+          :g.origem==='venda'?`closeModal();editarVenda('${g.id}')`:'';
+        return`<tr ${acaoClick?`style="cursor:pointer" onclick="${acaoClick}" title="Clique pra abrir"`:''}>
+        <td><span class="badge badge-info">${g.origem==='pedido'?'Pedido':g.origem==='consignado'?'Consignado':'Venda'}</span></td>
+        <td>${nomeCli(g.cliente)||g.cliente_nome||'—'}</td>
+        <td style="font-size:12px">${g.itens.length>1?`${g.itens.length} itens — ${resumoItens}`:resumoItens}</td>
+        <td class="fw-bold text-verde">${R$(g.valorTotal)}</td>
+        <td class="fw-bold" style="color:${lucroG>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroG)}</td>
+        <td>${statusBadge(g.status)}</td>
+      </tr>`;}).join('')}</tbody>
     </table></div>`}
     ${(()=>{
       const entregasDia=DB.pedidos.filter(p=>p.entrega && normalizarData(p.entrega)===dataStr && p.status!=='Entregue' && p.status!=='Cancelado');
@@ -1706,7 +1745,7 @@ SECTIONS.dashboard = () => {
   const lucroBrutoPeriodo=vendasPeriodo.reduce((s,v)=>s+v.valorTotal-v.custoTotal,0);
   const cfPeriodo=custosFixosNoPeriodo(per.inicio,per.fim);
   const lucroLiquidoPeriodo=lucroBrutoPeriodo-cfPeriodo;
-  const ticketPeriodo=vendasPeriodo.length?receitaPeriodo/vendasPeriodo.length:0;
+  const ticketPeriodo=(()=>{const g=agruparVendasPorId(vendasPeriodo).length;return g?receitaPeriodo/g:0;})();
   const meta = +(DB.config?.meta_mensal||5000);
   const mes = new Date().getMonth()+1, ano = new Date().getFullYear();
   const vendaMes = efetivas.filter(v=>{const d=new Date(normalizarData(v.data));return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
@@ -1832,7 +1871,7 @@ SECTIONS.dashboard = () => {
       <div style="background:var(--laranja-claro);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--txt-laranja);text-transform:uppercase;font-weight:600">Ticket Médio</div>
         <div style="font-size:17px;font-weight:800;color:var(--txt-laranja)">${R$(fm.ticketMedio)}</div>
-        <div style="font-size:11px;color:var(--txt-laranja)">Base: ${todasVendasEfetivas().length} vendas</div>
+        <div style="font-size:11px;color:var(--txt-laranja)">Base: ${agruparVendasPorId(todasVendasEfetivas()).length} vendas</div>
       </div>
       <div style="background:var(--roxo-claro);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--txt-roxo);text-transform:uppercase;font-weight:600">Pedidos p/ bater meta do mês</div>
@@ -1921,21 +1960,27 @@ SECTIONS.dashboard = () => {
     </div>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Produto</th><th>Total</th><th>Status</th></tr></thead>
+        <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Lucro</th><th>Status</th></tr></thead>
         <tbody>
-          ${efetivas.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhuma venda ainda</td></tr>`:
-          [...efetivas].sort((a,b)=>(a.data||'').localeCompare(b.data||'')).slice(-15).reverse().map(v=>{
-            const acao=v.origem==='consignado'?`verHistoricoVisitas('${v.id.split(':')[0]}')`
-              :v.origem==='pedido'?`verPedidoOrc('${v.id}')`
-              :v.origem==='venda'?`editarVenda('${v.id}')`:'';
+          ${(()=>{const grupos=agruparVendasPorId(efetivas);
+          if(grupos.length===0) return `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhuma venda ainda</td></tr>`;
+          return [...grupos].sort((a,b)=>(a.data||'').localeCompare(b.data||'')).slice(-15).reverse().map(g=>{
+            const acao=g.origem==='consignado'?`verHistoricoVisitas('${g.id.split(':')[0]}')`
+              :g.origem==='pedido'?`verPedidoOrc('${g.id}')`
+              :g.origem==='venda'?`editarVenda('${g.id}')`:'';
+            const lucroG=g.valorTotal-g.custoTotal;
+            const resumoItens=g.itens.length===1
+              ? (g.itens[0].produto?nomeProd(g.itens[0].produto):'(item avulso)')
+              : `${g.itens.length} itens — `+g.itens.map(it=>it.produto?nomeProd(it.produto):'item avulso').join(', ');
             return `<tr ${acao?`onclick="${acao}" style="cursor:pointer" title="Clique pra abrir"`:''}>
-            <td class="fw-bold text-azul">${v.id} ${v.origem==='pedido'?'<span class="badge badge-info" style="font-size:9px">pedido</span>':v.origem==='consignado'?'<span class="badge badge-gray" style="font-size:9px">consignado</span>':''}</td>
-            <td>${v.data||'—'}</td>
-            <td>${nomeVenda(v)}</td>
-            <td>${v.produto?nomeProd(v.produto):'(vários itens)'}</td>
-            <td class="fw-bold text-verde">${R$(v.valorTotal)}</td>
-            <td>${statusBadge(v.status)}</td>
-          </tr>`;}).join('')}
+            <td class="fw-bold text-azul">${g.id} ${g.origem==='pedido'?'<span class="badge badge-info" style="font-size:9px">pedido</span>':g.origem==='consignado'?'<span class="badge badge-gray" style="font-size:9px">consignado</span>':''}</td>
+            <td>${g.data||'—'}</td>
+            <td>${nomeVenda(g)}</td>
+            <td style="font-size:12px">${resumoItens}</td>
+            <td class="fw-bold text-verde">${R$(g.valorTotal)}</td>
+            <td class="fw-bold" style="color:${lucroG>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroG)}</td>
+            <td>${statusBadge(g.status)}</td>
+          </tr>`;}).join('');})()}
         </tbody>
       </table>
     </div>
@@ -2042,7 +2087,7 @@ SECTIONS.clientes = () => `
               <td>${c.telefone||'—'}</td>
               <td>${c.cidade||'—'}</td>
               <td class="fw-bold text-verde">${R$(vs.reduce((s,v)=>s+v.valorTotal,0))}</td>
-              <td class="text-center">${vs.length}</td>
+              <td class="text-center">${agruparVendasPorId(vs).length}</td>
               <td class="td-actions">
                 <button class="btn btn-primary btn-xs" onclick="editarCli('${c.id}')">✏️</button>
                 ${c.whatsapp?`<button class="btn btn-success btn-xs" onclick="abrirWPP('${c.whatsapp}','')">💬</button>`:''}
@@ -2494,19 +2539,21 @@ SECTIONS.pedidos = () => {
   <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Total Pedidos</div><div class="kpi-value">${lista.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Valor Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+(+p.total||0),0))}</div></div>
+    <div class="kpi-card roxo"><div class="kpi-label">🔬 Lucro Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+lucroPedidoEstimado(p),0))}</div></div>
     <div class="kpi-card amarelo"><div class="kpi-label">Saldo a Receber</div><div class="kpi-value">${R$(lista.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0))}</div></div>
   </div>
   <div class="panel">
     <div class="panel-header"><span class="panel-title">📋 Pedidos & Orçamentos</span>
       <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
-      <tbody>${lista.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido.</td></tr>`:
-      lista.slice().reverse().map(p=>`<tr>
+      <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Lucro</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
+      <tbody>${lista.length===0?`<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido.</td></tr>`:
+      lista.slice().reverse().map(p=>{const lucroP=lucroPedidoEstimado(p);return`<tr>
         <td class="fw-bold text-azul">${p.id}</td><td>${p.data||'—'}</td>
         <td class="fw-bold">${nomeVenda(p)}</td>
         <td style="font-size:12px">${resumoItensPedido(p)}</td>
         <td class="fw-bold text-verde">${R$(p.total||0)}</td>
+        <td class="fw-bold" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
         <td>${statusPgto(p)}</td>
         <td>${statusBadge(p.status)}</td>
         <td class="text-center">${p.estoque_baixado?`<span class="badge badge-ok" style="cursor:pointer" onclick="modalVerConsumo('${p.id}')" title="Ver insumos consumidos">📦 Baixado</span>`:'<span class="badge badge-gray">—</span>'}</td>
@@ -2517,7 +2564,7 @@ SECTIONS.pedidos = () => {
           <button class="btn btn-success btn-xs" onclick="wppPedido('${p.id}')" title="WhatsApp rápido">💬</button>
           <button class="btn btn-danger btn-xs" onclick="excluirItem('pedidos','${p.id}')">🗑️</button>
         </td>
-      </tr>`).join('')}
+      </tr>`;}).join('')}
       </tbody>
     </table></div>
   </div>`;
@@ -2611,11 +2658,21 @@ function onKitModeloPedidoEscolhido(i,idx,prodId){
   updSubtotal(i);
 }
 
+// Lucro estimado de um pedido inteiro = total cobrado menos o custo real
+// dos itens (o mesmo custo "de verdade" usado no Dashboard/DRE — prefere o
+// custo congelado no momento da venda, e cai pro cálculo ao vivo se ainda
+// não tiver sido salvo). Não desconta rateio de custo fixo nem impostos —
+// é uma visão rápida, não a mesma conta fina da Precificação.
+function lucroPedidoEstimado(pd){
+  const custoTotal=(pd.itens||[]).reduce((s,it)=>s+custoItemPedido(it)*(+it.qtd||1),0);
+  return pedidoCalc(pd).total-custoTotal;
+}
 function abrirFormPedido(editId){
   const pd=window._pedTemp;
   const cliOpts=[{value:'',label:'— Cliente não cadastrado —'},...ordNome(DB.clientes).map(c=>({value:c.id,label:c.nome}))];
   const renderItens=()=>(pd.itens||[]).map((it,i)=>pedItemRow(it,i)).join('');
   const calc=pedidoCalc(pd);
+  const lucroPedido=lucroPedidoEstimado(pd);
 
   document.getElementById('modal-title').textContent=editId?`✏️ Pedido ${pd.id}`:`📋 Novo ${pd.id}`;
   document.getElementById('modal-body').innerHTML=`
@@ -2673,7 +2730,11 @@ function abrirFormPedido(editId){
           </td></tr>
           <tr id="ped-row-subtotal" style="${calc.descItens+calc.descGeral>0?'':'display:none'}">
             <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--cinza-med)">Subtotal</td>
-            <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--cinza-med)" id="ped-subtotal-val">${R$(calc.somaItens)}</td>
+            <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--cinza-med)" id="ped-subtotal-val">${R$(calc.subtotal)}</td>
+          </tr>
+          <tr id="ped-row-descitens" style="${calc.descItens>0?'':'display:none'}">
+            <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--txt-vermelho)">Desconto nos Itens</td>
+            <td colspan="2" style="padding:4px 9px;text-align:center;font-size:12px;color:var(--txt-vermelho)" id="ped-descitens-val">− ${R$(calc.descItens)}</td>
           </tr>
           <tr id="ped-row-desc" style="${calc.descGeral>0?'':'display:none'}">
             <td colspan="5" style="padding:4px 9px;text-align:right;font-size:12px;color:var(--txt-vermelho)">Desconto Geral</td>
@@ -2686,6 +2747,10 @@ function abrirFormPedido(editId){
           <tr style="background:var(--verde);color:white">
             <td colspan="5" style="padding:9px;font-weight:700;text-align:right;font-size:14px">TOTAL</td>
             <td colspan="2" style="padding:9px;font-size:16px;font-weight:900;text-align:center" id="ped-total">${R$(calc.total)}</td>
+          </tr>
+          <tr style="background:var(--roxo-claro)">
+            <td colspan="5" style="padding:8px 9px;font-weight:700;text-align:right;font-size:12.5px;color:var(--txt-roxo)">🔬 Lucro estimado deste pedido</td>
+            <td colspan="2" style="padding:8px 9px;font-size:14px;font-weight:800;text-align:center;color:var(--txt-roxo)" id="ped-lucro">${R$(lucroPedido)}</td>
           </tr>
         </tfoot>
       </table>
@@ -2729,12 +2794,15 @@ function calcTotalPed(){
   const calc=pedidoCalc(window._pedTemp);
   window._pedTemp.total=calc.total;
   const elT=document.getElementById('ped-total');if(elT)elT.textContent=R$(calc.total);
-  const elSub=document.getElementById('ped-subtotal-val');if(elSub)elSub.textContent=R$(calc.somaItens);
+  const elSub=document.getElementById('ped-subtotal-val');if(elSub)elSub.textContent=R$(calc.subtotal);
+  const elDI=document.getElementById('ped-descitens-val');if(elDI)elDI.textContent='− '+R$(calc.descItens);
   const elD=document.getElementById('ped-descgeral-val');if(elD)elD.textContent='− '+R$(calc.descGeral);
   const rowSub=document.getElementById('ped-row-subtotal');if(rowSub)rowSub.style.display=(calc.descItens+calc.descGeral>0)?'':'none';
+  const rowDI=document.getElementById('ped-row-descitens');if(rowDI)rowDI.style.display=calc.descItens>0?'':'none';
   const rowDesc=document.getElementById('ped-row-desc');if(rowDesc)rowDesc.style.display=calc.descGeral>0?'':'none';
   const elA=document.getElementById('ped-acrescimos-val');if(elA)elA.textContent='+ '+R$(calc.totalAcrescimos);
   const rowA=document.getElementById('ped-row-acrescimos');if(rowA)rowA.style.display=calc.totalAcrescimos>0?'':'none';
+  const elL=document.getElementById('ped-lucro');if(elL)elL.textContent=R$(lucroPedidoEstimado(window._pedTemp));
 }
 // Acréscimo = o contrário do desconto — cobrar a mais por algum motivo
 // específico (arte feita do zero, urgência, embalagem especial...). É uma
@@ -3016,7 +3084,7 @@ function abrirPreviewOrcamento(pedidoId){
       <td><b>${it.desc||nomeProd(it.prod)}</b>${it.variante?` <span style="color:#9C7B44;font-weight:600">· ${it.variante}</span>`:''}</td>
       <td class="orc-num">${it.qtd||1}</td>
       <td class="orc-val">${R$(it.valor||0)}</td>
-      <td class="orc-val" style="font-weight:700">${R$(c.tot)}</td>
+      <td class="orc-val" style="font-weight:700">${R$(c.sub)}</td>
     </tr>${temDesc?`<tr class="orc-desc-row"><td colspan="3" style="text-align:right;font-size:10.5px">↳ desconto aplicado no item</td><td class="orc-val" style="font-size:10.5px">− ${R$(c.desc)}</td></tr>`:''}`;
   }).join('');
 
@@ -3049,7 +3117,8 @@ function abrirPreviewOrcamento(pedidoId){
       </div>
 
       <div class="orc-totais">
-        ${calc.descItens+calc.descGeral>0?`<div class="orc-totais-row sub"><span>Subtotal</span><span>${R$(calc.somaItens)}</span></div>`:''}
+        <div class="orc-totais-row sub"><span>Subtotal</span><span>${R$(calc.subtotal)}</span></div>
+        ${calc.descItens>0?`<div class="orc-totais-row desc"><span>Desconto nos Itens</span><span>− ${R$(calc.descItens)}</span></div>`:''}
         ${calc.descGeral>0?`<div class="orc-totais-row desc"><span>Desconto Geral</span><span>− ${R$(calc.descGeral)}</span></div>`:''}
         ${(pd.acrescimos||[]).map(a=>`<div class="orc-totais-row" style="color:#2F9E5C"><span>➕ ${a.motivo||'Acréscimo'}</span><span>+ ${R$(a.valor)}</span></div>`).join('')}
         <div class="orc-total-final"><span>Valor Total</span><b>${R$(calc.total)}</b></div>
