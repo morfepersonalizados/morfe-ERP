@@ -249,6 +249,13 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 .orc-tbl .orc-num{text-align:center}
 .orc-tbl .orc-val{text-align:right;font-variant-numeric:tabular-nums}
 .orc-desc-row td{color:#9B2335;font-style:italic;background:#FBF0F1!important}
+.orc-var-row td{background:#FBF8F2!important;padding:10px 12px 12px!important;border-bottom:1px solid #EFEAE0}
+.orc-var-titulo{font-size:9.5px;font-weight:700;color:#9C7B44;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.orc-var-opcoes{display:flex;flex-wrap:wrap;gap:6px}
+.orc-var-opcao{background:#FFFFFF;border:1.5px solid #E8E1D3;border-radius:8px;padding:6px 10px;font-size:11.5px}
+.orc-var-opcao.atual{border-color:#C9AC7D;background:#F5EDDD}
+.orc-var-opcao b{display:block;color:#282420;font-size:12px}
+.orc-var-opcao span{color:#182E62;font-weight:700;font-variant-numeric:tabular-nums}
 .orc-totais{margin:0 28px 16px;border-top:2px solid #182E62}
 .orc-totais-row{display:flex;justify-content:space-between;padding:7px 12px;font-size:12.5px}
 .orc-totais-row.sub{color:#7A7267}
@@ -4752,15 +4759,32 @@ function abrirPreviewKit(kitId){
   const dataEmissao=new Date().toLocaleDateString('pt-BR');
   const semDesc=(k.itens||[]).reduce((s,i)=>s+precoItemKit(i)*(+i.qtd||1),0);
 
+  // Pra cada item com modelos alternativos, calcula quanto o KIT INTEIRO
+  // fica se trocar só esse item pra cada opção (mantendo os outros itens
+  // como estão) — assim manda uma imagem só que já responde "e se eu
+  // escolher a outra caneca?" sem precisar gerar uma imagem por combinação.
+  const somaOutrosItens=(itemAtual)=>(k.itens||[]).filter(x=>x!==itemAtual).reduce((s,x)=>s+precoItemKit(x)*(+x.qtd||1),0);
   const linhasItens=(k.itens||[]).map(it=>{
     const p=getProd(it.prod);
     const temOpcoes=it.opcoes&&it.opcoes.length>1;
-    return `<tr>
+    const linhaPrincipal=`<tr>
       <td><b>${p?.nome||it.prod}</b>${temOpcoes?` <span style="color:#9C7B44;font-weight:600">· modelo à escolha</span>`:''}</td>
       <td class="orc-num">${it.qtd||1}</td>
       <td class="orc-val">${R$(precoItemKit(it))}</td>
       <td class="orc-val" style="font-weight:700">${R$(precoItemKit(it)*(+it.qtd||1))}</td>
     </tr>`;
+    if(!temOpcoes) return linhaPrincipal;
+    const base=somaOutrosItens(it);
+    const opcoesHtml=it.opcoes.map(pid=>{
+      const op=getProd(pid);
+      const totalKitComEssaOpcao=(base+(+(op?.preco)||0)*(+it.qtd||1))*(1-(+k.desconto_pct||0)/100);
+      return `<div class="orc-var-opcao${pid===it.prod?' atual':''}"><b>${op?.nome||pid}${pid===it.prod?' (padrão)':''}</b><span>kit por ${R$(totalKitComEssaOpcao)}</span></div>`;
+    }).join('');
+    const linhaVariantes=`<tr class="orc-var-row"><td colspan="4">
+      <div class="orc-var-titulo">🔀 Se escolher outro modelo pra esse item, o kit fica:</div>
+      <div class="orc-var-opcoes">${opcoesHtml}</div>
+    </td></tr>`;
+    return linhaPrincipal+linhaVariantes;
   }).join('');
 
   const html=`
@@ -4810,10 +4834,20 @@ function abrirPreviewKit(kitId){
 }
 function wppKit(kitId){
   const k=getItem(DB.kits,kitId);if(!k)return;
+  const somaOutrosItens=(itemAtual)=>(k.itens||[]).filter(x=>x!==itemAtual).reduce((s,x)=>s+precoItemKit(x)*(+x.qtd||1),0);
   const itens=(k.itens||[]).map(it=>{
     const p=getProd(it.prod);
     const temOpcoes=it.opcoes&&it.opcoes.length>1;
-    return `  • ${it.qtd}x ${p?.nome||it.prod}${temOpcoes?' (modelo à sua escolha)':''}`;
+    let linha=`  • ${it.qtd}x ${p?.nome||it.prod}${temOpcoes?' (modelo à sua escolha)':''}`;
+    if(temOpcoes){
+      const base=somaOutrosItens(it);
+      linha+='\n'+it.opcoes.map(pid=>{
+        const op=getProd(pid);
+        const totalKitComEssaOpcao=(base+(+(op?.preco)||0)*(+it.qtd||1))*(1-(+k.desconto_pct||0)/100);
+        return `      ↳ ${op?.nome||pid}: kit por ${R$(totalKitComEssaOpcao)}`;
+      }).join('\n');
+    }
+    return linha;
   }).join('\n');
   const msg=`Olá! 😊\n\nSegue o kit *${k.nome}* da *Morfê Personalizados*:\n\n🎁 *Itens do kit:*\n${itens}\n\n💰 *VALOR DO KIT: ${R$(k.preco_venda)}*\n\nQualquer dúvida, é só chamar! 🙏\n📍 @morfepersonalizados`;
   abrirWPP('', msg);
