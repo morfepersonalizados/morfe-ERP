@@ -325,6 +325,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
       <div class="nav-group-items">
         <div class="nav-item" onclick="goTo('produtos')"><span class="nav-icon">📦</span> Produtos</div>
         <div class="nav-item" onclick="goTo('materias')"><span class="nav-icon">🧱</span> Matérias-Primas</div>
+        <div class="nav-item" onclick="goTo('consumo')"><span class="nav-icon">📉</span> Consumo de Insumos</div>
         <div class="nav-item" onclick="goTo('fornecedores')"><span class="nav-icon">🏭</span> Fornecedores</div>
         <div class="nav-item" onclick="goTo('clientes')"><span class="nav-icon">👥</span> Clientes</div>
       </div>
@@ -803,9 +804,12 @@ async function sincronizarSheets() {
 }
 
 async function processarFila() {
+  // NÃO zera _pendingQueue de uma vez no início — só remove cada operação
+  // depois que ela realmente terminou com sucesso. Zerar tudo antes do loop
+  // acabar significava que, se o app fechasse (comum no celular) no meio do
+  // reenvio, as operações ainda não tentadas simplesmente desapareciam da
+  // fila e do localStorage, sem nunca terem sido enviadas de verdade.
   const fila = [..._pendingQueue];
-  _pendingQueue = [];
-  salvarLocal();
   for (const op of fila) {
     try {
       if (op.acao === 'ajustar_estoque') {
@@ -813,15 +817,14 @@ async function processarFila() {
       } else {
         await enviarParaSheets(op.acao, op.tabela, op.dados, op.id);
       }
-      // Deu certo — não reentra na fila
+      _pendingQueue = _pendingQueue.filter(x => x !== op); // deu certo — remove só essa
     }
     catch(e) {
       op.ultimoErro = e.message || String(e);
       op.tentadoEm = new Date().toISOString();
-      _pendingQueue.push(op);
     }
+    salvarLocal();
   }
-  salvarLocal();
 }
 
 async function enviarParaSheets(acao, tabela, dados, id) {
@@ -1002,7 +1005,7 @@ function custoItemPedidoAoVivo(it){
     const kit=getItem(DB.kits, it.prod.replace('KIT:',''));
     if(!kit) return 0;
     return (kit.itens||[]).reduce((s,ki,idx)=>{
-      const prodEfetivo=(it.kit_modelos && it.kit_modelos[idx]) || ki.prod;
+      const prodEfetivo=(it.kit_modelos && it.kit_modelos[ki.prod]) || ki.prod;
       return s+(+(getProd(prodEfetivo)?.custo)||0)*(+ki.qtd||1);
     },0);
   }
@@ -1024,6 +1027,7 @@ function todasVendasEfetivas(){
   const dePedidos=[];
   DB.pedidos.forEach(p=>{
     if(p.status==='Cancelado') return; // pedido cancelado não conta como venda
+    if(p.status==='Em aberto') return; // ainda é só orçamento — não virou pedido de verdade (sem confirmação/pagamento), não conta como faturamento
     // O total "de verdade" do pedido pode ser diferente da soma crua dos
     // itens — desconto geral e acréscimos mexem nisso. Sem ratear esse
     // ajuste entre os itens, a soma de "valorTotal" de cada item aqui
@@ -1259,7 +1263,7 @@ const TITLES = {
   compras:'🛒 Compras', producao:'🏗️ Produção', pedidos:'📋 Pedidos',
   kits:'🎁 Kits & Combos', areceber:'📥 A Receber', apagar:'📤 A Pagar',
   custos:'📌 Custos e Taxas', divisaolucro:'🧩 Divisão de Lucro', dre:'📊 DRE', fichas:'🔬 Fichas Técnicas',
-  consignados:'🤝 Consignados', precificacao:'🧮 Precificação',
+  consignados:'🤝 Consignados', precificacao:'🧮 Precificação', consumo:'📉 Consumo de Insumos',
   relatorios:'📋 Relatórios', pendencias:'🧭 Pendências de Cadastro', config:'⚙️ Configurações',
 };
 
@@ -1477,7 +1481,11 @@ function metricasFinanceiras(){
   const inicioSemanaStr=inicioSemana.toISOString().slice(0,10);
 
   const efetivas=todasVendasEfetivas();
-  const vendasMes=efetivas.filter(v=>{const d=new Date(normalizarData(v.data));return d.getMonth()+1===mes&&d.getFullYear()===ano;});
+  // +'T00:00:00' (sem 'Z') força o JS a interpretar como horário LOCAL, não
+  // UTC — sem isso, "2026-08-01" virava meia-noite UTC, que em Manaus
+  // (GMT-4) é ainda dia 31/07 às 20h, e a venda do dia 1 caía classificada
+  // no mês errado (anterior) nesse cálculo de faturamento.
+  const vendasMes=efetivas.filter(v=>{const d=new Date(normalizarData(v.data)+'T00:00:00');return d.getMonth()+1===mes&&d.getFullYear()===ano;});
   const receitaMes=vendasMes.reduce((s,v)=>s+v.valorTotal,0);
   const cpvMes=vendasMes.reduce((s,v)=>s+v.custoTotal,0);
   const mcMes=receitaMes-cpvMes;
@@ -1510,7 +1518,11 @@ function metricasFinanceiras(){
   // quando o valor calculado pelos lançamentos não bate com o que tem de
   // verdade na conta — sem isso não tinha como "corrigir" o número
   const ajusteCaixa=+(DB.config?.ajuste_caixa||0);
-  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR+recebidoConsignados)-(pagoCompras+pagoAP+custoFixoMes)+ajusteCaixa;
+  // NÃO soma custoFixoMes aqui: cada custo fixo já vira um lançamento em
+  // "A Pagar" (gerarContasFixasDoMes) e entra em pagoAP quando é pago de
+  // verdade. Descontar custoFixoMes de novo aqui contava a mesma conta
+  // fixa duas vezes (uma via pagoAP, outra aqui) — via custoFixoMes.
+  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR+recebidoConsignados)-(pagoCompras+pagoAP)+ajusteCaixa;
 
   // Valor parado — dinheiro "preso" em cada frente, ainda não virou caixa
   const valorEstoqueInsumos=DB.materias.reduce((s,m)=>s+Math.max(0,(+m.estoque||0))*(+m.custo||0),0);
@@ -1748,7 +1760,7 @@ SECTIONS.dashboard = () => {
   const ticketPeriodo=(()=>{const g=agruparVendasPorId(vendasPeriodo).length;return g?receitaPeriodo/g:0;})();
   const meta = +(DB.config?.meta_mensal||5000);
   const mes = new Date().getMonth()+1, ano = new Date().getFullYear();
-  const vendaMes = efetivas.filter(v=>{const d=new Date(normalizarData(v.data));return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
+  const vendaMes = efetivas.filter(v=>{const d=new Date(normalizarData(v.data)+'T00:00:00');return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
   const pctMeta = meta ? (vendaMes/meta*100).toFixed(0) : 0;
   const aReceber = DB.areceber.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
   const aPagar = DB.apagar.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
@@ -1778,7 +1790,7 @@ SECTIONS.dashboard = () => {
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const porMes={}, lucroPorMes={};
-  efetivas.forEach(v=>{const m=new Date(normalizarData(v.data)).getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;lucroPorMes[m]=(lucroPorMes[m]||0)+(v.valorTotal-v.custoTotal);});
+  efetivas.forEach(v=>{const m=new Date(normalizarData(v.data)+'T00:00:00').getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;lucroPorMes[m]=(lucroPorMes[m]||0)+(v.valorTotal-v.custoTotal);});
   const barMax=Math.max(...Object.values(porMes),...Object.values(lucroPorMes).map(v=>Math.abs(v)),1);
 
   // Comparativo de receita com o mesmo intervalo relativo de dias do mês
@@ -2004,15 +2016,16 @@ SECTIONS.produtos = () => `
     </div>
     <div class="tbl-wrap">
       <table id="t-prod">
-        <thead><tr><th>SKU</th><th>Categoria</th><th>Nome</th><th>Preço</th><th>Custo</th><th>Margem</th><th>Status</th><th>Ações</th></tr></thead>
+        <thead><tr><th>SKU</th><th>Categoria</th><th>Nome</th><th>Preço</th><th>Custo</th><th>📦 Embal.</th><th>Margem</th><th>Status</th><th>Ações</th></tr></thead>
         <tbody>
-          ${DB.produtos.length===0?`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum produto. Clique em + Novo.</td></tr>`:
+          ${DB.produtos.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum produto. Clique em + Novo.</td></tr>`:
           ordNome(DB.produtos).map(p=>`<tr>
             <td><span class="badge badge-info">${p.sku||'—'}</span></td>
             <td>${p.categoria||'—'}</td>
             <td class="fw-bold">${p.nome}</td>
             <td class="fw-bold text-verde">${R$(p.preco)}</td>
             <td class="text-vermelho">${R$(p.custo)}</td>
+            <td class="text-center ${p.embalagem?'':'text-muted'}" title="Editável na Ficha Técnica do produto">${p.embalagem?R$(p.embalagem):'—'}</td>
             <td class="fw-bold">${p.preco?((p.preco-p.custo)/p.preco*100).toFixed(1):0}%</td>
             <td>${statusBadge(p.status)}</td>
             <td class="td-actions">
@@ -2041,6 +2054,10 @@ function formProduto(p={}){return `<div class="form-grid">
   <div class="form-group"><label class="form-label">Custo (R$)</label><input class="form-input" id="f-custo" type="number" step="0.01" value="${p.custo||''}"></div>
   <div class="form-group"><label class="form-label">Status</label>
     <select class="form-select" id="f-status"><option ${p.status==='Ativo'?'selected':''}>Ativo</option><option ${p.status==='Inativo'?'selected':''}>Inativo</option></select></div>
+  ${p.id?`<div class="form-group full" style="background:var(--cinza-ultra);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:12px">📦 Embalagem (sacola/caixa) cadastrada: <strong>${p.embalagem?R$(p.embalagem):'nenhuma'}</strong> — já soma no Custo acima</span>
+    <button type="button" class="btn btn-outline btn-xs" onclick="closeModal();irParaFicha('${p.id}')">✏️ Editar na Ficha Técnica</button>
+  </div>`:''}
 </div>`;}
 async function salvarProduto(id=null){
   // Preserva campos que não fazem parte deste formulário (embalagem, margem_ideal
@@ -2395,7 +2412,7 @@ function calcularConsumoInsumos(pd){
       const kit=getItem(DB.kits, it.prod.replace('KIT:',''));
       if(!kit) return;
       (kit.itens||[]).forEach((ki,idx)=>{
-        const prodEfetivo=(it.kit_modelos && it.kit_modelos[idx]) || ki.prod;
+        const prodEfetivo=(it.kit_modelos && it.kit_modelos[ki.prod]) || ki.prod;
         somarConsumoProduto(consumo, prodEfetivo, (+ki.qtd||1)*qtdPedido, null); // kit já resolve o modelo certo; variante de insumo dentro do produto ainda não se aplica aqui
       });
     } else {
@@ -2509,6 +2526,74 @@ function modalVerConsumo(pedidoId){
     ()=>closeModal(),'Fechar');
   document.getElementById('modal-save-btn').style.display='none';
 }
+
+// ═══════════════════════════════════════════════════════════════
+// CONSUMO DE INSUMOS — visão agregada do que já foi de fato gasto de
+// matéria-prima (baixado do estoque), pra além do consumo médio/dia usado
+// só pra projeção. Junta os consumo_insumos já congelados em cada pedido —
+// não recalcula pela Ficha Técnica atual, então continua correto mesmo que
+// a ficha de um produto mude depois.
+// ═══════════════════════════════════════════════════════════════
+function consumoNoPeriodo(inicio,fim){
+  const porInsumo={};
+  const pedidos=[];
+  DB.pedidos.forEach(p=>{
+    if(!p.estoque_baixado||!p.consumo_insumos) return;
+    const d=normalizarData(p.data);
+    if(!d||d<inicio||d>fim) return;
+    Object.keys(p.consumo_insumos).forEach(mpId=>{
+      porInsumo[mpId]=(porInsumo[mpId]||0)+(+p.consumo_insumos[mpId]||0);
+    });
+    pedidos.push(p);
+  });
+  return {porInsumo,pedidos};
+}
+SECTIONS.consumo = () => {
+  const per=getPeriodoAtual(_consPeriodo,_consCustomIni,_consCustomFim);
+  const {porInsumo,pedidos}=consumoNoPeriodo(per.inicio,per.fim);
+  const linhasInsumo=Object.keys(porInsumo)
+    .map(mpId=>{const mp=getItem(DB.materias,mpId);return {mpId,mp,qtd:porInsumo[mpId],valor:porInsumo[mpId]*(+(mp?.custo)||0)};})
+    .sort((a,b)=>b.valor-a.valor);
+  const valorTotalConsumido=linhasInsumo.reduce((s,l)=>s+l.valor,0);
+  const pedidosOrdenados=[...pedidos].sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
+  return`
+  ${renderSeletorPeriodo('cons',_consPeriodo,_consCustomIni,_consCustomFim)}
+  <div style="background:var(--dourado-claro);color:var(--txt-dourado);padding:8px 14px;border-radius:8px;font-size:12px;margin-bottom:12px">
+    📅 ${per.label} — ${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)} · 💰 ${R$(valorTotalConsumido)} em insumo consumido
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">🧱 Consumo por Insumo</span>
+      <span class="text-muted" style="font-size:11px">${pedidos.length} pedido(s) com baixa de estoque no período</span>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Insumo</th><th class="text-center">Consumido no período</th><th class="text-center">Valor</th><th class="text-center">Estoque atual</th></tr></thead>
+      <tbody>${linhasInsumo.length===0?`<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum consumo de insumo registrado nesse período.</td></tr>`:
+      linhasInsumo.map(l=>`<tr>
+        <td class="fw-bold">${l.mp?.nome||l.mpId}</td>
+        <td class="text-center">${l.qtd.toFixed(2)} ${l.mp?.unidade||'un'}</td>
+        <td class="text-center fw-bold text-verde">${R$(l.valor)}</td>
+        <td class="text-center ${(+l.mp?.estoque||0)<=(+l.mp?.est_min||0)?'text-vermelho fw-bold':'text-muted'}">${l.mp?(l.mp.estoque||0).toFixed(2):'—'} ${l.mp?.unidade||''}</td>
+      </tr>`).join('')}</tbody>
+      ${linhasInsumo.length>0?`<tfoot><tr style="font-weight:700"><td colspan="2">Total</td><td class="text-center text-verde">${R$(valorTotalConsumido)}</td><td></td></tr></tfoot>`:''}
+    </table></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <div class="panel-header"><span class="panel-title">📋 Consumo por Pedido</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Itens</th><th class="text-center">Insumos</th><th></th></tr></thead>
+      <tbody>${pedidosOrdenados.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido com baixa de estoque nesse período.</td></tr>`:
+      pedidosOrdenados.map(p=>`<tr>
+        <td class="fw-bold">${p.id}</td>
+        <td>${formatarDataBR(p.data)}</td>
+        <td>${nomeVenda(p)}</td>
+        <td style="max-width:260px">${resumoItensPedido(p)}</td>
+        <td class="text-center">${Object.keys(p.consumo_insumos||{}).length}</td>
+        <td><button class="btn btn-outline btn-xs" onclick="modalVerConsumo('${p.id}')">📦 Ver</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+};
 
 // Cálculo de valores de um item considerando desconto próprio
 function itemCalc(it){
@@ -2632,9 +2717,9 @@ function kitModelosPedidoHtml(kit,it,i){
     <div style="font-size:10.5px;font-weight:700;color:var(--txt-roxo);margin-bottom:6px;text-transform:uppercase">🔀 Escolha o modelo pra esse pedido — "${kit.nome}"</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       ${flex.map(({ki,idx})=>{
-        const escolhido=(it.kit_modelos && it.kit_modelos[idx]) || ki.prod;
+        const escolhido=(it.kit_modelos && it.kit_modelos[ki.prod]) || ki.prod;
         return `<div style="min-width:210px;flex:1">
-          <select onchange="onKitModeloPedidoEscolhido(${i},${idx},this.value)" style="width:100%;padding:7px 8px;border:1.5px solid var(--roxo);border-radius:5px;font-size:12.5px;background:white;font-weight:600">
+          <select onchange="onKitModeloPedidoEscolhido(${i},'${ki.prod}',this.value)" style="width:100%;padding:7px 8px;border:1.5px solid var(--roxo);border-radius:5px;font-size:12.5px;background:white;font-weight:600">
             ${ki.opcoes.map(pid=>{const p=getProd(pid);return `<option value="${pid}" ${escolhido===pid?'selected':''}>${p?.nome||pid} — ${R$(p?.preco)}</option>`;}).join('')}
           </select>
         </div>`;
@@ -2642,15 +2727,19 @@ function kitModelosPedidoHtml(kit,it,i){
     </div>
   </td></tr>`;
 }
-function onKitModeloPedidoEscolhido(i,idx,prodId){
+// Chave do kit_modelos é o produto BASE do slot (ki.prod), não a posição no
+// array — assim, se o kit for editado depois (item removido/reordenado),
+// pedidos antigos continuam apontando pro slot certo em vez de desviar pro
+// vizinho que tomou seu lugar no índice.
+function onKitModeloPedidoEscolhido(i,kiProd,prodId){
   const it=window._pedTemp.itens[i];
   if(!it.kit_modelos) it.kit_modelos={};
-  it.kit_modelos[idx]=prodId;
+  it.kit_modelos[kiProd]=prodId;
   delete it.custo_snapshot; // modelo mudou — recalcula o custo na hora de salvar
   const kit=getItem(DB.kits, String(it.prod).replace('KIT:',''));
   if(kit){
-    const cheio=(kit.itens||[]).reduce((s,ki,ix)=>{
-      const pid=(it.kit_modelos[ix])||ki.prod;
+    const cheio=(kit.itens||[]).reduce((s,ki)=>{
+      const pid=(it.kit_modelos[ki.prod])||ki.prod;
       return s+(+(getProd(pid)?.preco)||0)*(+ki.qtd||1);
     },0);
     it.valor=parseFloat((cheio*(1-(+kit.desconto_pct||0)/100)).toFixed(2));
@@ -2773,6 +2862,11 @@ function abrirFormPedido(editId){
 function onChangePedCli(id){const c=getCli(id);if(c){document.getElementById('ped-clinome').value=c.nome;document.getElementById('ped-tel').value=c.whatsapp||c.telefone||'';window._pedTemp.cliente=id;}}
 function onChangePedProd(i,val){
   const it=window._pedTemp.itens[i];it.prod=val;it.variante='';it.kit_modelos={};
+  // Limpa "já pronta" também: a checkbox some da tela quando o item vira Kit
+  // (não existe pra Kit), então se ela tivesse ficado marcada de um produto
+  // anterior, não teria como desmarcar — e calcularConsumoInsumos pula
+  // TODO o consumo do kit por causa desse "jaProduzida" fantasma.
+  it.jaProduzida=false;
   delete it.custo_snapshot; // produto mudou — o custo congelado antigo não vale mais, recalcula na hora de salvar
   if(val.startsWith('KIT:')){const k=getItem(DB.kits,val.replace('KIT:',''));if(k){it.desc=k.nome;it.valor=k.preco_venda||0;}}
   else if(val){const p=getProd(val);if(p){it.desc=p.nome;it.valor=p.preco||0;}}
@@ -2902,19 +2996,33 @@ async function salvarPedidoOrc(editId){
   }
 
   // ── BAIXA AUTOMÁTICA DE ESTOQUE ──────────────────────────────
-  // Reverte o consumo anterior (se esse pedido já tinha baixado estoque antes)
   const pedidoAnterior=editId?getItem(DB.pedidos,editId):null;
-  if(pedidoAnterior?.estoque_baixado){
-    await reverterBaixaEstoque(pedidoAnterior.consumo_insumos||{});
-  }
-  // Calcula e aplica o novo consumo — a não ser que o pedido esteja Cancelado
+  // Só reverte e recalcula o consumo se algo que REALMENTE afeta o consumo
+  // mudou (produto, quantidade, variante, modelo de kit, "já produzida" ou
+  // virou/saiu de Cancelado). Sem essa checagem, salvar de novo um pedido
+  // antigo (só pra mudar a data de entrega, por exemplo) recalculava o
+  // consumo pela Ficha Técnica ATUAL — se ela tivesse sido corrigida depois,
+  // o pedido antigo levava uma baixa/devolução de estoque fantasma, sem
+  // nenhuma mudança real no que foi produzido pra esse pedido.
+  const itensParaComparar=itens=>(itens||[]).map(it=>({prod:it.prod||'',qtd:+it.qtd||0,variante:it.variante||'',jaProduzida:!!it.jaProduzida,kit_modelos:it.kit_modelos||{}}));
+  const itensMudaram=!pedidoAnterior
+    || JSON.stringify(itensParaComparar(pd.itens))!==JSON.stringify(itensParaComparar(pedidoAnterior.itens))
+    || (pd.status==='Cancelado')!==(pedidoAnterior.status==='Cancelado');
   const consumoAnterior=(pedidoAnterior?.estoque_baixado?(pedidoAnterior.consumo_insumos||{}):{});
-  let novoConsumo={};
+  let novoConsumo=pedidoAnterior?.consumo_insumos||{};
   let avisoFalta=[];
-  if(pd.status!=='Cancelado'){
-    novoConsumo=calcularConsumoInsumos(pd);
-    avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
-    await aplicarBaixaEstoque(novoConsumo);
+  if(itensMudaram){
+    // Reverte o consumo anterior (se esse pedido já tinha baixado estoque antes)
+    if(pedidoAnterior?.estoque_baixado){
+      await reverterBaixaEstoque(pedidoAnterior.consumo_insumos||{});
+    }
+    // Calcula e aplica o novo consumo — a não ser que o pedido esteja Cancelado
+    novoConsumo={};
+    if(pd.status!=='Cancelado'){
+      novoConsumo=calcularConsumoInsumos(pd);
+      avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
+      await aplicarBaixaEstoque(novoConsumo);
+    }
   }
   // O que REALMENTE mudou no estoque nesta gravação (reverteu antes, aplicou depois)
   const _chaves=new Set([...Object.keys(consumoAnterior),...Object.keys(novoConsumo)]);
@@ -3036,6 +3144,15 @@ async function remEntrada(pedidoId,idx){
   pd.entradas.splice(idx,1);
   const pago=pd.entradas.reduce((s,e)=>s+(+e.valor||0),0);
   pd.status_pgto=pago>=(+pd.total||0)?'Pago integral':pago>0?'Parcial':'Pendente';
+  // Espelha o auto-avanço de confirmarEntrada: se esse pedido só estava
+  // "Confirmado" porque bateu 50% pago, e remover essa entrada derrubou o
+  // pago pra menos de 50%, volta pra "Em aberto" — senão ficava marcado
+  // como confirmado sem ter, de fato, o pagamento que confirmou. Só mexe
+  // se o status for EXATAMENTE "Confirmado" (nunca desfaz Em produção/
+  // Pronto/Entregue, que são escolhas manuais de quem já está produzindo).
+  if(pd.status==='Confirmado' && pago<(+pd.total||0)*0.5){
+    pd.status='Em aberto';
+  }
   await salvarItem('pedidos',pd);
   closeModal();
   setTimeout(()=>abrirPagamentos(pedidoId),100);
@@ -3247,10 +3364,15 @@ async function salvarCompra(id=null){
   if(existente?.estoque_aplicado){
     await reverterEntradaEstoque({[existente.estoque_aplicado.mpId]:existente.estoque_aplicado.qtd});
   }
-  // Custo médio ponderado: só em compra NOVA (não edição), pra não distorcer
-  // o custo em reedições. Precisa rodar ANTES do aplicarEntradaEstoque, pra
-  // pegar o estoque de ANTES dessa compra entrar no cálculo.
-  if(mpId && !existente && obj.custo>0){
+  // Custo médio ponderado: roda em compra nova, OU quando essa é a PRIMEIRA
+  // vez que esse insumo é vinculado a essa compra (editou pra adicionar o
+  // vínculo que não existia antes). Não roda de novo se só está reeditando
+  // uma compra que já tinha esse MESMO insumo vinculado — senão a mesma
+  // compra entrava no cálculo do custo médio mais de uma vez, distorcendo.
+  // Precisa rodar ANTES do aplicarEntradaEstoque, pra pegar o estoque de
+  // ANTES dessa compra entrar no cálculo.
+  const eraNovoVinculo=!existente || !existente.estoque_aplicado || existente.estoque_aplicado.mpId!==mpId;
+  if(mpId && eraNovoVinculo && obj.custo>0){
     const mp=getItem(DB.materias,mpId);
     if(mp){
       const estoqueAntes=Math.max(0,+mp.estoque||0);
@@ -3587,13 +3709,18 @@ function renderSeletorPeriodo(prefixo,presetAtual,customIni,customFim){
 let _dashPeriodo='mes', _dashCustomIni=null, _dashCustomFim=null;
 let _drePeriodo='mes', _dreCustomIni=null, _dreCustomFim=null;
 let _relPeriodo='tudo', _relCustomIni=null, _relCustomFim=null;
+let _consPeriodo='mes', _consCustomIni=null, _consCustomFim=null;
 function setPeriodo(prefixo,preset){
-  if(prefixo==='dash') _dashPeriodo=preset; else if(prefixo==='rel') _relPeriodo=preset; else _drePeriodo=preset;
+  if(prefixo==='dash') _dashPeriodo=preset;
+  else if(prefixo==='rel') _relPeriodo=preset;
+  else if(prefixo==='cons') _consPeriodo=preset;
+  else _drePeriodo=preset;
   render(currentSection);
 }
 function setPeriodoCustom(prefixo,campo,valor){
   if(prefixo==='dash'){ if(campo==='inicio') _dashCustomIni=valor; else _dashCustomFim=valor; }
   else if(prefixo==='rel'){ if(campo==='inicio') _relCustomIni=valor; else _relCustomFim=valor; }
+  else if(prefixo==='cons'){ if(campo==='inicio') _consCustomIni=valor; else _consCustomFim=valor; }
   else { if(campo==='inicio') _dreCustomIni=valor; else _dreCustomFim=valor; }
   render(currentSection);
 }
@@ -4829,14 +4956,22 @@ function excluirItemCSG(consigId, idx){
   const it=c.itens[idx]; if(!it) return;
   openModal('🗑️ Excluir Item',
     `<p>Remover <strong>${nomeProd(it.prod)}</strong>${it.variante?' ('+it.variante+')':''} deste ponto de consignação?</p>
-     <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">📦 O estoque do insumo que foi abatido na entrega desse item será devolvido automaticamente.</p>`,
+     <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">📦 O estoque de insumo é devolvido só na proporção do que ainda não foi vendido (${it.qtd_atual} de ${it.qtd_inicial} un. entregues) — as unidades já vendidas já consumiram o insumo de verdade e não voltam.</p>`,
     async()=>{
-      if(it.consumo_insumos && Object.keys(it.consumo_insumos).length>0){
-        await reverterBaixaEstoque(it.consumo_insumos);
+      if(it.consumo_insumos && Object.keys(it.consumo_insumos).length>0 && (+it.qtd_inicial||0)>0){
+        // it.consumo_insumos foi calculado pra QTD_INICIAL inteira (o lote
+        // todo entregue), não só pro que sobrou. Devolver ele inteiro
+        // devolveria insumo até das unidades que já foram vendidas de
+        // verdade (qtd_inicial - qtd_atual) — essas já saíram e não voltam.
+        // Devolve só a fatia proporcional ao que ainda está no ponto.
+        const fator=(+it.qtd_atual||0)/(+it.qtd_inicial||1);
+        const consumoParcial={};
+        Object.keys(it.consumo_insumos).forEach(mpId=>{ consumoParcial[mpId]=(+it.consumo_insumos[mpId]||0)*fator; });
+        await reverterBaixaEstoque(consumoParcial);
       }
       c.itens.splice(idx,1);
       await salvarItem('consignados', c);
-      toast('Item removido! Estoque de insumo devolvido.'); closeModal(); render('consignados');
+      toast('Item removido! Estoque de insumo devolvido proporcionalmente.'); closeModal(); render('consignados');
     }, '🗑️ Excluir');
 }
 
@@ -4991,6 +5126,19 @@ async function ajustCSG(consigId,idx,delta){
   if(nova<0){toast('Quantidade não pode ser negativa','error');return;}
   if(nova>(+it.qtd_inicial||0)){toast('Não pode passar da quantidade inicial','error');return;}
   it.qtd_atual=nova;
+  // Delta negativo = uma peça saiu de lá (vendida). Registra como visita de
+  // verdade (igual regVisita) — sem isso a venda só aparecia no card "Vendido"
+  // deste consignado (calculado por fora), e ficava invisível no
+  // faturamento/DRE/caixa do resto do sistema, que só leem c.visitas.
+  if(delta<0){
+    if(!c.visitas)c.visitas=[];
+    c.visitas.push({
+      data:new Date().toISOString().slice(0,10),
+      valor_vendido:+it.preco||0, valor_recebido:0, obs:'Ajuste rápido (−)',
+      itens_vendidos:[{prod:it.prod, variante:it.variante||'', qtd:1, preco_repasse:+it.preco||0, custo_snapshot:custoItemPedidoAoVivo({prod:it.prod})}],
+      tipo:'venda'
+    });
+  }
   await salvarItem('consignados',c);render('consignados');
 }
 function regVisita(consigId){
