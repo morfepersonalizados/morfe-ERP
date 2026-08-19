@@ -1676,6 +1676,40 @@ function calIrHoje(){
   _calAnoAtual=hoje.getFullYear();
   render('calendario');
 }
+// Status de PAGAMENTO de um grupo de venda (pedido/venda/consignado) — não
+// confundir com o status de ETAPA (Em aberto/Em produção/Entregue etc), que
+// é sobre produção, não sobre dinheiro. Usado no Calendário pra responder
+// "isso já foi pago?" direto, sem precisar abrir o pedido.
+function statusPagamentoGrupo(g){
+  if(g.origem==='pedido'){
+    const pd=getItem(DB.pedidos,g.id);
+    if(!pd) return '—';
+    const pago=(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0);
+    const saldo=(+pd.total||0)-pago;
+    if(saldo<=0.004) return `<span class="badge badge-ok">✅ Pago integral</span>`;
+    if(pago>0.004) return `<span class="badge badge-info">🟡 Parcial — falta ${R$(saldo)}</span>`;
+    return `<span class="badge badge-danger">🔴 Pendente — ${R$(saldo)}</span>`;
+  }
+  if(g.origem==='consignado'){
+    const [consigId,dataVisita]=String(g.id).split(':');
+    const c=getItem(DB.consignados,consigId);
+    const v=c?.visitas?.find(vv=>vv.data===dataVisita);
+    if(!v) return '—';
+    const pendente=(+v.valor_vendido||0)-(+v.valor_recebido||0);
+    if(pendente<=0.004) return `<span class="badge badge-ok">✅ Repassado</span>`;
+    return `<span class="badge badge-danger">🔴 A receber do parceiro — ${R$(pendente)}</span>`;
+  }
+  return statusBadge(g.status); // venda: o próprio status (Pago/Em aberto/Atrasado) já É o pagamento
+}
+// Status de pagamento de um PEDIDO direto (usado fora do agrupamento de
+// vendas, ex: lista de entregas agendadas)
+function statusPagamentoPedido(pd){
+  const pago=(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0);
+  const saldo=(+pd.total||0)-pago;
+  if(saldo<=0.004) return `<span class="badge badge-ok">✅ Pago</span>`;
+  if(pago>0.004) return `<span class="badge badge-info">🟡 Parcial (falta ${R$(saldo)})</span>`;
+  return `<span class="badge badge-danger">🔴 Pendente (${R$(saldo)})</span>`;
+}
 function abrirDetalheDia(dataStr){
   const efetivas=todasVendasEfetivas().filter(v=>normalizarData(v.data)===dataStr);
   const total=efetivas.reduce((s,v)=>s+v.valorTotal,0);
@@ -1695,7 +1729,7 @@ function abrirDetalheDia(dataStr){
     </div>
     ${listaGrupos.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:24px">Nenhuma venda registrada nesse dia.</p>`:
     `<div class="tbl-wrap"><table>
-      <thead><tr><th>Origem</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Lucro</th><th>Status</th></tr></thead>
+      <thead><tr><th>Origem</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Lucro</th><th>Pagamento</th></tr></thead>
       <tbody>${listaGrupos.map(g=>{
         const lucroG=g.valorTotal-g.custoTotal;
         const resumoItens=g.itens.length===1
@@ -1710,7 +1744,7 @@ function abrirDetalheDia(dataStr){
         <td style="font-size:12px">${g.itens.length>1?`${g.itens.length} itens — ${resumoItens}`:resumoItens}</td>
         <td class="fw-bold text-verde">${R$(g.valorTotal)}</td>
         <td class="fw-bold" style="color:${lucroG>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroG)}</td>
-        <td>${statusBadge(g.status)}</td>
+        <td>${statusPagamentoGrupo(g)}</td>
       </tr>`;}).join('')}</tbody>
     </table></div>`}
     ${(()=>{
@@ -1719,13 +1753,14 @@ function abrirDetalheDia(dataStr){
       return `<div style="margin-top:14px">
         <div style="font-size:12px;font-weight:700;color:var(--txt-laranja);margin-bottom:6px">🚚 Entregas agendadas pra esse dia</div>
         <div class="tbl-wrap"><table>
-          <thead><tr><th>Pedido</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Status</th></tr></thead>
+          <thead><tr><th>Pedido</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Etapa</th><th>Pagamento</th></tr></thead>
           <tbody>${entregasDia.map(p=>`<tr style="cursor:pointer" onclick="closeModal();verPedidoOrc('${p.id}')">
             <td class="fw-bold text-azul">${p.id}</td>
             <td>${nomeVenda(p)}</td>
             <td style="font-size:12px">${resumoItensPedido(p)}</td>
             <td class="fw-bold">${R$(p.total)}</td>
             <td>${statusBadge(p.status)}</td>
+            <td>${statusPagamentoPedido(p)}</td>
           </tr>`).join('')}</tbody>
         </table></div>
       </div>`;
