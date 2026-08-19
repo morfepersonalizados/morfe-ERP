@@ -295,14 +295,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
       <div class="login-divisor"></div>
     </div>
     <div id="login-error" class="login-error"></div>
-    <input type="password" class="login-input" id="login-senha" placeholder="🔑 Digite sua senha" onkeydown="if(event.key==='Enter')entrar()">
-    <button class="login-btn" id="login-btn" onclick="entrar()">Entrar</button>
-    <div id="login-google-divisor" style="display:flex;align-items:center;gap:10px;margin:14px 0 0;display:none">
-      <div style="flex:1;height:1px;background:var(--cinza-claro)"></div>
-      <span style="font-size:11px;color:var(--cinza-med)">ou</span>
-      <div style="flex:1;height:1px;background:var(--cinza-claro)"></div>
-    </div>
-    <div id="login-google-area" style="margin-top:10px"></div>
+    <div id="login-google-area" style="margin-top:10px;display:flex;justify-content:center"></div>
     <p style="text-align:center;margin-top:14px;font-size:11px;color:var(--cinza-med)">Morfê Personalizados · Manaus-AM</p>
   </div>
 </div>
@@ -414,20 +407,18 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURAÇÃO — ALTERE AQUI
 // ═══════════════════════════════════════════════════════════════
-const SENHA_APP = 'Morfe2105@';
-// Login com Google (Fase 2, preparado mas OPCIONAL por enquanto). Troque
-// pelo Client ID de verdade quando configurar no Google Cloud Console —
-// enquanto estiver com esse valor de exemplo, o botão de login com Google
-// simplesmente não aparece, e a senha continua funcionando normalmente.
+// Login só com conta Google — sem senha fixa no código. O Client ID abaixo
+// NÃO é segredo (é seguro ele aparecer aqui/no repositório público); quem
+// confere de verdade "é você mesmo" é o Google, e depois o Apps Script,
+// que valida o token assinado e compara o email com AUTHORIZED_EMAIL nas
+// Script Properties do servidor.
 const GOOGLE_CLIENT_ID = '866951819808-tqeoto2rqnr34p7250mmq6l7mn93afs2.apps.googleusercontent.com';
 let _googleIdToken = null; // preenchido só depois de um login com Google bem-sucedido
 
-// Central de credenciais: usa o token do Google se teve login com Google
-// nesta sessão, senão usa a senha antiga. Assim, TODA chamada pro Apps
-// Script já fica pronta pros dois métodos sem precisar mudar em vários
-// lugares — muda aqui uma vez só.
+// Central de credenciais: toda chamada pro Apps Script manda o token do
+// Google — muda aqui uma vez só se um dia mudar o método de novo.
 function credenciaisAuth(){
-  return _googleIdToken ? { token: _googleIdToken } : { senha: SENHA_APP };
+  return { token: _googleIdToken };
 }
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbwDqrAftrPBia3DEHD4c-SIcHwm7f8kfYsH-0chJmSXE146VpcEQFMsxzU5-8c6-4tBMA/exec';
 // Logo reaproveitada no orçamento exportável (imagem/PDF)
@@ -535,24 +526,6 @@ function salvarLocal() {
 // ═══════════════════════════════════════════════════════════════
 // AUTENTICAÇÃO
 // ═══════════════════════════════════════════════════════════════
-function entrar() {
-  const senha = document.getElementById('login-senha').value;
-  const errEl = document.getElementById('login-error');
-  const btn = document.getElementById('login-btn');
-
-  if (senha !== SENHA_APP) {
-    errEl.textContent = '❌ Senha incorreta. Tente novamente.';
-    errEl.style.display = 'block';
-    document.getElementById('login-senha').value = '';
-    return;
-  }
-
-  errEl.style.display = 'none';
-  btn.disabled = true;
-  btn.textContent = 'Entrando...';
-  finalizarLogin();
-}
-
 // Chamado pelo Google depois que a pessoa escolhe a conta e confirma —
 // "response.credential" é o token assinado pelo Google (ID token), que o
 // Apps Script confere de verdade do lado do servidor antes de liberar
@@ -577,27 +550,34 @@ function finalizarLogin(){
   setTimeout(() => sincronizarSheets(), 500);
 }
 
-// Mostra o botão "Entrar com Google" SÓ se o Client ID de verdade já foi
-// configurado — enquanto estiver com o valor de exemplo, não aparece nada
-// e o login por senha continua sendo o único jeito de entrar.
+// Mostra o botão "Entrar com Google" — único jeito de logar agora. Se por
+// algum motivo o Client ID sumir ou o script do Google não carregar
+// (bloqueador de anúncio, offline na primeira visita etc), avisa na tela
+// em vez de deixar a pessoa travada numa tela de login sem nenhum botão.
 function inicializarLoginGoogle(){
-  if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('COLE_SEU_CLIENT_ID_AQUI') === 0) return;
-  if (typeof google === 'undefined' || !google.accounts) return;
+  const errEl = document.getElementById('login-error');
+  if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('COLE_SEU_CLIENT_ID_AQUI') === 0){
+    if(errEl){ errEl.textContent='⚠️ Login não configurado (GOOGLE_CLIENT_ID ausente).'; errEl.style.display='block'; }
+    return;
+  }
+  if (typeof google === 'undefined' || !google.accounts){
+    if(errEl){ errEl.textContent='⚠️ Não deu pra carregar o login do Google — verifique sua internet e recarregue a página.'; errEl.style.display='block'; }
+    return;
+  }
   try{
     google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: entrarComGoogle });
     google.accounts.id.renderButton(document.getElementById('login-google-area'), { theme:'outline', size:'large', width:280, text:'signin_with' });
-    const divisor=document.getElementById('login-google-divisor');
-    if(divisor) divisor.style.display='flex';
-  }catch(e){ console.warn('Não deu pra iniciar o login do Google:', e); }
+  }catch(e){
+    console.warn('Não deu pra iniciar o login do Google:', e);
+    if(errEl){ errEl.textContent='⚠️ Não deu pra iniciar o login do Google. Recarregue a página.'; errEl.style.display='block'; }
+  }
 }
 
 function sair() {
   _isLoggedIn = false;
+  _googleIdToken = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('login-btn').disabled = false;
-  document.getElementById('login-btn').textContent = 'Entrar';
-  document.getElementById('login-senha').value = '';
 }
 
 // ═══════════════════════════════════════════════════════════════
