@@ -554,24 +554,44 @@ function finalizarLogin(){
 // algum motivo o Client ID sumir ou o script do Google não carregar
 // (bloqueador de anúncio, offline na primeira visita etc), avisa na tela
 // em vez de deixar a pessoa travada numa tela de login sem nenhum botão.
-function inicializarLoginGoogle(){
+//
+// Essa função é chamada de DOIS lugares (o "onload" da tag <script> do
+// Google, e o "load" da própria página) — de propósito, porque a tag tem
+// async: se o script do Google terminar de baixar rápido (ex: já em cache,
+// como acontece num F5 de recarregar a página), o onload dele pode disparar
+// ANTES da <div id="login-google-area"> existir no DOM ainda (o HTML desse
+// arquivo é grande, demora pra terminar de processar). Isso fazia o botão
+// simplesmente não aparecer no recarregar, só numa aba nova (onde o carregamento
+// era lento o bastante pra dar tempo do DOM ficar pronto primeiro). Por isso
+// agora, se a área ainda não existir ou o "google" ainda não tiver carregado,
+// tenta de novo em vez de desistir na hora.
+let _googleBotaoRenderizado = false;
+function inicializarLoginGoogle(tentativa){
+  tentativa = tentativa || 0;
+  if (_googleBotaoRenderizado) return; // já renderizou por outro caminho — não duplica
+  const area = document.getElementById('login-google-area');
   const errEl = document.getElementById('login-error');
   if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('COLE_SEU_CLIENT_ID_AQUI') === 0){
     if(errEl){ errEl.textContent='⚠️ Login não configurado (GOOGLE_CLIENT_ID ausente).'; errEl.style.display='block'; }
     return;
   }
-  if (typeof google === 'undefined' || !google.accounts){
+  // "google" (script externo) ou a div de destino ainda não prontos — espera
+  // um pouco e tenta de novo, até 5s (20 tentativas de 250ms)
+  if (typeof google === 'undefined' || !google.accounts || !area){
+    if (tentativa < 20){ setTimeout(()=>inicializarLoginGoogle(tentativa+1), 250); return; }
     if(errEl){ errEl.textContent='⚠️ Não deu pra carregar o login do Google — verifique sua internet e recarregue a página.'; errEl.style.display='block'; }
     return;
   }
   try{
     google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: entrarComGoogle });
-    google.accounts.id.renderButton(document.getElementById('login-google-area'), { theme:'outline', size:'large', width:280, text:'signin_with' });
+    google.accounts.id.renderButton(area, { theme:'outline', size:'large', width:280, text:'signin_with' });
+    _googleBotaoRenderizado = true;
   }catch(e){
     console.warn('Não deu pra iniciar o login do Google:', e);
     if(errEl){ errEl.textContent='⚠️ Não deu pra iniciar o login do Google. Recarregue a página.'; errEl.style.display='block'; }
   }
 }
+window.addEventListener('load', ()=>inicializarLoginGoogle());
 
 function sair() {
   _isLoggedIn = false;
