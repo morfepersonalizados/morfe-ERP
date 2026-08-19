@@ -5054,20 +5054,28 @@ function autoPrecoCSG(prodId){
 // Mostra cada visita registrada num consignado, com opção de excluir uma
 // específica — útil pra corrigir quando uma visita foi registrada errada
 // (ex: quantidade mexida sem querer, ou duplicada)
+// Resume os produtos vendidos numa visita — "2x Caneca Branca 🔀 vermelho,
+// 1x Chaveiro" — pra não precisar abrir mais nada só pra ver o que foi.
+function resumoItensVendidos(v){
+  if(!v.itens_vendidos || v.itens_vendidos.length===0) return '';
+  return v.itens_vendidos.map(iv=>`${iv.qtd}x ${nomeProd(iv.prod)}${iv.variante?` <span style="color:var(--txt-dourado)">🔀 ${iv.variante}</span>`:''}`).join(', ');
+}
 function verHistoricoVisitas(consigId){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const vs=[...(c.visitas||[])].map((v,i)=>({...v,_idxOriginal:i})).reverse(); // mais recente primeiro
   const CORES_TIPO={venda:'var(--txt-verde)','venda+repasse':'var(--txt-roxo)',repasse:'var(--azul-claro)',visita:'var(--cinza-med)'};
   openModal(`📋 Histórico de Visitas — ${c.nome}`,
     `<div class="tbl-wrap"><table>
-      <thead><tr><th>Data</th><th>Tipo</th><th class="text-center">Vendido</th><th class="text-center">Recebido</th><th></th></tr></thead>
+      <thead><tr><th>Data</th><th>Tipo</th><th>O que foi vendido</th><th class="text-center">Vendido</th><th class="text-center">Recebido</th><th></th></tr></thead>
       <tbody>${vs.map(v=>{
         const tipo=v.tipo||(v.itens_vendidos?.length?'venda':'visita');
         const tipoLabel={'venda':'💰 Venda','repasse':'🏦 Repasse','venda+repasse':'💰🏦 Venda+Repasse','visita':'📝 Visita (sem venda)'}[tipo]||'📝 Visita';
         const cor=CORES_TIPO[tipo]||'var(--cinza-med)';
+        const itensTxt=resumoItensVendidos(v);
         return `<tr style="border-left:3px solid ${cor}">
           <td>${formatarDataBR(v.data)}</td>
           <td style="font-size:11px;color:${cor};font-weight:600">${tipoLabel}${v.itens_vendidos?.length?'':' <span style="color:var(--cinza-med);font-weight:400">(estimado)</span>'}</td>
+          <td style="font-size:12px">${itensTxt||'<span style="color:var(--cinza-med)">— sem detalhe (visita antiga ou só repasse)</span>'}</td>
           <td class="text-center">${R$(v.valor_vendido||0)}</td>
           <td class="text-center">${R$(v.valor_recebido||0)}</td>
           <td style="white-space:nowrap">
