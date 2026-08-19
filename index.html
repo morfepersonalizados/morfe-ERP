@@ -249,13 +249,22 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 .orc-tbl .orc-num{text-align:center}
 .orc-tbl .orc-val{text-align:right;font-variant-numeric:tabular-nums}
 .orc-desc-row td{color:#9B2335;font-style:italic;background:#FBF0F1!important}
-.orc-var-row td{background:#FBF8F2!important;padding:10px 12px 12px!important;border-bottom:1px solid #EFEAE0}
-.orc-var-titulo{font-size:9.5px;font-weight:700;color:#9C7B44;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
-.orc-var-opcoes{display:flex;flex-wrap:wrap;gap:6px}
-.orc-var-opcao{background:#FFFFFF;border:1.5px solid #E8E1D3;border-radius:8px;padding:6px 10px;font-size:11.5px}
-.orc-var-opcao.atual{border-color:#C9AC7D;background:#F5EDDD}
-.orc-var-opcao b{display:block;color:#282420;font-size:12px}
-.orc-var-opcao span{color:#182E62;font-weight:700;font-variant-numeric:tabular-nums}
+/* Preview de KIT (venda pro cliente final) — propositalmente mais simples
+   que o orçamento de pedido: lista o que tem no kit e as opções de
+   modelo com a diferença de valor, sem expor preço-cheio/desconto% */
+.kit-itens{margin:14px 28px 0}
+.kit-item{padding:12px 0;border-bottom:1px solid #EFEAE0}
+.kit-item:last-child{border-bottom:none}
+.kit-item-nome{font-size:14.5px;font-weight:700;color:#282420}
+.kit-item-opcoes{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.kit-chip{background:#FBF8F2;border:1px solid #E8E1D3;border-radius:20px;padding:5px 12px 5px 13px;font-size:11.5px;color:#282420;display:inline-flex;align-items:center;gap:7px;font-variant-numeric:tabular-nums}
+.kit-chip.padrao{border-color:#C9AC7D;background:#F5EDDD;font-weight:700}
+.kit-chip .delta{color:#182E62;font-weight:700}
+.kit-chip.padrao .delta{color:#9C7B44}
+.kit-economia{text-align:center;font-size:12px;color:#9C7B44;font-weight:700;margin:14px 28px 0}
+.kit-preco-final{margin:10px 28px 4px;background:#182E62;border-radius:10px;padding:16px 20px;text-align:center}
+.kit-preco-final .label{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:#C9AC7D;font-weight:700}
+.kit-preco-final .valor{font-size:30px;font-weight:800;color:#FFFFFF;margin-top:2px}
 .orc-totais{margin:0 28px 16px;border-top:2px solid #182E62}
 .orc-totais-row{display:flex;justify-content:space-between;padding:7px 12px;font-size:12.5px}
 .orc-totais-row.sub{color:#7A7267}
@@ -4758,33 +4767,32 @@ function abrirPreviewKit(kitId){
   const cidade=DB.config?.cidade||'';
   const dataEmissao=new Date().toLocaleDateString('pt-BR');
   const semDesc=(k.itens||[]).reduce((s,i)=>s+precoItemKit(i)*(+i.qtd||1),0);
+  const economia=semDesc-(+k.preco_venda||0);
 
-  // Pra cada item com modelos alternativos, calcula quanto o KIT INTEIRO
-  // fica se trocar só esse item pra cada opção (mantendo os outros itens
-  // como estão) — assim manda uma imagem só que já responde "e se eu
-  // escolher a outra caneca?" sem precisar gerar uma imagem por combinação.
+  // Preview de venda pro CLIENTE FINAL — de propósito mais simples que o
+  // orçamento de pedido: mostra o que tem no kit e quanto MUDA escolher
+  // outro modelo (delta, tipo "+R$9"), sem expor preço-cheio/desconto% —
+  // esse detalhe é conta nossa, não precisa aparecer pro cliente.
   const somaOutrosItens=(itemAtual)=>(k.itens||[]).filter(x=>x!==itemAtual).reduce((s,x)=>s+precoItemKit(x)*(+x.qtd||1),0);
-  const linhasItens=(k.itens||[]).map(it=>{
+  const itensHtml=(k.itens||[]).map(it=>{
     const p=getProd(it.prod);
     const temOpcoes=it.opcoes&&it.opcoes.length>1;
-    const linhaPrincipal=`<tr>
-      <td><b>${p?.nome||it.prod}</b>${temOpcoes?` <span style="color:#9C7B44;font-weight:600">· modelo à escolha</span>`:''}</td>
-      <td class="orc-num">${it.qtd||1}</td>
-      <td class="orc-val">${R$(precoItemKit(it))}</td>
-      <td class="orc-val" style="font-weight:700">${R$(precoItemKit(it)*(+it.qtd||1))}</td>
-    </tr>`;
-    if(!temOpcoes) return linhaPrincipal;
-    const base=somaOutrosItens(it);
-    const opcoesHtml=it.opcoes.map(pid=>{
-      const op=getProd(pid);
-      const totalKitComEssaOpcao=(base+(+(op?.preco)||0)*(+it.qtd||1))*(1-(+k.desconto_pct||0)/100);
-      return `<div class="orc-var-opcao${pid===it.prod?' atual':''}"><b>${op?.nome||pid}${pid===it.prod?' (padrão)':''}</b><span>kit por ${R$(totalKitComEssaOpcao)}</span></div>`;
-    }).join('');
-    const linhaVariantes=`<tr class="orc-var-row"><td colspan="4">
-      <div class="orc-var-titulo">🔀 Se escolher outro modelo pra esse item, o kit fica:</div>
-      <div class="orc-var-opcoes">${opcoesHtml}</div>
-    </td></tr>`;
-    return linhaPrincipal+linhaVariantes;
+    let opcoesHtml='';
+    if(temOpcoes){
+      const base=somaOutrosItens(it);
+      opcoesHtml=`<div class="kit-item-opcoes">${it.opcoes.map(pid=>{
+        const op=getProd(pid);
+        const totalKitComEssaOpcao=(base+(+(op?.preco)||0)*(+it.qtd||1))*(1-(+k.desconto_pct||0)/100);
+        const delta=totalKitComEssaOpcao-(+k.preco_venda||0);
+        const ehPadrao=pid===it.prod;
+        const deltaTxt=Math.abs(delta)<0.005?'incluso':(delta>0?`+${R$(delta)}`:`−${R$(Math.abs(delta))}`);
+        return `<span class="kit-chip${ehPadrao?' padrao':''}">${op?.nome||pid}<span class="delta">${deltaTxt}</span></span>`;
+      }).join('')}</div>`;
+    }
+    return `<div class="kit-item">
+      <div class="kit-item-nome">${it.qtd>1?it.qtd+'× ':''}${p?.nome||it.prod}</div>
+      ${opcoesHtml}
+    </div>`;
   }).join('');
 
   const html=`
@@ -4802,18 +4810,10 @@ function abrirPreviewKit(kitId){
       <div class="orc-titulo-doc">🎁 ${k.nome}</div>
       ${k.descricao?`<p style="text-align:center;color:#7A7267;font-size:12.5px;margin:-8px 0 14px">${k.descricao}</p>`:''}
 
-      <div class="orc-tbl-wrap">
-        <table class="orc-tbl">
-          <thead><tr><th>Item</th><th class="orc-num">Qtd</th><th class="orc-val">Vlr Unit.</th><th class="orc-val">Vlr Total</th></tr></thead>
-          <tbody>${linhasItens}</tbody>
-        </table>
-      </div>
+      <div class="kit-itens">${itensHtml}</div>
 
-      <div class="orc-totais">
-        ${(k.desconto_pct||0)>0?`<div class="orc-totais-row sub"><span>Preço cheio</span><span>${R$(semDesc)}</span></div>
-        <div class="orc-totais-row desc"><span>Desconto (${k.desconto_pct}%)</span><span>− ${R$(semDesc-(+k.preco_venda||0))}</span></div>`:''}
-        <div class="orc-total-final"><span>Preço do Kit</span><b>${R$(k.preco_venda)}</b></div>
-      </div>
+      ${economia>0.005?`<div class="kit-economia">🎁 Você economiza ${R$(economia)} levando o kit</div>`:''}
+      <div class="kit-preco-final"><div class="label">Preço do Kit</div><div class="valor">${R$(k.preco_venda)}</div></div>
 
       <div class="orc-footer">
         <div class="orc-footer-linha"></div>
@@ -4844,12 +4844,17 @@ function wppKit(kitId){
       linha+='\n'+it.opcoes.map(pid=>{
         const op=getProd(pid);
         const totalKitComEssaOpcao=(base+(+(op?.preco)||0)*(+it.qtd||1))*(1-(+k.desconto_pct||0)/100);
-        return `      ↳ ${op?.nome||pid}: kit por ${R$(totalKitComEssaOpcao)}`;
+        const delta=totalKitComEssaOpcao-(+k.preco_venda||0);
+        const deltaTxt=Math.abs(delta)<0.005?'incluso':(delta>0?`+${R$(delta)}`:`−${R$(Math.abs(delta))}`);
+        return `      ↳ ${op?.nome||pid}: ${deltaTxt}`;
       }).join('\n');
     }
     return linha;
   }).join('\n');
-  const msg=`Olá! 😊\n\nSegue o kit *${k.nome}* da *Morfê Personalizados*:\n\n🎁 *Itens do kit:*\n${itens}\n\n💰 *VALOR DO KIT: ${R$(k.preco_venda)}*\n\nQualquer dúvida, é só chamar! 🙏\n📍 @morfepersonalizados`;
+  const semDesc=(k.itens||[]).reduce((s,i)=>s+precoItemKit(i)*(+i.qtd||1),0);
+  const economia=semDesc-(+k.preco_venda||0);
+  const linhaEconomia=economia>0.005?`\n🎁 *Você economiza ${R$(economia)} levando o kit*`:'';
+  const msg=`Olá! 😊\n\nSegue o kit *${k.nome}* da *Morfê Personalizados*:\n\n🎁 *Itens do kit:*\n${itens}\n${linhaEconomia}\n💰 *VALOR DO KIT: ${R$(k.preco_venda)}*\n\nQualquer dúvida, é só chamar! 🙏\n📍 @morfepersonalizados`;
   abrirWPP('', msg);
 }
 
