@@ -5120,6 +5120,7 @@ SECTIONS.consignados = () => {
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-primary btn-sm" onclick="regVisita('${c.id}')" style="flex:1">📝 Visita</button>
+              <button class="btn btn-warning btn-sm" onclick="regVendaRemota('${c.id}')" style="flex:1" title="Parceiro vendeu sem você estar lá e te repassou por PIX">💸 Venda Remota</button>
               <button class="btn btn-success btn-sm" onclick="addItemCSG('${c.id}')" style="flex:1">+ Item</button>
               <button class="btn btn-outline btn-sm" onclick="editCSG('${c.id}')">✏️</button>
               <button class="btn btn-outline btn-sm" onclick="wppCSG('${c.id}')">💬</button>
@@ -5314,7 +5315,12 @@ function verHistoricoVisitas(consigId){
     `<div class="tbl-wrap"><table>
       <thead><tr><th>Data</th><th>Tipo</th><th>O que foi vendido</th><th class="text-center">Vendido</th><th class="text-center">Recebido</th><th></th></tr></thead>
       <tbody>${vs.map(v=>{
-        const tipo=v.tipo||(v.itens_vendidos?.length?'venda':'visita');
+        // Uma visita com valor_vendido>0 É uma venda, mesmo sem o detalhe
+        // de qual item — antes, uma entrada assim (ex: editada na mão, ou
+        // de antes do detalhamento por item existir) aparecia rotulada
+        // como "Visita (sem venda)", o que é literalmente falso e confuso.
+        const houveVenda=(+v.valor_vendido||0)>0.004;
+        const tipo=v.tipo||(houveVenda?'venda':'visita');
         const tipoLabel={'venda':'💰 Venda','repasse':'🏦 Repasse','venda+repasse':'💰🏦 Venda+Repasse','visita':'📝 Visita (sem venda)'}[tipo]||'📝 Visita';
         const cor=CORES_TIPO[tipo]||'var(--cinza-med)';
         const itensTxt=resumoItensVendidos(v);
@@ -5394,6 +5400,49 @@ async function ajustCSG(consigId,idx,delta){
     });
   }
   await salvarItem('consignados',c);render('consignados');
+}
+// Venda que aconteceu SEM você estar lá — o parceiro avisa o que vendeu e
+// já te repassa (ex: PIX). Diferente de regVisita (que revisa a quantidade
+// de TODOS os itens de uma vez, pensado pra visita física), aqui é só
+// escolher o item, a quantidade e o valor recebido — rápido, e sempre
+// registra o detalhe (produto/variante) certinho, nunca "sem detalhe".
+function regVendaRemota(consigId){
+  const c=getItem(DB.consignados,consigId);if(!c)return;
+  const itensComEstoque=(c.itens||[]).map((it,idx)=>({it,idx})).filter(x=>(+x.it.qtd_atual||0)>0);
+  if(itensComEstoque.length===0){toast('Não tem nenhum produto com quantidade disponível nesse ponto','error');return;}
+  const hoje=new Date().toISOString().slice(0,10);
+  openModal('💸 Registrar Venda Remota',
+    `<div style="background:var(--dourado-claro);color:var(--txt-dourado);padding:10px;border-radius:6px;font-size:12px;margin-bottom:12px">
+      Use isso quando o parceiro vender algo <strong>sem você estar lá</strong> e te repassar o valor (ex: PIX). Registra a venda desse item específico — sem precisar revisar a quantidade de tudo o mais que está no ponto.
+    </div>
+    <div class="form-grid cols-1">
+      <div class="form-group"><label class="form-label">Produto vendido</label>
+        <select class="form-select" id="vr-item">${itensComEstoque.map(({it,idx})=>`<option value="${idx}">${nomeProd(it.prod)}${it.variante?' 🔀 '+it.variante:''} — tem ${it.qtd_atual}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Quantidade vendida</label><input class="form-input" id="vr-qtd" type="number" min="1" value="1"></div>
+      <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="vr-data" type="date" value="${hoje}"></div>
+      <div class="form-group"><label class="form-label">Valor Recebido (R$) — o repasse que caiu</label><input class="form-input" id="vr-recebido" type="number" step="0.01" placeholder="0,00"></div>
+    </div>`,
+    async()=>{
+      const idx=parseInt(document.getElementById('vr-item').value);
+      const it=c.itens[idx];if(!it)return;
+      const qtd=parseInt(document.getElementById('vr-qtd').value)||0;
+      const data=document.getElementById('vr-data').value||hoje;
+      const recebido=parseFloat(document.getElementById('vr-recebido').value)||0;
+      if(qtd<=0){toast('Informe uma quantidade válida','error');return;}
+      if(qtd>(+it.qtd_atual||0)){toast(`Não pode vender mais do que tem disponível (${it.qtd_atual})`,'error');return;}
+      it.qtd_atual=(+it.qtd_atual||0)-qtd;
+      const valorVendido=qtd*(+it.preco||0);
+      if(!c.visitas)c.visitas=[];
+      c.visitas.push({
+        data, valor_vendido:valorVendido, valor_recebido:recebido, obs:'Venda remota (sem visita física)',
+        itens_vendidos:[{prod:it.prod, variante:it.variante||'', qtd, preco_repasse:+it.preco||0, custo_snapshot:custoItemPedidoAoVivo({prod:it.prod})}],
+        tipo:recebido>0.004?'venda+repasse':'venda'
+      });
+      await salvarItem('consignados',c);
+      toast(`Venda registrada: ${qtd}x ${nomeProd(it.prod)}${recebido>0?' · Recebido '+R$(recebido):''}`);
+      closeModal();render('consignados');
+    }, '💾 Registrar');
 }
 function regVisita(consigId){
   const c=getItem(DB.consignados,consigId);if(!c)return;
