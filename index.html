@@ -3873,6 +3873,8 @@ function renderSeletorPeriodo(prefixo,presetAtual,customIni,customFim){
 let _dashPeriodo='mes', _dashCustomIni=null, _dashCustomFim=null;
 let _drePeriodo='mes', _dreCustomIni=null, _dreCustomFim=null;
 let _relPeriodo='tudo', _relCustomIni=null, _relCustomFim=null;
+let _abcMetrica='faturamento'; // 'faturamento' (clássico) ou 'lucro'
+function setAbcMetrica(m){ _abcMetrica=m; render('relatorios'); }
 let _consPeriodo='mes', _consCustomIni=null, _consCustomFim=null;
 function setPeriodo(prefixo,preset){
   if(prefixo==='dash') _dashPeriodo=preset;
@@ -4357,6 +4359,13 @@ function calcFichaCompleta(prodId){
 }
 
 SECTIONS.fichas = () => `
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-header"><span class="panel-title">🧹 Manutenção da Ficha Técnica</span></div>
+    <div style="padding:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="limparInsumosOrfaos()">🧹 Limpar Insumos Órfãos (linhas "—" sem custo)</button>
+      <button class="btn btn-outline" onclick="aplicarEmbalagemPadrao()">🎁 Aplicar Embalagem Padrão (R$2,00) onde falta</button>
+    </div>
+  </div>
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">📊 Visão Geral de Precificação</span>
@@ -4535,6 +4544,54 @@ async function remInsFicha(fichaId,prodId){
   await excluirItem_db('fichas',fichaId);
   await sincronizarCustoProduto(prodId);
   toast('Removido!');renderFichaDetalhe(prodId);
+}
+
+// Verifica quais itens de Ficha Técnica apontam pra um insumo (matéria-
+// prima) que NÃO existe mais em Matérias-Primas — sobra desse tipo de
+// registro (insumo excluído em algum momento, mas a ficha não foi
+// atualizada junto) e aparece na tela como uma linha fantasma, sem
+// unidade e com custo R$0,00. Só remove depois de mostrar a lista exata
+// pra confirmação — nunca em massa sem revisão.
+function limparInsumosOrfaos(){
+  const orfaos=DB.fichas.filter(f=>!getItem(DB.materias,f.mp));
+  if(orfaos.length===0){toast('Nenhum insumo órfão encontrado — tudo certo! ✅');return;}
+  const linhas=orfaos.map(f=>`<tr><td>${nomeProd(f.produto)}</td><td class="text-vermelho fw-bold">${f.mp}</td></tr>`).join('');
+  openModal(`🧹 ${orfaos.length} Insumo(s) Órfão(s) Encontrado(s)`,
+    `<p style="font-size:12.5px;color:var(--cinza-med);margin-bottom:12px">Essas linhas da Ficha Técnica apontam pra uma matéria-prima que não existe mais no cadastro. Elas aparecem com "—" e R$0,00 na tela, sem afetar nada além da poluição visual.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Produto</th><th>Insumo (ID)</th></tr></thead><tbody>${linhas}</tbody></table></div>
+    <div style="background:var(--vermelho-claro);color:var(--txt-vermelho);padding:10px;border-radius:6px;font-size:12px;margin-top:10px">⚠️ Isso remove só essas ${orfaos.length} linha(s) quebrada(s) listadas acima — nenhum outro insumo, produto, pedido ou estoque é alterado.</div>`,
+    async()=>{
+      closeModal();
+      const produtosAfetados=new Set(orfaos.map(f=>f.produto));
+      for(const f of orfaos){ await excluirItem_db('fichas',f.id); }
+      for(const prodId of produtosAfetados){ await sincronizarCustoProduto(prodId); }
+      toast(`${orfaos.length} insumo(s) órfão(s) removido(s)!`);
+      render('fichas');
+    }, `🗑️ Remover ${orfaos.length} Linha(s)`);
+}
+// Define Embalagem = R$2,00 pros produtos que ainda NÃO têm nenhum valor
+// definido nesse campo — nunca sobrescreve quem já tem um valor próprio
+// (mesmo que seja R$0 de propósito, isso conta como "já definido").
+function aplicarEmbalagemPadrao(){
+  const semEmbalagem=DB.produtos.filter(p=>!temValorDefinido(p.embalagem));
+  if(semEmbalagem.length===0){toast('Todos os produtos já têm embalagem definida ✅');return;}
+  const linhas=semEmbalagem.map(p=>`<tr><td>${p.nome}</td></tr>`).join('');
+  openModal(`🎁 Aplicar Embalagem Padrão (R$2,00)`,
+    `<p style="font-size:12.5px;color:var(--cinza-med);margin-bottom:12px">Esses ${semEmbalagem.length} produto(s) ainda não têm valor de embalagem definido. Vou colocar R$2,00 em cada um — dá pra ajustar depois, produto por produto, na Ficha Técnica dele. Produtos que já têm um valor definido (mesmo que R$0) não são alterados.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Produto</th></tr></thead><tbody>${linhas}</tbody></table></div>`,
+    async()=>{
+      closeModal();
+      for(const p of semEmbalagem){
+        p.embalagem=2;
+        if(DB.fichas.some(f=>f.produto===p.id)){
+          const custoInsumos=DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0);
+          p.custo=parseFloat((custoInsumos+2).toFixed(2));
+        }
+        await salvarItem('produtos',p);
+      }
+      toast(`Embalagem padrão (R$2,00) aplicada em ${semEmbalagem.length} produto(s)!`);
+      render('fichas');
+    }, `💾 Aplicar em ${semEmbalagem.length} Produto(s)`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -5792,28 +5849,37 @@ SECTIONS.relatorios = () => {
     </table></div>
   </div>
   ${(()=>{
-    // Curva ABC por LUCRO (não faturamento) — um produto pode vender muito
-    // e valer pouco (margem apertada); classificar pelo que sobra no
-    // bolso é mais fiel pra decidir onde focar estoque/consignação/kits.
-    // A = produtos que juntos já respondem por até 80% do lucro (os
-    // "carro-chefe"), B = a faixa seguinte até 95%, C = o resto — baixo
-    // impacto individual, candidatos a repensar.
+    // Curva ABC — clássica é por FATURAMENTO; deixei também por Lucro como
+    // alternativa (um produto pode vender muito e valer pouco, de margem
+    // apertada). A = produtos que juntos já respondem por até 80% do total
+    // (os "carro-chefe"), B = a faixa seguinte até 95%, C = o resto —
+    // baixo impacto individual, candidatos a repensar.
     if(rP.length===0) return '';
-    const rPporLucro=[...rP].sort((a,b)=>b[1].lucro-a[1].lucro);
-    const lucroTotalPositivo=rPporLucro.reduce((s,[,d])=>s+Math.max(0,d.lucro),0);
+    const porLucro=_abcMetrica==='lucro';
+    const valorMetrica=d=>porLucro?d.lucro:d.total;
+    const rPordenado=[...rP].sort((a,b)=>valorMetrica(b[1])-valorMetrica(a[1]));
+    const totalPositivo=rPordenado.reduce((s,[,d])=>s+Math.max(0,valorMetrica(d)),0);
     let acumulado=0;
-    const linhasABC=rPporLucro.map(([id,d])=>{
-      acumulado+=Math.max(0,d.lucro);
-      const pctAcumulado=lucroTotalPositivo>0?(acumulado/lucroTotalPositivo*100):100;
+    const linhasABC=rPordenado.map(([id,d])=>{
+      acumulado+=Math.max(0,valorMetrica(d));
+      const pctAcumulado=totalPositivo>0?(acumulado/totalPositivo*100):100;
       const classe=pctAcumulado<=80?'A':pctAcumulado<=95?'B':'C';
       return {id,d,pctAcumulado,classe};
     });
     const CLASSE_BADGE={A:'badge-ok',B:'badge-warn',C:'badge-danger'};
-    const CLASSE_DESC={A:'Carro-chefe — geram a maior parte do lucro',B:'Relevantes, mas não essenciais',C:'Baixo impacto individual — candidatos a repensar'};
+    const CLASSE_DESC=porLucro
+      ?{A:'Carro-chefe — geram a maior parte do lucro',B:'Relevantes, mas não essenciais',C:'Baixo impacto individual — candidatos a repensar'}
+      :{A:'Carro-chefe — respondem pela maior parte do faturamento',B:'Relevantes, mas não essenciais',C:'Baixo impacto individual — candidatos a repensar'};
     const contagem={A:0,B:0,C:0};
     linhasABC.forEach(l=>contagem[l.classe]++);
     return `<div class="panel" style="margin-top:16px">
-      <div class="panel-header"><span class="panel-title">📈 Curva ABC de Produtos (por Lucro)</span></div>
+      <div class="panel-header">
+        <span class="panel-title">📈 Curva ABC de Produtos</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm ${!porLucro?'btn-primary':'btn-outline'}" onclick="setAbcMetrica('faturamento')">Faturamento</button>
+          <button class="btn btn-sm ${porLucro?'btn-primary':'btn-outline'}" onclick="setAbcMetrica('lucro')">Lucro</button>
+        </div>
+      </div>
       <div style="padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap">
         ${['A','B','C'].map(cl=>`<div style="flex:1;min-width:140px;background:var(--cinza-ultra);border-radius:8px;padding:10px 12px">
           <span class="badge ${CLASSE_BADGE[cl]}" style="font-size:11px">Classe ${cl}</span>
@@ -5822,11 +5888,11 @@ SECTIONS.relatorios = () => {
         </div>`).join('')}
       </div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>#</th><th>Produto</th><th>Lucro</th><th>% Acumulado</th><th>Classe</th></tr></thead>
+        <thead><tr><th>#</th><th>Produto</th><th>${porLucro?'Lucro':'Receita'}</th><th>% Acumulado</th><th>Classe</th></tr></thead>
         <tbody>${linhasABC.map((l,i)=>`<tr>
           <td class="text-center fw-bold">${i+1}</td>
           <td class="fw-bold">${nomeProd(l.id)}</td>
-          <td class="${l.d.lucro>=0?'text-verde':'text-vermelho'} fw-bold">${R$(l.d.lucro)}</td>
+          <td class="${valorMetrica(l.d)>=0?'text-verde':'text-vermelho'} fw-bold">${R$(valorMetrica(l.d))}</td>
           <td class="text-center">${l.pctAcumulado.toFixed(1)}%</td>
           <td class="text-center"><span class="badge ${CLASSE_BADGE[l.classe]}">${l.classe}</span></td>
         </tr>`).join('')}</tbody>
