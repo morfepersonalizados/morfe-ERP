@@ -3225,7 +3225,19 @@ function wppPedido(id){
   const pd=getItem(DB.pedidos,id);if(!pd)return;
   const cli=getCli(pd.cliente);
   const wpp=cli?.whatsapp||pd.telefone||'';
-  const itens=(pd.itens||[]).filter(i=>i.desc||i.prod).map(i=>`  • ${i.desc||nomeProd(i.prod)} — ${i.qtd}x ${R$(i.valor)} = *${R$((+i.qtd||1)*(+i.valor||0))}*`).join('\n');
+  const itens=(pd.itens||[]).filter(i=>i.desc||i.prod).map(i=>{
+    let linha=`  • ${i.desc||nomeProd(i.prod)} — ${i.qtd}x ${R$(i.valor)} = *${R$((+i.qtd||1)*(+i.valor||0))}*`;
+    if(i.prod&&String(i.prod).startsWith('KIT:')){
+      const kit=getItem(DB.kits,String(i.prod).replace('KIT:',''));
+      const conteudo=(kit?.itens||[]).map(ki=>{
+        const prodEfetivo=(i.kit_modelos&&i.kit_modelos[ki.prod])||ki.prod;
+        const qtdTotal=(+ki.qtd||1)*(+i.qtd||1);
+        return `${qtdTotal}x ${nomeProd(prodEfetivo)}`;
+      }).join(', ');
+      if(conteudo) linha+=`\n      ↳ inclui: ${conteudo}`;
+    }
+    return linha;
+  }).join('\n');
   const acrescimosTxt=(pd.acrescimos||[]).length>0?'\n\n➕ *Acréscimos:*\n'+(pd.acrescimos||[]).map(a=>`  • ${a.motivo||'Acréscimo'} — +${R$(a.valor)}`).join('\n'):'';
   const msg=`Olá ${cli?.nome||pd.cliente_nome||''}! 😊\n\nSegue o resumo do seu pedido na *Morfê Personalizados*:\n\n📋 *Pedido Nº:* ${pd.id}\n📆 *Data:* ${pd.data||'—'}${pd.entrega?'\n📅 *Entrega:* '+pd.entrega:''}\n\n🛍️ *Itens:*\n${itens}${acrescimosTxt}\n\n💰 *TOTAL: ${R$(pd.total||0)}*\n💳 *Pagamento:* ${pd.forma||'A combinar'}${pd.obs?'\n💬 *Obs:* '+pd.obs:''}\n\nObrigado pela preferência! 🙏\n📍 @morfepersonalizados`;
   abrirWPP(wpp, msg);
@@ -3260,12 +3272,26 @@ function abrirPreviewOrcamento(pedidoId){
   const linhasItens=(pd.itens||[]).filter(i=>i.desc||i.prod).map(it=>{
     const c=itemCalc(it);
     const temDesc=c.desc>0;
+    // Item de KIT mostra só o nome do kit ("presente") — sem isso, o
+    // cliente não sabe o que de fato vem dentro. Expande os produtos reais
+    // (já resolvendo o modelo escolhido, se o item tiver variantes de kit).
+    const ehKit=it.prod&&String(it.prod).startsWith('KIT:');
+    let linhaConteudoKit='';
+    if(ehKit){
+      const kit=getItem(DB.kits,String(it.prod).replace('KIT:',''));
+      const conteudo=(kit?.itens||[]).map(ki=>{
+        const prodEfetivo=(it.kit_modelos&&it.kit_modelos[ki.prod])||ki.prod;
+        const qtdTotal=(+ki.qtd||1)*(+it.qtd||1);
+        return `${qtdTotal}× ${nomeProd(prodEfetivo)}`;
+      }).join(' · ');
+      if(conteudo) linhaConteudoKit=`<tr><td colspan="4" style="padding:2px 12px 9px;font-size:11.5px;color:#7A7267">🎁 <i>inclui:</i> ${conteudo}</td></tr>`;
+    }
     return `<tr>
       <td><b>${it.desc||nomeProd(it.prod)}</b>${it.variante?` <span style="color:#9C7B44;font-weight:600">· ${it.variante}</span>`:''}</td>
       <td class="orc-num">${it.qtd||1}</td>
       <td class="orc-val">${R$(it.valor||0)}</td>
       <td class="orc-val" style="font-weight:700">${R$(c.sub)}</td>
-    </tr>${temDesc?`<tr class="orc-desc-row"><td colspan="3" style="text-align:right;font-size:10.5px">↳ desconto aplicado no item</td><td class="orc-val" style="font-size:10.5px">− ${R$(c.desc)}</td></tr>`:''}`;
+    </tr>${linhaConteudoKit}${temDesc?`<tr class="orc-desc-row"><td colspan="3" style="text-align:right;font-size:10.5px">↳ desconto aplicado no item</td><td class="orc-val" style="font-size:10.5px">− ${R$(c.desc)}</td></tr>`:''}`;
   }).join('');
 
   const html=`
