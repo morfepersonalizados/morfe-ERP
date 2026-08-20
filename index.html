@@ -5042,6 +5042,7 @@ SECTIONS.consignados = () => {
           const custoParado=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),0);
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
           const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
+          const lucroVendido=(c.itens||[]).reduce((s,i)=>{const custoU=+(getProd(i.prod)?.custo)||0;return s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*((+i.preco||0)-custoU);},0);
           const repassado=(c.visitas||[]).reduce((s,v)=>s+(+v.valor_recebido||0),0);
           const ultVis=(c.visitas||[]).slice(-1)[0];
           const expandido=_csgExpandidos.has(c.id);
@@ -5057,11 +5058,12 @@ SECTIONS.consignados = () => {
               <span class="badge badge-${c.ativo?'ok':'gray'}">${c.ativo?'Ativo':'Inativo'}</span>
             </div>
             <div style="padding:10px 14px 0">
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px">
                 <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:18px;font-weight:900;color:var(--txt-azul)">${pecas}</div></div>
                 <div style="background:#F5EDE4;border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:#8A5A2B">Custo parado</div><div style="font-size:13px;font-weight:800;color:#8A5A2B">${R$(custoParado)}</div></div>
                 <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-roxo)">Valor lá</div><div style="font-size:13px;font-weight:800;color:var(--txt-roxo)">${R$(valor)}</div></div>
                 <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-verde)">Vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-verde)">${R$(vendido)}</div></div>
+                <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-amarelo)">Lucro</div><div style="font-size:13px;font-weight:800;color:var(--txt-amarelo)">${R$(lucroVendido)}</div></div>
               </div>
             </div>
             <div id="csg-det-${c.id}" style="display:${expandido?'':'none'};padding:10px 14px">
@@ -5072,10 +5074,16 @@ SECTIONS.consignados = () => {
                 const custo=+(getProd(it.prod)?.custo)||0;
                 const lucroUn=(+it.preco||0)-custo;
                 const margemPct=it.preco>0?(lucroUn/it.preco*100):0;
+                // Idade da entrega — items antigos (de antes dessa data existir)
+                // caem no criado_em do ponto todo, só como aproximação razoável
+                const dataEntregaIt=it.data_entrega||(c.criado_em?String(c.criado_em).slice(0,10):null);
+                const diasParado=dataEntregaIt?Math.floor((Date.now()-new Date(dataEntregaIt+'T00:00:00').getTime())/86400000):null;
+                const paradoTxt=diasParado===null?null:diasParado<=0?'chegou hoje':diasParado===1?'há 1 dia':`há ${diasParado} dias`;
+                const paradoAlerta=diasParado!==null&&diasParado>=30;
                 return`
                 <div style="padding:7px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px">
                   <div style="display:flex;align-items:center;gap:8px">
-                    <div style="flex:1;min-width:0"><span class="fw-bold">${nomeProd(it.prod)||it.prod}</span>${it.variante?` <span style="color:var(--txt-dourado);font-weight:700">🔀 ${it.variante}</span>`:''}${it.jaProduzida?` <span class="badge badge-gray" style="font-size:9px">🏭 já pronta</span>`:''}${it.arte?` <span class="badge badge-roxo" style="font-size:9px">🎨 arte nova</span>`:''}</div>
+                    <div style="flex:1;min-width:0"><span class="fw-bold">${nomeProd(it.prod)||it.prod}</span>${it.variante?` <span style="color:var(--txt-dourado);font-weight:700">🔀 ${it.variante}</span>`:''}${it.jaProduzida?` <span class="badge badge-gray" style="font-size:9px">🏭 já pronta</span>`:''}${it.arte?` <span class="badge badge-roxo" style="font-size:9px">🎨 arte nova</span>`:''}${paradoTxt?` <span class="badge ${paradoAlerta?'badge-danger':'badge-gray'}" style="font-size:9px" title="Chegou em ${dataEntregaIt?formatarDataBR(dataEntregaIt):'—'}">⏱️ ${paradoTxt}</span>`:''}</div>
                     <button onclick="editarItemCSG('${c.id}',${idx})" style="background:var(--azul-claro);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">✏️</button>
                     <button onclick="excluirItemCSG('${c.id}',${idx})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">🗑️</button>
                   </div>
@@ -5161,7 +5169,7 @@ function editarItemCSG(consigId, idx){
       const avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
       if(Object.keys(novoConsumo).length>0) await aplicarBaixaEstoque(novoConsumo);
 
-      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI, jaProduzida:novaJaProduzida, arte:novaArte, consumo_insumos:novoConsumo};
+      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI, jaProduzida:novaJaProduzida, arte:novaArte, consumo_insumos:novoConsumo, data_entrega:it.data_entrega};
       await salvarItem('consignados', c);
       if(avisoFalta.length>0) toast('⚠️ Item atualizado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
       else toast('Item atualizado!');
@@ -5251,16 +5259,12 @@ function addItemCSG(consigId){
       const consumoDelta={};
       if(!jaProduzida) somarConsumoProduto(consumoDelta, prod, qtd, variante);
       const avisoFalta=verificarEstoqueInsuficiente(consumoDelta);
-      // Peça com arte nova não junta com peças "padrão" do mesmo produto —
-      // preço/rastreio diferentes, misturar escondia quem precisou de arte
-      const ex=c.itens.find(i=>i.prod===prod&&(i.variante||'')===variante&&!!i.jaProduzida===jaProduzida&&!!i.arte===arte);
-      if(ex){
-        ex.qtd_inicial=(+ex.qtd_inicial||0)+qtd;ex.qtd_atual=(+ex.qtd_atual||0)+qtd;ex.preco=preco;
-        ex.consumo_insumos=ex.consumo_insumos||{};
-        Object.keys(consumoDelta).forEach(mp=>{ex.consumo_insumos[mp]=(ex.consumo_insumos[mp]||0)+consumoDelta[mp];});
-      } else {
-        c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco,jaProduzida,arte,consumo_insumos:consumoDelta});
-      }
+      // NUNCA junta com um item que já existia, mesmo sendo o mesmo produto
+      // — cada entrega vira uma linha própria, com a própria data. Sem isso,
+      // 3 peças novas juntadas com 2 que já estavam lá há semanas faziam
+      // as 5 parecerem igualmente "novas" (ou igualmente "velhas"), e não
+      // dava pra saber o que estava parado de verdade.
+      c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco,jaProduzida,arte,consumo_insumos:consumoDelta,data_entrega:new Date().toISOString().slice(0,10)});
       if(Object.keys(consumoDelta).length>0) await aplicarBaixaEstoque(consumoDelta);
       await salvarItem('consignados',c);
       if(avisoFalta.length>0) toast('⚠️ Produto adicionado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
