@@ -4962,8 +4962,28 @@ function wppKit(kitId){
 // ═══════════════════════════════════════════════════════════════
 // CONSIGNADOS
 // ═══════════════════════════════════════════════════════════════
+// Quais pontos de consignação estão com os detalhes ABERTOS — por padrão
+// TODOS ficam fechados (só nome/status/números-resumo à mostra), já que
+// com muitos parceiros deixar tudo aberto de cara vira bagunça. Guarda no
+// localStorage pra lembrar da preferência entre uma visita e outra.
+let _csgExpandidos = new Set(JSON.parse(localStorage.getItem('morfe_csg_expandidos') || '[]'));
+function toggleCSGDetalhes(id){
+  if(_csgExpandidos.has(id)) _csgExpandidos.delete(id); else _csgExpandidos.add(id);
+  localStorage.setItem('morfe_csg_expandidos', JSON.stringify([..._csgExpandidos]));
+  const det=document.getElementById('csg-det-'+id);
+  const chev=document.getElementById('csg-chev-'+id);
+  if(det) det.style.display=_csgExpandidos.has(id)?'':'none';
+  if(chev) chev.textContent=_csgExpandidos.has(id)?'▾':'▸';
+}
+function filtrarCSG(){
+  const q=(document.getElementById('b-csg')?.value||'').toLowerCase();
+  document.querySelectorAll('#csg-grid .csg-card').forEach(el=>{
+    el.style.display=el.dataset.nome.includes(q)?'':'none';
+  });
+}
 SECTIONS.consignados = () => {
   const totalPecas=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0),s),0);
+  const totalCusto=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),s),0);
   const totalValor=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+i.preco||0),s),0);
   const totalVendido=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),s),0);
   const totalLucro=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>{
@@ -4974,12 +4994,13 @@ SECTIONS.consignados = () => {
   <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Pontos</div><div class="kpi-value">${DB.consignados.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Peças em Loja</div><div class="kpi-value">${totalPecas}</div></div>
+    <div class="kpi-card" style="background:#F5EDE4"><div class="kpi-label" style="color:#8A5A2B">💸 Custo Parado (produção)</div><div class="kpi-value" style="color:#8A5A2B">${R$(totalCusto)}</div></div>
     <div class="kpi-card laranja"><div class="kpi-label">Valor em Loja (repasse)</div><div class="kpi-value">${R$(totalValor)}</div></div>
     <div class="kpi-card roxo"><div class="kpi-label">Já Vendido (repasse)</div><div class="kpi-value">${R$(totalVendido)}</div></div>
     <div class="kpi-card verde"><div class="kpi-label">💰 Seu Lucro Já Realizado</div><div class="kpi-value">${R$(totalLucro)}</div></div>
   </div>
   <div style="background:var(--dourado-claro);border-left:4px solid var(--dourado-escuro);padding:12px 14px;border-radius:8px;font-size:12.5px;color:var(--cinza-escuro);margin-bottom:16px">
-    💡 <strong>Preço de Repasse</strong> é o valor que você cobra do parceiro (diferente do preço normal de venda) — eles colocam a margem deles em cima pra revender. Clique em ✏️ num item pra ajustar o repasse, quantidade ou trocar o produto.
+    💡 <strong>Custo Parado</strong> é quanto custou de verdade produzir o que ainda não vendeu (matéria-prima) — diferente do <strong>Valor em Loja</strong>, que já é o preço de repasse (com sua margem embutida). Clique em ✏️ num item pra ajustar o repasse, quantidade ou trocar o produto.
   </div>
   ${(()=>{
     if(DB.consignados.length<2) return '';
@@ -5006,28 +5027,45 @@ SECTIONS.consignados = () => {
       </div>
     </div>`;
   })()}
-  <div class="panel"><div class="panel-header"><span class="panel-title">🤝 Pontos de Consignação</span><button class="btn btn-success" onclick="novoCSG()">+ Novo Ponto</button></div>
+  <div class="panel"><div class="panel-header">
+      <span class="panel-title">🤝 Pontos de Consignação</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input class="search-input" id="b-csg" placeholder="🔍 Buscar loja/parceiro..." oninput="filtrarCSG()">
+        <button class="btn btn-success" onclick="novoCSG()">+ Novo Ponto</button>
+      </div>
+    </div>
     <div style="padding:16px">
       ${DB.consignados.length===0?`<div class="empty-state"><div class="empty-icon">🤝</div>Nenhum ponto de consignação cadastrado.</div>`:
-      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">
+      `<div id="csg-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">
         ${ordNome(DB.consignados).map(c=>{
           const pecas=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0),0);
+          const custoParado=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),0);
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
           const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
           const repassado=(c.visitas||[]).reduce((s,v)=>s+(+v.valor_recebido||0),0);
           const ultVis=(c.visitas||[]).slice(-1)[0];
-          return`<div class="panel" style="border-top:4px solid var(--roxo);margin:0">
-            <div class="panel-header" style="padding:12px 14px">
-              <div style="flex:1"><div style="font-size:14px;font-weight:800;color:var(--txt-azul)">${c.nome}</div><div style="font-size:11px;color:var(--cinza-med)">${c.responsavel||''} ${c.telefone?'· '+c.telefone:''}</div><div style="font-size:10px;color:var(--cinza-med);margin-top:2px">📍 ${c.endereco||'Endereço não informado'}</div></div>
+          const expandido=_csgExpandidos.has(c.id);
+          return`<div class="panel csg-card" data-nome="${(c.nome||'').toLowerCase()}" style="border-top:4px solid var(--roxo);margin:0">
+            <div class="panel-header" style="padding:12px 14px;cursor:pointer" onclick="toggleCSGDetalhes('${c.id}')" title="Clique pra abrir/fechar os detalhes">
+              <div style="flex:1;display:flex;align-items:flex-start;gap:8px;min-width:0">
+                <span id="csg-chev-${c.id}" style="font-size:13px;color:var(--cinza-med);margin-top:3px;flex:none">${expandido?'▾':'▸'}</span>
+                <div style="min-width:0">
+                  <div style="font-size:14px;font-weight:800;color:var(--txt-azul)">${c.nome}</div>
+                  <div style="font-size:11px;color:var(--cinza-med)">${c.responsavel||''}${c.telefone?' · '+c.telefone:''}</div>
+                </div>
+              </div>
               <span class="badge badge-${c.ativo?'ok':'gray'}">${c.ativo?'Ativo':'Inativo'}</span>
             </div>
-            <div style="padding:10px 14px">
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px">
-                <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:20px;font-weight:900;color:var(--txt-azul)">${pecas}</div></div>
+            <div style="padding:10px 14px 0">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+                <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:18px;font-weight:900;color:var(--txt-azul)">${pecas}</div></div>
+                <div style="background:#F5EDE4;border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:#8A5A2B">Custo parado</div><div style="font-size:13px;font-weight:800;color:#8A5A2B">${R$(custoParado)}</div></div>
                 <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-roxo)">Valor lá</div><div style="font-size:13px;font-weight:800;color:var(--txt-roxo)">${R$(valor)}</div></div>
                 <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-verde)">Vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-verde)">${R$(vendido)}</div></div>
-                <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-amarelo)">Repassado</div><div style="font-size:13px;font-weight:800;color:var(--txt-amarelo)">${R$(repassado)}</div></div>
               </div>
+            </div>
+            <div id="csg-det-${c.id}" style="display:${expandido?'':'none'};padding:10px 14px">
+              <div style="font-size:10px;color:var(--cinza-med);margin-bottom:8px">📍 ${c.endereco||'Endereço não informado'}${repassado>0?` · Repassado até agora: <strong>${R$(repassado)}</strong>`:''}</div>
               <div style="font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;margin-bottom:4px">Produtos na loja</div>
               ${(c.itens||[]).length===0?`<div style="font-size:12px;color:var(--cinza-med);padding:8px 0">Nenhum produto entregue ainda.</div>`:
               (c.itens||[]).map((it,idx)=>{
@@ -5070,7 +5108,7 @@ SECTIONS.consignados = () => {
                     <span style="font-size:10px;color:var(--cinza-med)">${vs.length} visita${vs.length>1?'s':''}</span></div>
                 </div>`;})()}
               ${ultVis?`<div style="margin-top:6px;font-size:10px;color:var(--cinza-med)">🕐 Última visita: ${ultVis.data}${(+ultVis.valor_vendido||0)>0?` · Vendido: ${R$(ultVis.valor_vendido)}`:''}${(+ultVis.valor_recebido||0)>0?` · Recebido: ${R$(ultVis.valor_recebido)}`:''}</div>`:''}
-              ${(c.visitas||[]).length>0?`<button onclick="verHistoricoVisitas('${c.id}')" style="margin-top:6px;background:none;border:none;color:var(--azul-claro);font-size:11px;text-decoration:underline;cursor:pointer;padding:2px 0">📋 Ver histórico de visitas (${(c.visitas||[]).length})</button>`:''}
+              ${(c.visitas||[]).length>0?`<button onclick="verHistoricoVisitas('${c.id}')" style="margin-top:8px;background:var(--roxo-claro);border:none;color:var(--txt-roxo);font-weight:700;border-radius:5px;padding:6px 10px;font-size:11.5px;cursor:pointer;width:100%">📋 Ver histórico de visitas (${(c.visitas||[]).length})</button>`:''}
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-primary btn-sm" onclick="regVisita('${c.id}')" style="flex:1">📝 Visita</button>
