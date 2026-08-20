@@ -430,11 +430,48 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 // Script Properties do servidor.
 const GOOGLE_CLIENT_ID = '866951819808-tqeoto2rqnr34p7250mmq6l7mn93afs2.apps.googleusercontent.com';
 let _googleIdToken = null; // preenchido só depois de um login com Google bem-sucedido
+let _sessaoExpirada = false; // true quando a sincronização falhou por token vencido e a renovação silenciosa também não deu certo
 
 // Central de credenciais: toda chamada pro Apps Script manda o token do
 // Google — muda aqui uma vez só se um dia mudar o método de novo.
 function credenciaisAuth(){
   return { token: _googleIdToken };
+}
+
+// Renova o token do Google silenciosamente, sem pedir pra ninguém clicar
+// em nada. O ID token do Google dura só cerca de 1h — deixar a aba aberta
+// sem usar por mais tempo que isso fazia a sincronização ficar presa em
+// "📴 Offline" pra sempre (a real causa era token vencido, não internet),
+// só resolvendo com F5 porque um recarregamento novo pedia um token novo
+// por trás sem avisar. Essa função automatiza esse mesmo caminho.
+function renovarSessaoGoogle(){
+  return new Promise((resolve)=>{
+    if (typeof google==='undefined' || !google.accounts || !GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('COLE_SEU_CLIENT_ID_AQUI')===0){ resolve(false); return; }
+    let resolvido=false;
+    // Restaura o callback padrão (o da tela de login) depois de tentar —
+    // senão, se a renovação falhar e a pessoa cair de volta na tela de
+    // login, o botão "Entrar com Google" ficaria preso chamando ESSA
+    // função em vez de finalizar o login de verdade.
+    const restaurarCallbackPadrao=()=>{
+      try{ google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: entrarComGoogle }); }catch(e){}
+    };
+    const finalizar=(ok)=>{
+      if(resolvido) return; resolvido=true;
+      restaurarCallbackPadrao();
+      resolve(ok);
+    };
+    try{
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        auto_select: true,
+        callback: (response)=>{ _googleIdToken=response.credential; finalizar(true); }
+      });
+      google.accounts.id.prompt((notification)=>{
+        if ((notification.isNotDisplayed&&notification.isNotDisplayed()) || (notification.isSkippedMoment&&notification.isSkippedMoment())) finalizar(false);
+      });
+      setTimeout(()=>finalizar(false), 8000); // não trava esperando pra sempre se o Google não responder
+    }catch(e){ finalizar(false); }
+  });
 }
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbwDqrAftrPBia3DEHD4c-SIcHwm7f8kfYsH-0chJmSXE146VpcEQFMsxzU5-8c6-4tBMA/exec';
 // Logo reaproveitada no orçamento exportável (imagem/PDF)
@@ -629,6 +666,17 @@ function setSyncStatus(status, msg) {
 // Mostra o que exatamente está pendente de sincronizar, e por quê —
 // clica no aviso "X pendente(s)" no topo pra abrir isso
 function verPendencias(){
+  if(_sessaoExpirada){
+    openModal('🔒 Sessão expirada',
+      `<p style="font-size:12.5px;color:var(--cinza-med)">Sua sessão do Google expirou — isso é normal depois de um tempo com a aba aberta sem uso. Toque no botão abaixo pra renovar: não precisa recarregar a página, e nada do que você preencheu se perde.</p>`,
+      async()=>{
+        closeModal();
+        const ok=await renovarSessaoGoogle();
+        if(ok){ _sessaoExpirada=false; toast('Sessão renovada! Sincronizando...'); sincronizarSheets(); }
+        else toast('Não deu pra renovar automaticamente — tenta recarregar a página','error');
+      }, '🔓 Renovar Sessão');
+    return;
+  }
   if(_tabelasBloqueadasPorSeguranca.length>0){
     const tabelas=_tabelasBloqueadasPorSeguranca;
     openModal(`🛡️ Proteção Ativada`,
@@ -805,9 +853,27 @@ async function sincronizarSheets() {
         setSyncStatus('ok', '✅ Sincronizado');
         registrarLogSync('fim', 'sucesso');
       }
+      _sessaoExpirada = false;
       render(currentSection);
     } else {
-      throw new Error(data.erro || 'Resposta inválida');
+      const erro = data.erro || 'Resposta inválida';
+      // Distingue "token do Google vencido" de erro de rede/servidor de
+      // verdade — sem isso, os dois caíam no mesmo catch e mostravam
+      // "📴 Offline" pra sempre, mesmo com internet normal, até recarregar
+      // a página (que sem querer pedia um token novo por trás).
+      if (/token|autenticad|autorizad/i.test(erro)) {
+        registrarLogSync('erro_auth', erro);
+        const renovou = await renovarSessaoGoogle();
+        if (renovou) {
+          registrarLogSync('info', 'Sessão do Google renovada — tentando sincronizar de novo');
+          setTimeout(() => sincronizarSheets(), 300);
+          return;
+        }
+        _sessaoExpirada = true;
+        setSyncStatus('error', '🔒 Sessão expirada — toque aqui');
+      } else {
+        throw new Error(erro);
+      }
     }
   } catch(e) {
     console.warn('Sheets offline:', e.message);
