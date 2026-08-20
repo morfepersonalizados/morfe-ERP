@@ -4990,12 +4990,14 @@ SECTIONS.consignados = () => {
     const custo=+(getProd(i.prod)?.custo)||0; const lucroUn=(+i.preco||0)-custo;
     return ss+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*lucroUn;
   },s),0);
+  const totalLucroParado=totalValor-totalCusto;
   return`
   <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Pontos</div><div class="kpi-value">${DB.consignados.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Peças em Loja</div><div class="kpi-value">${totalPecas}</div></div>
     <div class="kpi-card" style="background:#F5EDE4"><div class="kpi-label" style="color:#8A5A2B">💸 Custo Parado (produção)</div><div class="kpi-value" style="color:#8A5A2B">${R$(totalCusto)}</div></div>
     <div class="kpi-card laranja"><div class="kpi-label">Valor em Loja (repasse)</div><div class="kpi-value">${R$(totalValor)}</div></div>
+    <div class="kpi-card" style="background:#DCEAFB"><div class="kpi-label" style="color:var(--txt-azul)">🔒 Lucro Parado (se vender tudo)</div><div class="kpi-value" style="color:var(--txt-azul)">${R$(totalLucroParado)}</div></div>
     <div class="kpi-card roxo"><div class="kpi-label">Já Vendido (repasse)</div><div class="kpi-value">${R$(totalVendido)}</div></div>
     <div class="kpi-card verde"><div class="kpi-label">💰 Seu Lucro Já Realizado</div><div class="kpi-value">${R$(totalLucro)}</div></div>
   </div>
@@ -5043,6 +5045,7 @@ SECTIONS.consignados = () => {
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
           const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
           const lucroVendido=(c.itens||[]).reduce((s,i)=>{const custoU=+(getProd(i.prod)?.custo)||0;return s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*((+i.preco||0)-custoU);},0);
+          const lucroParado=valor-custoParado; // quanto ainda pode lucrar do que está lá, se vender tudo
           const repassado=(c.visitas||[]).reduce((s,v)=>s+(+v.valor_recebido||0),0);
           const ultVis=(c.visitas||[]).slice(-1)[0];
           const expandido=_csgExpandidos.has(c.id);
@@ -5062,8 +5065,9 @@ SECTIONS.consignados = () => {
                 <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:18px;font-weight:900;color:var(--txt-azul)">${pecas}</div></div>
                 <div style="background:#F5EDE4;border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:#8A5A2B">Custo parado</div><div style="font-size:13px;font-weight:800;color:#8A5A2B">${R$(custoParado)}</div></div>
                 <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-roxo)">Valor lá</div><div style="font-size:13px;font-weight:800;color:var(--txt-roxo)">${R$(valor)}</div></div>
+                <div style="background:#DCEAFB;border-radius:6px;padding:8px;text-align:center" title="Quanto ainda pode lucrar se o que está lá vender tudo"><div style="font-size:10px;color:var(--txt-azul)">Lucro parado</div><div style="font-size:13px;font-weight:800;color:var(--txt-azul)">${R$(lucroParado)}</div></div>
                 <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-verde)">Vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-verde)">${R$(vendido)}</div></div>
-                <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-amarelo)">Lucro</div><div style="font-size:13px;font-weight:800;color:var(--txt-amarelo)">${R$(lucroVendido)}</div></div>
+                <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center" title="Lucro já realizado do que já vendeu"><div style="font-size:10px;color:var(--txt-amarelo)">Lucro vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-amarelo)">${R$(lucroVendido)}</div></div>
               </div>
             </div>
             <div id="csg-det-${c.id}" style="display:${expandido?'':'none'};padding:10px 14px">
@@ -5786,7 +5790,49 @@ SECTIONS.relatorios = () => {
         <td class="fw-bold">${d.total?((d.lucro/d.total)*100).toFixed(1)+'%':'—'}</td>
       </tr>`).join('')}</tbody>
     </table></div>
-  </div>`;
+  </div>
+  ${(()=>{
+    // Curva ABC por LUCRO (não faturamento) — um produto pode vender muito
+    // e valer pouco (margem apertada); classificar pelo que sobra no
+    // bolso é mais fiel pra decidir onde focar estoque/consignação/kits.
+    // A = produtos que juntos já respondem por até 80% do lucro (os
+    // "carro-chefe"), B = a faixa seguinte até 95%, C = o resto — baixo
+    // impacto individual, candidatos a repensar.
+    if(rP.length===0) return '';
+    const rPporLucro=[...rP].sort((a,b)=>b[1].lucro-a[1].lucro);
+    const lucroTotalPositivo=rPporLucro.reduce((s,[,d])=>s+Math.max(0,d.lucro),0);
+    let acumulado=0;
+    const linhasABC=rPporLucro.map(([id,d])=>{
+      acumulado+=Math.max(0,d.lucro);
+      const pctAcumulado=lucroTotalPositivo>0?(acumulado/lucroTotalPositivo*100):100;
+      const classe=pctAcumulado<=80?'A':pctAcumulado<=95?'B':'C';
+      return {id,d,pctAcumulado,classe};
+    });
+    const CLASSE_BADGE={A:'badge-ok',B:'badge-warn',C:'badge-danger'};
+    const CLASSE_DESC={A:'Carro-chefe — geram a maior parte do lucro',B:'Relevantes, mas não essenciais',C:'Baixo impacto individual — candidatos a repensar'};
+    const contagem={A:0,B:0,C:0};
+    linhasABC.forEach(l=>contagem[l.classe]++);
+    return `<div class="panel" style="margin-top:16px">
+      <div class="panel-header"><span class="panel-title">📈 Curva ABC de Produtos (por Lucro)</span></div>
+      <div style="padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap">
+        ${['A','B','C'].map(cl=>`<div style="flex:1;min-width:140px;background:var(--cinza-ultra);border-radius:8px;padding:10px 12px">
+          <span class="badge ${CLASSE_BADGE[cl]}" style="font-size:11px">Classe ${cl}</span>
+          <div style="font-size:18px;font-weight:900;margin-top:4px">${contagem[cl]} produto${contagem[cl]!==1?'s':''}</div>
+          <div style="font-size:10.5px;color:var(--cinza-med);margin-top:2px">${CLASSE_DESC[cl]}</div>
+        </div>`).join('')}
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>Produto</th><th>Lucro</th><th>% Acumulado</th><th>Classe</th></tr></thead>
+        <tbody>${linhasABC.map((l,i)=>`<tr>
+          <td class="text-center fw-bold">${i+1}</td>
+          <td class="fw-bold">${nomeProd(l.id)}</td>
+          <td class="${l.d.lucro>=0?'text-verde':'text-vermelho'} fw-bold">${R$(l.d.lucro)}</td>
+          <td class="text-center">${l.pctAcumulado.toFixed(1)}%</td>
+          <td class="text-center"><span class="badge ${CLASSE_BADGE[l.classe]}">${l.classe}</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+  })()}`;
 };
 
 // Exporta o relatório de Top Clientes/Produtos em PDF usando a função de
