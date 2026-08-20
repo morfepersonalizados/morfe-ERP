@@ -2675,6 +2675,7 @@ SECTIONS.pedidos = () => {
   <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Total Pedidos</div><div class="kpi-value">${lista.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Valor Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+(+p.total||0),0))}</div></div>
+    <div class="kpi-card laranja"><div class="kpi-label">Custo Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+custoPedidoEstimado(p),0))}</div></div>
     <div class="kpi-card roxo"><div class="kpi-label">🔬 Lucro Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+lucroPedidoEstimado(p),0))}</div></div>
     <div class="kpi-card amarelo"><div class="kpi-label">Saldo a Receber</div><div class="kpi-value">${R$(lista.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0))}</div></div>
   </div>
@@ -2682,13 +2683,14 @@ SECTIONS.pedidos = () => {
     <div class="panel-header"><span class="panel-title">📋 Pedidos & Orçamentos</span>
       <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Lucro</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
-      <tbody>${lista.length===0?`<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido.</td></tr>`:
-      lista.slice().reverse().map(p=>{const lucroP=lucroPedidoEstimado(p);return`<tr>
+      <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Custo</th><th>Lucro</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
+      <tbody>${lista.length===0?`<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido.</td></tr>`:
+      lista.slice().reverse().map(p=>{const custoP=custoPedidoEstimado(p);const lucroP=lucroPedidoEstimado(p);return`<tr>
         <td class="fw-bold text-azul">${p.id}</td><td>${p.data||'—'}</td>
         <td class="fw-bold">${nomeVenda(p)}</td>
         <td style="font-size:12px">${resumoItensPedido(p)}</td>
         <td class="fw-bold text-verde">${R$(p.total||0)}</td>
+        <td class="text-vermelho">${R$(custoP)}</td>
         <td class="fw-bold" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
         <td>${statusPgto(p)}</td>
         <td>${statusBadge(p.status)}</td>
@@ -2803,9 +2805,11 @@ function onKitModeloPedidoEscolhido(i,kiProd,prodId){
 // custo congelado no momento da venda, e cai pro cálculo ao vivo se ainda
 // não tiver sido salvo). Não desconta rateio de custo fixo nem impostos —
 // é uma visão rápida, não a mesma conta fina da Precificação.
+function custoPedidoEstimado(pd){
+  return (pd.itens||[]).reduce((s,it)=>s+custoItemPedido(it)*(+it.qtd||1),0);
+}
 function lucroPedidoEstimado(pd){
-  const custoTotal=(pd.itens||[]).reduce((s,it)=>s+custoItemPedido(it)*(+it.qtd||1),0);
-  return pedidoCalc(pd).total-custoTotal;
+  return pedidoCalc(pd).total-custoPedidoEstimado(pd);
 }
 function abrirFormPedido(editId){
   const pd=window._pedTemp;
@@ -2891,6 +2895,10 @@ function abrirFormPedido(editId){
             <td colspan="5" style="padding:9px;font-weight:700;text-align:right;font-size:14px">TOTAL</td>
             <td colspan="2" style="padding:9px;font-size:16px;font-weight:900;text-align:center" id="ped-total">${R$(calc.total)}</td>
           </tr>
+          <tr style="background:var(--vermelho-claro)">
+            <td colspan="5" style="padding:6px 9px;font-weight:700;text-align:right;font-size:12px;color:var(--txt-vermelho)">Custo estimado</td>
+            <td colspan="2" style="padding:6px 9px;font-size:13px;font-weight:700;text-align:center;color:var(--txt-vermelho)" id="ped-custo">${R$(custoPedidoEstimado(pd))}</td>
+          </tr>
           <tr style="background:var(--roxo-claro)">
             <td colspan="5" style="padding:8px 9px;font-weight:700;text-align:right;font-size:12.5px;color:var(--txt-roxo)">🔬 Lucro estimado deste pedido</td>
             <td colspan="2" style="padding:8px 9px;font-size:14px;font-weight:800;text-align:center;color:var(--txt-roxo)" id="ped-lucro">${R$(lucroPedido)}</td>
@@ -2950,6 +2958,7 @@ function calcTotalPed(){
   const rowDesc=document.getElementById('ped-row-desc');if(rowDesc)rowDesc.style.display=calc.descGeral>0?'':'none';
   const elA=document.getElementById('ped-acrescimos-val');if(elA)elA.textContent='+ '+R$(calc.totalAcrescimos);
   const rowA=document.getElementById('ped-row-acrescimos');if(rowA)rowA.style.display=calc.totalAcrescimos>0?'':'none';
+  const elC=document.getElementById('ped-custo');if(elC)elC.textContent=R$(custoPedidoEstimado(window._pedTemp));
   const elL=document.getElementById('ped-lucro');if(elL)elL.textContent=R$(lucroPedidoEstimado(window._pedTemp));
 }
 // Acréscimo = o contrário do desconto — cobrar a mais por algum motivo
