@@ -1949,12 +1949,13 @@ SECTIONS.dashboard = () => {
     </div>
     ${proximasEntregas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:20px;font-size:13px">Nenhuma entrega agendada nos próximos ${janelaEntregaDias} dias.</p>`:
     `<div class="tbl-wrap"><table>
-      <thead><tr><th>Cliente</th><th>Itens</th><th>Entrega</th></tr></thead>
+      <thead><tr><th>Cliente</th><th>Itens</th><th>Entrega</th><th>Pagamento</th></tr></thead>
       <tbody>${proximasEntregas.map(p=>{const r=rotuloEntrega(p.entrega);return`
         <tr style="cursor:pointer" onclick="verPedidoOrc('${p.id}')" title="Clique pra abrir">
           <td class="fw-bold">${nomeVenda(p)}</td>
           <td style="font-size:12px">${resumoItensPedido(p)}</td>
           <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
+          <td class="text-center">${statusPagamentoPedido(p)}</td>
         </tr>`;}).join('')}</tbody>
     </table></div>`}
   </div>`:''}
@@ -3202,6 +3203,20 @@ function abrirPagamentos(pedidoId){
   const saldo=total-pago;
   const pct=total>0?(pago/total*100).toFixed(0):0;
   const wpp=getCli(pd.cliente)?.whatsapp||pd.telefone||'';
+  // Regra do negócio: o restante do pagamento (quando não é à vista) vence
+  // sempre no dia da entrega — deixa isso explícito aqui, que é onde a
+  // pessoa de fato vai cobrar/registrar o recebimento.
+  let avisoSaldo='';
+  if(saldo>0.004){
+    const entregaNorm=pd.entrega?normalizarData(pd.entrega):null;
+    if(!entregaNorm){
+      avisoSaldo=`<div style="margin-top:8px;font-size:11px;background:rgba(255,255,255,.18);border-radius:6px;padding:7px 9px">⚠️ Sem data de entrega definida — o restante vence no dia da entrega. Defina a entrega no pedido pra saber quando cobrar.</div>`;
+    } else {
+      const hojeStr=new Date().toISOString().slice(0,10);
+      const atrasado=entregaNorm<hojeStr;
+      avisoSaldo=`<div style="margin-top:8px;font-size:11px;background:${atrasado?'rgba(220,60,60,.35)':'rgba(255,255,255,.18)'};border-radius:6px;padding:7px 9px">${atrasado?'🔴 Restante vencido desde':'📅 Restante vence no dia da entrega:'} <strong>${formatarDataBR(entregaNorm)}</strong></div>`;
+    }
+  }
 
   openModal(`💳 Pagamentos — ${pd.id}`,
     `<div>
@@ -3214,6 +3229,7 @@ function abrirPagamentos(pedidoId){
           <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.8;margin-bottom:4px"><span>Pago: ${R$(pago)} (${pct}%)</span><span>Falta: ${R$(saldo)}</span></div>
           <div style="background:rgba(255,255,255,0.2);border-radius:20px;height:10px"><div style="background:#68D391;border-radius:20px;height:10px;width:${Math.min(100,+pct)}%;transition:width .4s"></div></div>
         </div>
+        ${avisoSaldo}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('ent-val').value='${(total*0.5).toFixed(2)}'">➕ 50% = ${R$(total*0.5)}</button>
