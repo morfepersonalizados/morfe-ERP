@@ -2133,15 +2133,16 @@ SECTIONS.produtos = () => `
     </div>
     <div class="tbl-wrap">
       <table id="t-prod">
-        <thead><tr><th>SKU</th><th>Categoria</th><th>Nome</th><th>Preço</th><th>Custo</th><th>📦 Embal.</th><th>Margem</th><th>Status</th><th>Ações</th></tr></thead>
+        <thead><tr><th>SKU</th><th>Categoria</th><th>Nome</th><th>Preço</th><th>Custo</th><th>Lucro</th><th>📦 Embal.</th><th>Margem</th><th>Status</th><th>Ações</th></tr></thead>
         <tbody>
-          ${DB.produtos.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum produto. Clique em + Novo.</td></tr>`:
-          ordNome(DB.produtos).map(p=>`<tr>
+          ${DB.produtos.length===0?`<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum produto. Clique em + Novo.</td></tr>`:
+          ordNome(DB.produtos).map(p=>{const lucroP=(+p.preco||0)-(+p.custo||0);return`<tr>
             <td><span class="badge badge-info">${p.sku||'—'}</span></td>
             <td>${p.categoria||'—'}</td>
             <td class="fw-bold">${p.nome}</td>
             <td class="fw-bold text-verde">${R$(p.preco)}</td>
             <td class="text-vermelho">${R$(p.custo)}</td>
+            <td class="fw-bold" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
             <td class="text-center ${p.embalagem?'':'text-muted'}" title="Editável na Ficha Técnica do produto">${p.embalagem?R$(p.embalagem):'—'}</td>
             <td class="fw-bold">${p.preco?((p.preco-p.custo)/p.preco*100).toFixed(1):0}%</td>
             <td>${statusBadge(p.status)}</td>
@@ -2150,7 +2151,7 @@ SECTIONS.produtos = () => `
               <button class="btn btn-primary btn-xs" onclick="editarProduto('${p.id}')">✏️</button>
               <button class="btn btn-danger btn-xs" onclick="excluirItem('produtos','${p.id}')">🗑️</button>
             </td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
         </tbody>
       </table>
     </div>
@@ -5690,16 +5691,19 @@ function calcularPendenciasCadastro(){
   const pedidosSemCliente = DB.pedidos.filter(pd=>!pd.cliente && !pd.cliente_nome);
 
   // Custos divergentes: compara o custo cadastrado no produto com o custo
-  // calculado pela Ficha Técnica (soma dos insumos). Só considera produto
-  // que já tem ficha configurada (senão a comparação não faz sentido).
+  // calculado pela Ficha Técnica (soma dos insumos + embalagem — igual
+  // sincronizarCustoProduto/calcFichaCompleta calculam em todo o resto do
+  // sistema). Sem somar a embalagem aqui, TODO produto com embalagem
+  // cadastrada aparecia como "divergente" do valor exato da embalagem —
+  // uma divergência falsa, não um erro de cadastro de verdade.
   const LIMIAR_DIVERGENCIA = 0.5; // considera divergente se diferença > R$0,50
+  const custoPelaFicha = p => DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0) + (+p.embalagem||0);
   const produtosCustoDivergente = DB.produtos.filter(p=>{
     const temFicha = DB.fichas.some(f=>f.produto===p.id);
     if(!temFicha) return false;
-    const custoFicha = DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0);
-    return Math.abs((+p.custo||0) - custoFicha) > LIMIAR_DIVERGENCIA;
+    return Math.abs((+p.custo||0) - custoPelaFicha(p)) > LIMIAR_DIVERGENCIA;
   }).map(p=>{
-    const custoFicha = DB.fichas.filter(f=>f.produto===p.id).reduce((s,f)=>s+(+f.qtd||0)*custoFichaItem(f),0);
+    const custoFicha = custoPelaFicha(p);
     return {produto:p, custoCadastrado:+p.custo||0, custoFicha, diferenca:(+p.custo||0)-custoFicha};
   });
 
