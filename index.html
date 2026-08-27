@@ -2400,16 +2400,69 @@ async function salvarMP(id=null){
 }
 function ajustarEstMP(id){
   const m=getItem(DB.materias,id);
+  const fornOpts=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}">${f.nome}</option>`).join('');
   openModal(`📦 Ajustar Estoque — ${m.nome}`,
     `<div class="form-grid cols-1">
       <div class="form-group"><label class="form-label">Estoque atual: <strong>${m.estoque||0} ${m.unidade||'un'}</strong></label></div>
-      <div class="form-group"><label class="form-label">Tipo de Ajuste</label><select class="form-select" id="adj-tp"><option value="1">➕ Adicionar</option><option value="-1">➖ Remover</option><option value="0">= Definir valor exato</option></select></div>
+      <div class="form-group"><label class="form-label">Tipo de Ajuste</label><select class="form-select" id="adj-tp" onchange="toggleAdjTipoAjuste()"><option value="1">➕ Adicionar</option><option value="-1">➖ Remover</option><option value="0">= Definir valor exato</option></select></div>
       <div class="form-group"><label class="form-label">Quantidade</label><input class="form-input" id="adj-qtd" type="number" value="0"></div>
       <div style="background:var(--cinza-ultra);padding:8px 10px;border-radius:6px;font-size:11px;color:var(--cinza-med)">💡 Adicionar/Remover soma ou tira em cima do estoque mais atual da planilha (seguro mesmo usando em vários aparelhos). "Definir valor exato" substitui o número, use com cuidado.</div>
+      <div class="form-group" id="adj-foicompra-wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="adj-foicompra" onchange="toggleAdjCompraCampos()" style="width:16px;height:16px;cursor:pointer"> 🛒 Isso foi uma compra? (registra o gasto e atualiza o custo médio do insumo)</label>
+      </div>
+      <div id="adj-compra-campos" style="display:none;background:var(--dourado-claro);border-radius:8px;padding:12px;display:none">
+        <div class="form-grid cols-1">
+          <div class="form-group"><label class="form-label">Como quer informar o valor?</label>
+            <select class="form-select" id="adj-modo-valor" onchange="atualizarAdjValorRef()">
+              <option value="unitario">Valor por unidade</option>
+              <option value="total">Valor total dessa compra</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label" id="adj-valor-label">Valor por unidade (R$)</label><input class="form-input" id="adj-valor" type="number" step="0.01" value="${m.custo||''}" oninput="atualizarAdjValorRef()"></div>
+          <div id="adj-valor-ref" style="font-size:11px;color:var(--cinza-med);margin-top:-6px"></div>
+          <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="adj-data" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          <div class="form-group"><label class="form-label">Fornecedor (opcional)</label><select class="form-select" id="adj-forn"><option value="">—</option>${fornOpts}</select></div>
+        </div>
+      </div>
     </div>`,
     async()=>{
       const tp=+document.getElementById('adj-tp').value;
       const qtd=parseFloat(document.getElementById('adj-qtd').value)||0;
+      const foiCompra=tp===1 && document.getElementById('adj-foicompra').checked;
+
+      if(foiCompra){
+        if(qtd<=0){toast('Informe a quantidade comprada','error');return;}
+        const modoValor=document.getElementById('adj-modo-valor').value;
+        const valorDigitado=parseFloat(document.getElementById('adj-valor').value)||0;
+        const custoUnitario=modoValor==='total'?(qtd>0?valorDigitado/qtd:0):valorDigitado;
+        if(custoUnitario<=0){toast('Informe o valor da compra','error');return;}
+        // Mesma lógica de custo médio ponderado usada em Compras — pega o
+        // estoque/custo de ANTES dessa entrada, mistura com o novo lote.
+        const estoqueAntes=Math.max(0,+m.estoque||0);
+        const custoAntes=+m.custo||0;
+        const novoCustoMedio=(estoqueAntes*custoAntes+qtd*custoUnitario)/(estoqueAntes+qtd);
+        m.custo=parseFloat(novoCustoMedio.toFixed(4));
+        await salvarItem('materias',m);
+        await aplicarEntradaEstoque({[m.id]:qtd});
+        const compra={
+          id:nextId(DB.compras,'CMP'),
+          data:document.getElementById('adj-data').value||new Date().toISOString().slice(0,10),
+          fornecedor:document.getElementById('adj-forn').value,
+          produto:m.nome,
+          materia_prima_id:m.id,
+          qtd,
+          custo:parseFloat(custoUnitario.toFixed(4)),
+          forma:'—',
+          status:'Pago',
+          estoque_aplicado:{mpId:m.id,qtd},
+          criado_em:new Date().toISOString()
+        };
+        await salvarItem('compras',compra);
+        toast(`Compra registrada! +${qtd} ${m.unidade||'un'} de ${m.nome}, custo médio atualizado.`);
+        closeModal();render('materias');
+        return;
+      }
+
       if(tp===0){
         // Definir valor exato — substituição intencional, upsert normal
         m.estoque=qtd;
@@ -2429,6 +2482,39 @@ function ajustarEstMP(id){
       }
       toast('Estoque ajustado para '+m.estoque+' '+m.unidade);closeModal();render('materias');
     },'✅ Confirmar');
+  toggleAdjTipoAjuste();
+  atualizarAdjValorRef();
+}
+// Só faz sentido perguntar "foi compra?" quando o ajuste é de ADICIONAR
+// (tp=1) — remover ou definir valor exato não é uma entrada de mercadoria.
+function toggleAdjTipoAjuste(){
+  const tp=+document.getElementById('adj-tp')?.value;
+  const wrap=document.getElementById('adj-foicompra-wrap');
+  if(wrap) wrap.style.display=tp===1?'':'none';
+  if(tp!==1){
+    const chk=document.getElementById('adj-foicompra');
+    if(chk){ chk.checked=false; toggleAdjCompraCampos(); }
+  }
+}
+function toggleAdjCompraCampos(){
+  const chk=document.getElementById('adj-foicompra');
+  const campos=document.getElementById('adj-compra-campos');
+  if(campos) campos.style.display=chk?.checked?'block':'none';
+}
+// Mostra uma referência de conta ("= R$X/un" ou "= R$X no total") pra
+// ajudar a conferir se o número faz sentido, seja qual for o modo escolhido
+function atualizarAdjValorRef(){
+  const modo=document.getElementById('adj-modo-valor')?.value;
+  const valor=parseFloat(document.getElementById('adj-valor')?.value)||0;
+  const qtd=parseFloat(document.getElementById('adj-qtd')?.value)||0;
+  const label=document.getElementById('adj-valor-label');
+  const ref=document.getElementById('adj-valor-ref');
+  if(label) label.textContent=modo==='total'?'Valor TOTAL dessa compra (R$)':'Valor por unidade (R$)';
+  if(ref){
+    if(modo==='total' && qtd>0) ref.textContent=`= ${R$(valor/qtd)} por unidade`;
+    else if(modo==='unitario' && qtd>0) ref.textContent=`= ${R$(valor*qtd)} no total`;
+    else ref.textContent='';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
