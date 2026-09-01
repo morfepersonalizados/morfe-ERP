@@ -2800,6 +2800,14 @@ SECTIONS.consumo = () => {
   </div>`;
 };
 
+// Formata "desconto sobre base" como porcentagem legível (ex: "10%", "12,5%") —
+// calcula sempre em cima do valor, mesmo quando o desconto foi digitado em R$
+function pctFmt(desc,base){
+  if(!base) return '0%';
+  const p=(desc/base)*100;
+  const arred=Math.round(p*10)/10;
+  return (Number.isInteger(arred)?arred:arred.toFixed(1).replace('.',','))+'%';
+}
 // Cálculo de valores de um item considerando desconto próprio
 function itemCalc(it){
   const sub=(+it.qtd||1)*(+it.valor||0);
@@ -3469,7 +3477,7 @@ function abrirPreviewOrcamento(pedidoId){
       <td class="orc-num">${it.qtd||1}</td>
       <td class="orc-val">${R$(it.valor||0)}</td>
       <td class="orc-val" style="font-weight:700">${R$(c.sub)}</td>
-    </tr>${linhaConteudoKit}${temDesc?`<tr class="orc-desc-row"><td colspan="3" style="text-align:right;font-size:10.5px">↳ desconto aplicado no item</td><td class="orc-val" style="font-size:10.5px">− ${R$(c.desc)}</td></tr>`:''}`;
+    </tr>${linhaConteudoKit}${temDesc?`<tr class="orc-desc-row"><td colspan="3" style="text-align:right;font-size:10.5px">↳ desconto aplicado no item (${pctFmt(c.desc,c.sub)})</td><td class="orc-val" style="font-size:10.5px">− ${R$(c.desc)}</td></tr>`:''}`;
   }).join('');
 
   const html=`
@@ -3502,8 +3510,8 @@ function abrirPreviewOrcamento(pedidoId){
 
       <div class="orc-totais">
         <div class="orc-totais-row sub"><span>Subtotal</span><span>${R$(calc.subtotal)}</span></div>
-        ${calc.descItens>0?`<div class="orc-totais-row desc"><span>Desconto nos Itens</span><span>− ${R$(calc.descItens)}</span></div>`:''}
-        ${calc.descGeral>0?`<div class="orc-totais-row desc"><span>Desconto Geral</span><span>− ${R$(calc.descGeral)}</span></div>`:''}
+        ${calc.descItens>0?`<div class="orc-totais-row desc"><span>Desconto nos Itens (${pctFmt(calc.descItens,calc.subtotal)})</span><span>− ${R$(calc.descItens)}</span></div>`:''}
+        ${calc.descGeral>0?`<div class="orc-totais-row desc"><span>Desconto Geral (${pctFmt(calc.descGeral,calc.somaItens)})</span><span>− ${R$(calc.descGeral)}</span></div>`:''}
         ${(pd.acrescimos||[]).map(a=>`<div class="orc-totais-row" style="color:#2F9E5C"><span>➕ ${a.motivo||'Acréscimo'}</span><span>+ ${R$(a.valor)}</span></div>`).join('')}
         <div class="orc-total-final"><span>Valor Total</span><b>${R$(calc.total)}</b></div>
       </div>
