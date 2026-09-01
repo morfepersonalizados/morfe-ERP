@@ -248,7 +248,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 .orc-tbl tbody tr:nth-child(even){background:#FBF8F2}
 .orc-tbl .orc-num{text-align:center}
 .orc-tbl .orc-val{text-align:right;font-variant-numeric:tabular-nums}
-.orc-desc-row td{color:#9B2335;font-style:italic;background:#FBF0F1!important}
+.orc-desc-row td{color:#1E8E4E;font-style:italic;background:#EDF9F1!important}
 /* Preview de KIT (venda pro cliente final) — propositalmente mais simples
    que o orçamento de pedido: lista o que tem no kit e as opções de
    modelo com a diferença de valor, sem expor preço-cheio/desconto% */
@@ -268,9 +268,12 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 .orc-totais{margin:0 28px 16px;border-top:2px solid #182E62}
 .orc-totais-row{display:flex;justify-content:space-between;padding:7px 12px;font-size:12.5px}
 .orc-totais-row.sub{color:#7A7267}
-.orc-totais-row.desc{color:#9B2335;font-weight:600}
-.orc-total-final{display:flex;justify-content:space-between;align-items:center;background:#182E62;color:#FFFFFF;padding:14px 18px;border-radius:10px;margin-top:6px}
+.orc-totais-row.desc{color:#1E8E4E;font-weight:600}
+.orc-economia-badge{margin:10px 0 0;background:#EDF9F1;border:1.5px dashed #1E8E4E;border-radius:10px;padding:10px 14px;text-align:center;font-size:13px;font-weight:800;color:#1E8E4E}
+.orc-total-final{display:flex;justify-content:space-between;align-items:center;background:#182E62;color:#FFFFFF;padding:14px 18px;border-radius:10px;margin-top:10px}
 .orc-total-final span{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.orc-total-final .orc-total-valores{text-align:right}
+.orc-total-final .orc-total-de{display:block;font-size:11.5px;font-weight:600;color:#8FA3D1;text-decoration:line-through;margin-bottom:1px}
 .orc-total-final b{font-size:22px;font-weight:800;color:#C9AC7D}
 .orc-info-cards{margin:0 28px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .orc-info-card{background:#F5EDDD;border-radius:10px;padding:10px 14px;font-size:11.5px;color:#282420}
@@ -3446,6 +3449,7 @@ function abrirPreviewOrcamento(pedidoId){
   const pd=getItem(DB.pedidos,pedidoId);if(!pd)return;
   const cli=getCli(pd.cliente);
   const calc=pedidoCalc(pd);
+  const economiaTotal=calc.descItens+calc.descGeral;
   const nomeCliente=cli?.nome||pd.cliente_nome||'—';
   const telCliente=cli?.whatsapp||cli?.telefone||pd.telefone||'—';
   const enderecoCliente=cli?.cidade||'';
@@ -3513,7 +3517,8 @@ function abrirPreviewOrcamento(pedidoId){
         ${calc.descItens>0?`<div class="orc-totais-row desc"><span>Desconto nos Itens (${pctFmt(calc.descItens,calc.subtotal)})</span><span>− ${R$(calc.descItens)}</span></div>`:''}
         ${calc.descGeral>0?`<div class="orc-totais-row desc"><span>Desconto Geral (${pctFmt(calc.descGeral,calc.somaItens)})</span><span>− ${R$(calc.descGeral)}</span></div>`:''}
         ${(pd.acrescimos||[]).map(a=>`<div class="orc-totais-row" style="color:#2F9E5C"><span>➕ ${a.motivo||'Acréscimo'}</span><span>+ ${R$(a.valor)}</span></div>`).join('')}
-        <div class="orc-total-final"><span>Valor Total</span><b>${R$(calc.total)}</b></div>
+        ${economiaTotal>0.004?`<div class="orc-economia-badge">🎉 Você economizou ${R$(economiaTotal)} (${pctFmt(economiaTotal,calc.subtotal)} de desconto)</div>`:''}
+        <div class="orc-total-final"><span>Valor Total</span><div class="orc-total-valores">${economiaTotal>0.004?`<span class="orc-total-de">de ${R$(calc.subtotal)}</span>`:''}<b>${R$(calc.total)}</b></div></div>
       </div>
 
       <div class="orc-info-cards">
