@@ -283,6 +283,31 @@ body.tema-escuro .visao-ped button[aria-pressed=true]{background:var(--dourado-e
   .kanban-col{flex-basis:82%}
   .kanban-avancar{min-height:42px;font-size:13px}
 }
+/* COBRANÇAS E FICHA DO CLIENTE */
+.dividas-faixas{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;padding:12px 18px}
+.divida-faixa{background:var(--azul-tint);border:1.5px solid transparent;border-radius:10px;padding:9px 10px;text-align:left;cursor:pointer;font:inherit;color:var(--cinza-escuro);min-height:62px}
+.divida-faixa strong{display:block;font-size:14px;margin-top:2px;overflow-wrap:anywhere}
+.divida-faixa span{font-size:11px;color:var(--cinza-med)}
+.divida-faixa.atraso{background:var(--vermelho-claro)}
+.divida-faixa[aria-pressed=true]{border-color:var(--azul)}
+body.tema-escuro .divida-faixa[aria-pressed=true]{border-color:var(--txt-azul)}
+.divida-item{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:11px 18px;border-top:1px solid var(--cinza-claro);font-size:13px}
+.divida-item .btn{min-height:38px}
+.divida-info{min-width:0;flex:1 1 200px;cursor:pointer}
+.divida-acoes{display:flex;align-items:center;gap:10px;margin-left:auto}
+.ficha-numeros{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ficha-numeros>div{background:var(--azul-tint);border-radius:9px;padding:9px 10px;font-size:11px;color:var(--cinza-med)}
+.ficha-numeros strong{display:block;font-size:15px;color:var(--cinza-escuro);overflow-wrap:anywhere}
+.ficha-compra{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--cinza-claro);cursor:pointer}
+.tbl-cards tr.cli-linha .pc-cliente{order:1;grid-column:1/-1}
+@media(max-width:900px){.dividas-faixas{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:768px){
+  .dividas-faixas{padding:12px}
+  .divida-item{padding:11px 12px}
+  .divida-acoes{width:100%;justify-content:space-between;margin-left:0}
+  .divida-acoes .btn{flex:0 0 auto;min-height:42px;padding:0 16px}
+}
+@media(max-width:400px){.dividas-faixas{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* FILTROS DE LISTA E CARDS CLICÁVEIS */
 .filtros-lista{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid var(--cinza-claro)}
 .filtros-lista .search-input{flex:2 1 220px;font-size:13px}
@@ -1508,7 +1533,7 @@ function render(sec) {
   document.getElementById('page-title').textContent = TITLES[sec] || sec;
   const fn = SECTIONS[sec];
   const el = document.getElementById('content');
-  if (fn) { el.innerHTML = fn(); if(sec==='pedidos') atualizarListaPedidos(); if(sec==='areceber') atualizarListaAR(); }
+  if (fn) { el.innerHTML = fn(); if(sec==='pedidos') atualizarListaPedidos(); if(sec==='areceber') atualizarListaAR(); if(sec==='clientes') aplicarFiltroClientes(); }
   else el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚧</div>Em construção</div>`;
 }
 
@@ -2132,7 +2157,7 @@ SECTIONS.dashboard = () => {
   </div>
 
   ${criticosMP>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('materias')">⚠️ ${criticosMP} matéria(s)-prima em estoque crítico</div>`:''}
-  ${arVencidas>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="abrirARFiltrado('vencida')">⚠️ ${arVencidas} conta(s) a receber vencida(s)</div>`:''}
+  ${(()=>{const l=dividasAbertas().filter(dividaEstaAtrasada);return l.length?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="_faixaDivida='atrasadas';goTo('areceber')">💰 ${l.length} ${l.length===1?'cobrança atrasada':'cobranças atrasadas'}: ${R$(l.reduce((s,d)=>s+d.saldo,0))} — ver lista</div>`:'';})()}
 
   ${(()=>{const n=DB.pedidos.filter(p=>pedidoAtrasado(p)).length;return n>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="abrirPedidosFiltrados({entrega:'atrasada'})">🚚 ${n} ${n===1?'pedido com entrega atrasada':'pedidos com entrega atrasada'} — ver lista</div>`:'';})()}
 
@@ -2403,25 +2428,31 @@ SECTIONS.clientes = () => `
     <div class="panel-header">
       <span class="panel-title">👥 Clientes (${DB.clientes.length})</span>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <input class="search-input" id="b-cli" placeholder="🔍 Buscar..." oninput="filtrar('b-cli','t-cli')">
         <button class="btn btn-success" onclick="novoCli()">+ Novo</button>
       </div>
     </div>
+    <div class="filtros-lista">
+      <input class="search-input" id="b-cli" type="search" placeholder="🔍 Nome, telefone ou cidade..." aria-label="Buscar clientes" value="${String(_fCli.q).replace(/"/g,'&quot;')}" oninput="_fCli.q=this.value;aplicarFiltroClientes()">
+      <select class="form-select" aria-label="Filtrar clientes" onchange="_fCli.situacao=this.value;aplicarFiltroClientes()">${opcoesFiltro([['','Todos os clientes'],['deve','Com saldo a receber'],['atrasado','Com cobrança atrasada']],_fCli.situacao)}</select>
+    </div>
+    <div class="filtros-resumo" id="cli-resumo" aria-live="polite"></div>
     <div class="tbl-wrap">
-      <table id="t-cli">
-        <thead><tr><th>Nome</th><th>Telefone</th><th>Cidade</th><th>Total Compras</th><th>Pedidos</th><th>Ações</th></tr></thead>
+      <table id="t-cli" class="tbl-cards">
+        <thead><tr><th>Nome</th><th>Telefone</th><th>Cidade</th><th>Total Compras</th><th>Pedidos</th><th>A receber</th><th>Ações</th></tr></thead>
         <tbody>
-          ${DB.clientes.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum cliente cadastrado.</td></tr>`:
-          (()=>{const efetivas=todasVendasEfetivas();return ordNome(DB.clientes).map(c=>{
+          ${DB.clientes.length===0?`<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum cliente cadastrado.</td></tr>`:
+          (()=>{const efetivas=todasVendasEfetivas(), dividas=dividasAbertas();return ordNome(DB.clientes).map(c=>{
             const vs=efetivas.filter(v=>v.cliente===c.id);
-            return`<tr>
-              <td class="fw-bold">${c.nome}</td>
-              <td>${c.telefone||'—'}</td>
-              <td>${c.cidade||'—'}</td>
-              <td class="fw-bold text-verde">${R$(vs.reduce((s,v)=>s+v.valorTotal,0))}</td>
-              <td class="text-center">${agruparVendasPorId(vs).length}</td>
-              <td class="td-actions">
-                <button class="btn btn-primary btn-xs" onclick="editarCli('${c.id}')">✏️</button>
+            const dv=dividas.filter(d=>d.cliente===c.id), deve=dv.reduce((s,d)=>s+d.saldo,0), atrasado=dv.some(dividaEstaAtrasada);
+            return`<tr class="cli-linha" tabindex="0" style="cursor:pointer" data-deve="${deve>0.004?1:0}" data-atrasado="${atrasado?1:0}" onclick="abrirFichaCliente('${c.id}')" onkeydown="if(event.key==='Enter'&&event.target===this)abrirFichaCliente('${c.id}')">
+              <td class="fw-bold pc-cliente" data-label="Nome">${c.nome}</td>
+              <td class="pc-data" data-label="Telefone">${c.telefone||'—'}</td>
+              <td class="pc-pgto" data-label="Cidade">${c.cidade||'—'}</td>
+              <td class="fw-bold text-verde pc-total" data-label="Total compras">${R$(vs.reduce((s,v)=>s+v.valorTotal,0))}</td>
+              <td class="text-center pc-custo" data-label="Pedidos">${agruparVendasPorId(vs).length}</td>
+              <td class="fw-bold pc-lucro" data-label="A receber" style="color:${atrasado?'var(--txt-vermelho)':'inherit'}">${deve>0.004?R$(deve):'—'}</td>
+              <td class="td-actions" onclick="event.stopPropagation()">
+                <button class="btn btn-primary btn-xs" onclick="editarCli('${c.id}')" title="Editar" aria-label="Editar">✏️</button>
                 ${c.whatsapp?`<button class="btn btn-success btn-xs" onclick="abrirWPP('${c.whatsapp}','')">💬</button>`:''}
                 <button class="btn btn-danger btn-xs" onclick="excluirItem('clientes','${c.id}')">🗑️</button>
               </td>
@@ -2431,6 +2462,75 @@ SECTIONS.clientes = () => `
     </div>
   </div>`;
 
+let _fCli={q:'',situacao:''};
+function aplicarFiltroClientes(){
+  const qs=textoBusca(_fCli.q).split(/\s+/).filter(Boolean);
+  let vistos=0;
+  document.querySelectorAll('#t-cli tbody tr.cli-linha').forEach(tr=>{
+    const alvo=textoBusca(tr.textContent);
+    const passa=qs.every(q=>alvo.includes(q))&&(!_fCli.situacao||(_fCli.situacao==='deve'?tr.dataset.deve==='1':tr.dataset.atrasado==='1'));
+    tr.style.display=passa?'':'none';
+    if(passa) vistos++;
+  });
+  const res=document.getElementById('cli-resumo');
+  if(res) res.innerHTML=`<span><strong>${vistos}</strong> ${vistos===1?'cliente':'clientes'}</span>`;
+}
+function abrirFichaCliente(id){
+  if(!getCli(id)) return;
+  _fichaClienteId=id; _resumoPedidoId=null; _voltarFichaId=null;
+  desenharFichaCliente();
+  mostrarDrawer();
+}
+function desenharFichaCliente(){
+  const c=getCli(_fichaClienteId);
+  if(!c){ fecharResumoPedido(); return; }
+  const vendas=todasVendasEfetivas().filter(v=>v.cliente===c.id), grupos=agruparVendasPorId(vendas);
+  const totalComprado=vendas.reduce((s,v)=>s+v.valorTotal,0);
+  const dividas=dividasAbertas().filter(d=>d.cliente===c.id), deve=dividas.reduce((s,d)=>s+d.saldo,0);
+  const datas=vendas.map(v=>normalizarData(v.data)).filter(Boolean).sort();
+  const porProduto={};
+  vendas.forEach(v=>{ if(v.produto) porProduto[v.produto]=(porProduto[v.produto]||0)+(+v.qtd||0); });
+  const favorito=Object.entries(porProduto).sort((a,b)=>b[1]-a[1])[0];
+  const compras=[
+    ...DB.pedidos.filter(p=>p.cliente===c.id).map(p=>({data:p.data,id:p.id,abrir:`abrirResumoPedido('${p.id}')`,desc:resumoItensPedido(p),valor:p.total,badge:statusBadge(p.status)})),
+    ...DB.vendas.filter(v=>v.cliente===c.id).map(v=>({data:v.data,id:v.id,abrir:`fecharResumoPedido();editarVenda('${v.id}')`,desc:escHtml(v.produto?nomeProd(v.produto):'Venda'),valor:(+v.qtd||0)*(+v.preco||0),badge:statusBadge(v.status)})),
+  ].sort((a,b)=>String(normalizarData(b.data)).localeCompare(String(normalizarData(a.data))));
+  const tel=c.whatsapp||c.telefone||'';
+  document.getElementById('drawer').innerHTML=`
+    <div class="drawer-topo">
+      <div style="min-width:0"><div style="font-size:12px;opacity:.8">Cliente${c.cidade?' · '+escHtml(c.cidade):''}</div>
+        <div id="drawer-titulo" style="font-size:17px;font-weight:800;overflow-wrap:anywhere">${escHtml(c.nome)}</div>
+        ${tel?`<div style="font-size:12px;opacity:.85">${escHtml(tel)}</div>`:''}</div>
+      <button onclick="fecharResumoPedido()" aria-label="Fechar">×</button>
+    </div>
+    <div class="drawer-corpo">
+      <div class="ficha-numeros" style="margin-bottom:10px">
+        <div>Total comprado<strong>${R$(totalComprado)}</strong></div>
+        <div>Compras<strong>${grupos.length}</strong></div>
+        <div>Ticket médio<strong>${R$(grupos.length?totalComprado/grupos.length:0)}</strong></div>
+        <div>A receber<strong style="color:${deve>0.004?'var(--txt-vermelho)':'inherit'}">${R$(deve)}</strong></div>
+        <div>Última compra<strong>${datas.length?formatarDataBR(datas[datas.length-1]):'—'}</strong></div>
+        <div>Mais comprado<strong style="font-size:12.5px">${favorito?escHtml(nomeProd(favorito[0])):'—'}</strong></div>
+      </div>
+      <div class="drawer-acoes" style="margin-bottom:6px">
+        <button class="btn btn-primary" onclick="novoPedidoParaCliente('${c.id}')">+ Novo pedido</button>
+        ${tel?`<button class="btn btn-success" onclick="abrirWPP('${escHtml(tel)}','')">💬 WhatsApp</button>`:'<span></span>'}
+        <button class="btn btn-outline" onclick="fecharResumoPedido();editarCli('${c.id}')">✏️ Editar cadastro</button>
+      </div>
+      ${dividas.length?`<div class="drawer-bloco"><div class="drawer-rotulo">Para cobrar</div>${dividas.map(d=>`<div class="drawer-linha" style="align-items:center;padding:6px 0"><span style="min-width:0">${d.id}<br><span style="font-size:11px;color:${dividaEstaAtrasada(d)?'var(--txt-vermelho)':'var(--cinza-med)'}">${rotuloPrazoDivida(d)}</span></span><span style="display:flex;align-items:center;gap:8px"><strong style="white-space:nowrap">${R$(d.saldo)}</strong>${d.tel?`<button class="btn btn-success btn-xs" onclick="cobrarDivida('${d.tipo}','${d.id}')" aria-label="Cobrar ${d.id}">💬</button>`:''}</span></div>`).join('')}</div>`:''}
+      <div class="drawer-bloco" style="border-bottom:none"><div class="drawer-rotulo">Histórico de compras (${compras.length})</div>
+        ${compras.length?compras.slice(0,30).map(x=>`<div class="ficha-compra" tabindex="0" onclick="${x.abrir}" onkeydown="if(event.key==='Enter')this.click()"><div style="min-width:0"><div style="font-size:11px;color:var(--cinza-med)">${x.data?formatarDataBR(normalizarData(x.data)):'sem data'} · ${x.id}</div><div>${x.desc||''}</div></div><div style="text-align:right;flex:none"><strong>${R$(x.valor||0)}</strong><div style="margin-top:2px">${x.badge}</div></div></div>`).join(''):'<span style="color:var(--cinza-med)">Nenhuma compra registrada.</span>'}
+        ${compras.length>30?`<div style="font-size:12px;color:var(--cinza-med);text-align:center;padding-top:8px">Mostrando as 30 mais recentes.</div>`:''}
+      </div>
+    </div>`;
+}
+function novoPedidoParaCliente(id){
+  const c=getCli(id); if(!c) return;
+  fecharResumoPedido();
+  novoPedidoOrc();
+  Object.assign(window._pedTemp,{cliente:c.id,cliente_nome:c.nome,telefone:c.whatsapp||c.telefone||''});
+  abrirFormPedido(null);
+}
 function novoCli(){openModal('➕ Novo Cliente',formCli(),()=>salvarCli());}
 function editarCli(id){openModal('✏️ Editar Cliente',formCli(getCli(id)),()=>salvarCli(id));}
 function formCli(c={}){return`<div class="form-grid">
@@ -3133,18 +3233,24 @@ function soltarPedidoQuadro(ev,col,etapa){
   const id=ev.dataTransfer.getData('text/plain');
   if(id) mudarEtapaPedido(id,etapa);
 }
-let _resumoPedidoId=null, _resumoFocoAnterior=null;
-function abrirResumoPedido(id){
-  if(!getItem(DB.pedidos,id)) return;
-  _resumoFocoAnterior=document.activeElement;
-  _resumoPedidoId=id;
-  desenharResumoPedido();
-  document.getElementById('drawer-overlay').classList.add('open');
+let _resumoPedidoId=null, _resumoFocoAnterior=null, _fichaClienteId=null, _voltarFichaId=null;
+function mostrarDrawer(){
+  const ov=document.getElementById('drawer-overlay');
+  if(!ov.classList.contains('open')) _resumoFocoAnterior=document.activeElement;
+  ov.classList.add('open');
   document.getElementById('drawer').focus();
 }
+function abrirResumoPedido(id){
+  if(!getItem(DB.pedidos,id)) return;
+  _voltarFichaId=_fichaClienteId;
+  _fichaClienteId=null;
+  _resumoPedidoId=id;
+  desenharResumoPedido();
+  mostrarDrawer();
+}
 function fecharResumoPedido(){
-  if(!_resumoPedidoId) return;
-  _resumoPedidoId=null;
+  if(!document.getElementById('drawer-overlay').classList.contains('open')) return;
+  _resumoPedidoId=null; _fichaClienteId=null; _voltarFichaId=null;
   document.getElementById('drawer-overlay').classList.remove('open');
   if(_resumoFocoAnterior&&document.contains(_resumoFocoAnterior)) _resumoFocoAnterior.focus();
 }
@@ -3161,9 +3267,9 @@ function desenharResumoPedido(){
   document.getElementById('drawer').innerHTML=`
     <div class="drawer-topo">
       <div style="min-width:0"><div style="font-size:12px;opacity:.8">${pd.id} · ${pd.data?formatarDataBR(normalizarData(pd.data)):'sem data'}</div>
-        <div id="drawer-titulo" style="font-size:17px;font-weight:800;overflow-wrap:anywhere">${escHtml(nomeVenda(pd))}</div>
+        <div id="drawer-titulo" style="font-size:17px;font-weight:800;overflow-wrap:anywhere">${getCli(pd.cliente)&&!_voltarFichaId?`<a href="#" style="color:inherit" onclick="event.preventDefault();abrirFichaCliente('${pd.cliente}')">${escHtml(nomeVenda(pd))}</a>`:escHtml(nomeVenda(pd))}</div>
         ${tel?`<div style="font-size:12px;opacity:.85">${escHtml(tel)}</div>`:''}</div>
-      <button onclick="fecharResumoPedido()" aria-label="Fechar">×</button>
+      <div style="display:flex;flex:none">${_voltarFichaId?`<button onclick="abrirFichaCliente('${_voltarFichaId}')" aria-label="Voltar para a ficha do cliente">‹</button>`:''}<button onclick="fecharResumoPedido()" aria-label="Fechar">×</button></div>
     </div>
     <div class="drawer-corpo">
       <div class="drawer-bloco" style="padding-top:0">
@@ -4198,6 +4304,87 @@ async function salvarProd(id=null){
 // ═══════════════════════════════════════════════════════════════
 // A RECEBER
 // ═══════════════════════════════════════════════════════════════
+// Tudo que falta receber num lugar só. O vencimento do pedido é a data de
+// entrega (regra da casa: o restante vence no dia da entrega); o do lançamento
+// em A Receber é o campo de vencimento dele.
+function diasEntre(deStr,ateStr){ return Math.round((new Date(ateStr+'T00:00:00')-new Date(deStr+'T00:00:00'))/86400000); }
+function faixaDivida(dias){
+  if(dias===null) return 'semdata';
+  if(dias<=0) return 'avencer';
+  return dias<=30?'ate30':dias<=60?'31a60':dias<=90?'61a90':'90mais';
+}
+function dividasAbertas(){
+  const hoje=hojeLocalStr(), lista=[];
+  DB.pedidos.forEach(p=>{
+    const saldo=saldoPedidoAReceber(p);
+    if(saldo<=0.004) return;
+    const venc=p.entrega?normalizarData(p.entrega):'', cli=getCli(p.cliente);
+    const dias=venc?diasEntre(venc,hoje):null;
+    lista.push({tipo:'pedido',id:p.id,cliente:p.cliente,nome:nomeVenda(p),tel:cli?.whatsapp||p.telefone||cli?.telefone||'',descricao:resumoItensPedido(p),saldo,venc,dias,faixa:faixaDivida(dias),ultima:p.ultima_cobranca||''});
+  });
+  DB.areceber.forEach(x=>{
+    if(x.status==='Pago') return;
+    const saldo=(+x.valor||0)-(+x.recebido||0);
+    if(saldo<=0.004) return;
+    const venc=x.venc?normalizarData(x.venc):'', cli=getCli(x.cliente);
+    const dias=venc?diasEntre(venc,hoje):null;
+    lista.push({tipo:'areceber',id:x.id,cliente:x.cliente,nome:cli?.nome||x.cliente||'—',tel:cli?.whatsapp||cli?.telefone||'',descricao:escHtml(x.descricao||''),saldo,venc,dias,faixa:faixaDivida(dias),ultima:x.ultima_cobranca||''});
+  });
+  return lista.sort((a,b)=>(b.dias??-99999)-(a.dias??-99999));
+}
+const FAIXAS_DIVIDA=[['ate30','1 a 30 dias',true],['31a60','31 a 60 dias',true],['61a90','61 a 90 dias',true],['90mais','Mais de 90 dias',true],['avencer','A vencer',false],['semdata','Sem data',false]];
+let _faixaDivida='atrasadas';
+function dividaEstaAtrasada(d){ return d.dias!==null&&d.dias>0; }
+function rotuloPrazoDivida(d){
+  if(d.dias===null) return 'Sem data definida';
+  if(d.dias>0) return `${d.dias} ${d.dias===1?'dia':'dias'} de atraso`;
+  return d.dias===0?'Vence hoje':`Vence em ${-d.dias} ${d.dias===-1?'dia':'dias'}`;
+}
+function dividaItemHtml(d){
+  const abrir=d.tipo==='pedido'?`abrirResumoPedido('${d.id}')`:`editarAR('${d.id}')`;
+  return `<div class="divida-item">
+    <div class="divida-info" onclick="${abrir}">
+      <strong>${escHtml(d.nome)}</strong> <span style="font-size:11px;color:var(--cinza-med)">${d.id}</span>
+      <div style="font-size:12px;color:var(--cinza-med)">${d.descricao||''}</div>
+      <div style="font-size:12px;font-weight:600;color:${dividaEstaAtrasada(d)?'var(--txt-vermelho)':'var(--cinza-med)'}">${rotuloPrazoDivida(d)}${d.ultima?` · Última cobrança: ${formatarDataBR(d.ultima.slice(0,10))}`:''}</div>
+    </div>
+    <div class="divida-acoes"><strong style="color:var(--txt-vermelho);white-space:nowrap">${R$(d.saldo)}</strong>
+    ${d.tel?`<button class="btn btn-success btn-sm" onclick="cobrarDivida('${d.tipo}','${d.id}')">💬 Cobrar</button>`:'<span style="font-size:11px;color:var(--cinza-med)">Sem telefone</span>'}</div>
+  </div>`;
+}
+function dividasPainelHtml(){
+  const todas=dividasAbertas();
+  const soma=l=>l.reduce((s,d)=>s+d.saldo,0);
+  const atrasadas=todas.filter(dividaEstaAtrasada);
+  const lista=_faixaDivida==='atrasadas'?atrasadas:todas.filter(d=>d.faixa===_faixaDivida);
+  return `<div class="panel-header"><span class="panel-title">💰 Cobranças</span><span style="font-size:13px">Atrasado: <strong style="color:var(--txt-vermelho)">${R$(soma(atrasadas))}</strong> · Total a receber: <strong>${R$(soma(todas))}</strong></span></div>
+    <div class="dividas-faixas">${FAIXAS_DIVIDA.map(([k,r,atr])=>{const l=todas.filter(d=>d.faixa===k);return `<button class="divida-faixa ${atr&&l.length?'atraso':''}" aria-pressed="${_faixaDivida===k}" onclick="escolherFaixaDivida('${k}')"><span>${r} (${l.length})</span><strong>${R$(soma(l))}</strong></button>`;}).join('')}</div>
+    <div style="max-height:420px;overflow-y:auto">${lista.length?lista.map(dividaItemHtml).join(''):`<p style="text-align:center;color:var(--cinza-med);padding:18px;font-size:13px;margin:0">${_faixaDivida==='atrasadas'?'Nenhuma cobrança atrasada. 🎉':'Nada nesta faixa.'}</p>`}</div>`;
+}
+function escolherFaixaDivida(k){
+  _faixaDivida=_faixaDivida===k?'atrasadas':k;
+  const el=document.getElementById('dividas-painel');
+  if(el) el.innerHTML=dividasPainelHtml();
+}
+async function cobrarDivida(tipo,id){
+  const agora=new Date().toISOString();
+  if(tipo==='pedido'){
+    const pd=getItem(DB.pedidos,id); if(!pd) return;
+    wppCobranca(id);
+    pd.ultima_cobranca=agora;
+    registrarHistoricoPedido(pd,'Cobrança aberta no WhatsApp',`Saldo: ${R$(saldoPedido(pd))}`);
+    await salvarItem('pedidos',pd);
+  } else {
+    const x=getItem(DB.areceber,id); if(!x) return;
+    const cli=getCli(x.cliente), saldo=(+x.valor||0)-(+x.recebido||0);
+    abrirWPP(cli?.whatsapp||cli?.telefone||'',`Olá ${cli?.nome||''}! 😊\n\nAqui é a *Morfê Personalizados*!\n\n📋 *Referente a:* ${x.descricao||x.id}${x.venc?'\n📅 *Vencimento:* '+formatarDataBR(normalizarData(x.venc)):''}\n\n⚠️ *Saldo restante:* *${R$(saldo)}*\n\nPor favor realize o pagamento via:\n💚 *PIX:* ${DB.config?.whatsapp||'nossa chave PIX'}\n\nObrigado! 🙏\n📍 @morfepersonalizados`);
+    x.ultima_cobranca=agora;
+    await salvarItem('areceber',x);
+  }
+  render(currentSection);
+  if(_fichaClienteId) desenharFichaCliente();
+  toast('Cobrança aberta no WhatsApp');
+}
 const FILTRO_AR_VAZIO={q:'',status:''};
 let _fAR={...FILTRO_AR_VAZIO};
 function contaARVencida(x){ return !!x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeLocalStr(); }
@@ -4239,8 +4426,9 @@ function filtrarAR(campo,valor){ _fAR[campo]=valor; atualizarListaAR(); }
 function limparFiltrosAR(){ _fAR={...FILTRO_AR_VAZIO}; render('areceber'); }
 function abrirARFiltrado(status){ _fAR={...FILTRO_AR_VAZIO,status}; goTo('areceber'); }
 SECTIONS.areceber = () => { return `
+  <div class="panel" id="dividas-painel">${dividasPainelHtml()}</div>
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">📥 A Receber</span><button class="btn btn-success" onclick="novoAR()">+ Novo</button></div>
+    <div class="panel-header"><span class="panel-title">📥 Lançamentos</span><button class="btn btn-success" onclick="novoAR()">+ Novo</button></div>
     <div class="filtros-lista">
       <input class="search-input" type="search" placeholder="🔍 Nº, cliente ou descrição..." aria-label="Buscar lançamentos" value="${String(_fAR.q).replace(/"/g,'&quot;')}" oninput="filtrarAR('q',this.value)">
       <select class="form-select" aria-label="Filtrar por status" onchange="filtrarAR('status',this.value)">${opcoesFiltro([['','Status'],['vencida','Vencidas'],['Em aberto','Em aberto'],['Parcial','Parcial'],['Atrasado','Atrasado'],['Pago','Pago']],_fAR.status)}</select>
