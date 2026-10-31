@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#182E62">
+<meta name="theme-color" content="#052659">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Morfê ERP">
@@ -15,40 +15,40 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --azul:#182E62; --azul-escuro:#0F1F44; --azul-claro:#2F5FA8; --azul-accent:#3D72C4;
-  --dourado:#C9AC7D; --dourado-escuro:#9C7B44; --dourado-claro:#F5EDDD;
+  --azul:#052659; --azul-escuro:#021024; --azul-claro:#5483B3; --azul-accent:#7DA0CA;
+  --dourado:#7DA0CA; --dourado-escuro:#3F6C9B; --dourado-claro:#C1E8FF;
   --verde:#276749; --verde-claro:#DCF3E3; --verde-med:#2F9E5C;
   --vermelho:#9B2335; --vermelho-claro:#FBE4E7;
   --amarelo:#B7791F; --amarelo-claro:#FDF3D9;
   --roxo:#5B3E96; --roxo-claro:#EEE6FB;
   --laranja:#C05621; --laranja-claro:#FBE9DC;
-  --cinza-escuro:#282420; --cinza-med:#7A7267;
-  --cinza-claro:#E8E1D3; --cinza-ultra:#FBF8F2;
-  --bg-input:#FFFFFF; --bg-pagina:#F3EEE3;
+  --cinza-escuro:#021024; --cinza-med:#3F6C9B;
+  --cinza-claro:#C1E8FF; --cinza-ultra:#F3FAFF;
+  --bg-input:#FFFFFF; --bg-pagina:#DDF0FF;
   --txt-azul:var(--azul); --txt-verde:var(--verde); --txt-vermelho:var(--vermelho);
   --txt-amarelo:var(--amarelo); --txt-roxo:var(--roxo); --txt-laranja:var(--laranja);
-  --txt-dourado:var(--dourado-escuro);
-  --azul-tint:#DCE7F5;
+  --txt-dourado:var(--azul);
+  --azul-tint:#E3F3FF;
   --radius:14px; --radius-sm:9px;
-  --sombra-sm:0 1px 2px rgba(24,46,98,0.06), 0 1px 3px rgba(24,46,98,0.08);
-  --sombra-md:0 2px 6px rgba(24,46,98,0.06), 0 8px 20px rgba(24,46,98,0.09);
-  --sombra-lg:0 20px 50px rgba(15,31,68,0.28);
+  --sombra-sm:0 1px 2px rgba(5,38,89,0.06), 0 1px 3px rgba(5,38,89,0.08);
+  --sombra-md:0 2px 6px rgba(5,38,89,0.06), 0 8px 20px rgba(5,38,89,0.09);
+  --sombra-lg:0 20px 50px rgba(2,16,36,0.28);
 }
 body.tema-escuro {
-  --cinza-escuro:#E7E3DA; --cinza-med:#A69C8C;
-  --cinza-claro:#3A3630; --cinza-ultra:#252118;
-  --bg-input:#2E2A22; --bg-pagina:#1A1712;
-  --dourado-claro:#3D3423; --azul-claro:#5B87CC;
+  --cinza-escuro:#E3F3FF; --cinza-med:#7DA0CA;
+  --cinza-claro:#163A70; --cinza-ultra:#06193A;
+  --bg-input:#0A2A5C; --bg-pagina:#021024;
+  --dourado-claro:#0D3369; --azul-claro:#5483B3;
   --verde-claro:#1E3B2A; --vermelho-claro:#3D2024; --amarelo-claro:#3D3117; --roxo-claro:#2C2440; --laranja-claro:#3D2A18;
   /* Cores base (--azul, --verde etc.) continuam escuras de propósito — elas
      também são usadas como FUNDO SÓLIDO com texto branco em cima (botões,
      cabeçalhos de tabela, toasts) e escurecer o texto ali seria pior, não
      melhor. Essas variáveis --txt-* são só pra texto colorido em cima de
      fundo claro/tintado, que senão ficaria ilegível no escuro. */
-  --txt-azul:#7CA6E0; --txt-verde:#4ADE80; --txt-vermelho:#F87171;
+  --txt-azul:#C1E8FF; --txt-verde:#4ADE80; --txt-vermelho:#F87171;
   --txt-amarelo:#FBBF24; --txt-roxo:#C4AAF5; --txt-laranja:#FB923C;
-  --txt-dourado:#D4B673;
-  --azul-tint:#1E2A3D;
+  --txt-dourado:#C1E8FF;
+  --azul-tint:#0D3369;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:var(--bg-pagina);color:var(--cinza-escuro);min-height:100vh;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
@@ -59,7 +59,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .login-logo p{font-size:12px;color:var(--cinza-med);margin-top:5px;font-weight:500}
 .login-divisor{width:56px;height:2px;background:var(--dourado);margin:12px auto 0;border-radius:2px}
 .login-input{width:100%;padding:13px 14px;border:1.5px solid var(--cinza-claro);border-radius:10px;font-size:16px;margin-bottom:12px;font-family:inherit;background:white;transition:border-color .15s,box-shadow .15s}
-.login-input:focus{outline:none;border-color:var(--dourado);box-shadow:0 0 0 3px rgba(201,172,125,0.25)}
+.login-input:focus{outline:none;border-color:var(--dourado);box-shadow:0 0 0 3px rgba(125,160,202,0.25)}
 .login-btn{width:100%;padding:14px;background:var(--azul);color:white;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s,transform .1s;letter-spacing:.2px}
 .login-btn:hover{background:var(--azul-escuro)}
 .login-btn:active{transform:scale(.98)}
@@ -67,15 +67,15 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .login-error{background:var(--vermelho-claro);color:var(--txt-vermelho);padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none;font-weight:600}
 #sidebar{position:fixed;left:0;top:0;bottom:0;width:230px;background:linear-gradient(180deg,var(--azul) 0%,var(--azul-escuro) 100%);color:white;display:flex;flex-direction:column;z-index:100;overflow-y:auto;transition:transform .25s;padding-top:env(safe-area-inset-top,0px)}
 #sidebar-logo{padding:18px 16px 14px;display:flex;align-items:center;gap:10px;position:relative}
-#sidebar-logo img{width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid rgba(201,172,125,0.5);flex-shrink:0}
+#sidebar-logo img{width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid rgba(125,160,202,0.5);flex-shrink:0}
 #sidebar-logo div h1{font-size:13px;font-weight:700;line-height:1.2;letter-spacing:.2px}
 #sidebar-logo div p{font-size:10px;color:var(--dourado);margin-top:1px;font-weight:500}
-#sidebar-logo::after{content:'';position:absolute;left:16px;right:16px;bottom:0;height:1px;background:linear-gradient(90deg,var(--dourado) 0%,rgba(201,172,125,0.15) 65%)}
+#sidebar-logo::after{content:'';position:absolute;left:16px;right:16px;bottom:0;height:1px;background:linear-gradient(90deg,var(--dourado) 0%,rgba(125,160,202,0.15) 65%)}
 .nav-group{padding:10px 0 2px}
-.nav-label{font-size:9px;font-weight:700;letter-spacing:1.3px;color:rgba(201,172,125,0.75);padding:0 16px 6px;text-transform:uppercase}
+.nav-label{font-size:9px;font-weight:700;letter-spacing:1.3px;color:rgba(125,160,202,0.75);padding:0 16px 6px;text-transform:uppercase}
 .nav-item{display:flex;align-items:center;gap:9px;padding:11px 16px;font-size:13px;cursor:pointer;color:rgba(255,255,255,0.72);border-left:3px solid transparent;transition:background .15s,color .15s;min-height:44px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .nav-item:hover,.nav-item:active{background:rgba(255,255,255,0.07);color:white}
-.nav-item.active{background:rgba(201,172,125,0.14);color:white;border-left-color:var(--dourado);font-weight:600}
+.nav-item.active{background:rgba(125,160,202,0.14);color:white;border-left-color:var(--dourado);font-weight:600}
 .nav-icon{font-size:15px;width:20px;text-align:center}
 #main{margin-left:230px;min-height:100vh}
 #topbar{background:var(--cinza-ultra);padding:0 16px;padding-top:env(safe-area-inset-top,0px);height:calc(56px + env(safe-area-inset-top,0px));display:flex;align-items:center;justify-content:space-between;box-shadow:var(--sombra-sm);position:sticky;top:0;z-index:50}
@@ -103,7 +103,8 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:none;transition:filter .15s,transform .1s;min-height:36px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;font-family:inherit}
 .btn:hover{filter:brightness(1.06)}
 .btn:active{transform:scale(.97)}
-.btn-primary{background:var(--azul-claro);color:white}
+.btn-primary{background:var(--azul);color:white}
+body.tema-escuro .btn-primary{background:var(--dourado-escuro)}
 .btn-success{background:var(--verde-med);color:white}
 .btn-danger{background:var(--vermelho);color:white}
 .btn-warning{background:var(--dourado-escuro);color:white}
@@ -126,7 +127,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .badge-info{background:var(--dourado-claro);color:var(--txt-azul)}
 .badge-roxo{background:var(--roxo-claro);color:var(--txt-roxo)}
 .badge-gray{background:var(--cinza-claro);color:var(--cinza-med)}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,31,68,0.55);z-index:500;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(2,16,36,0.55);z-index:500;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)}
 .modal-overlay.open{display:flex}
 .modal{background:var(--cinza-ultra);border-radius:16px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:var(--sombra-lg)}
 .modal-header{padding:16px 20px;background:var(--azul);color:white;display:flex;align-items:center;justify-content:space-between;border-radius:16px 16px 0 0;position:sticky;top:0;z-index:1;border-bottom:2px solid var(--dourado)}
@@ -140,7 +141,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .form-group.full{grid-column:1/-1}
 .form-label{font-size:11px;font-weight:600;color:var(--cinza-escuro);text-transform:uppercase;letter-spacing:.4px}
 .form-input,.form-select,.form-textarea{padding:10px 12px;border:1.5px solid var(--cinza-claro);border-radius:var(--radius-sm);font-size:16px;color:var(--cinza-escuro);background:var(--bg-input);font-family:inherit;width:100%;-webkit-appearance:none;transition:border-color .15s,box-shadow .15s}
-.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--dourado);box-shadow:0 0 0 3px rgba(201,172,125,0.2)}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--dourado);box-shadow:0 0 0 3px rgba(125,160,202,0.2)}
 .form-textarea{resize:vertical;min-height:70px}
 .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237A7267' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
 .search-input{padding:9px 12px;border:1.5px solid var(--cinza-claro);border-radius:var(--radius-sm);font-size:16px;flex:1;min-width:0;font-family:inherit;background:var(--bg-input);color:var(--cinza-escuro)}
@@ -153,7 +154,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 #loading-bar{position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--dourado),var(--azul-claro));z-index:9999;display:none;animation:loadbar 1.5s infinite}
 @keyframes loadbar{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
 #loading-bar.show{display:block}
-.text-verde{color:var(--verde-med)}.text-vermelho{color:var(--txt-vermelho)}.text-azul{color:var(--azul-claro)}.text-roxo{color:var(--txt-roxo)}.text-muted{color:var(--cinza-med)}.fw-bold{font-weight:700}.text-center{text-align:center}
+.text-verde{color:var(--verde-med)}.text-vermelho{color:var(--txt-vermelho)}.text-azul{color:var(--txt-azul)}.text-roxo{color:var(--txt-roxo)}.text-muted{color:var(--cinza-med)}.fw-bold{font-weight:700}.text-center{text-align:center}
 
 /* CALENDARIO */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
@@ -167,7 +168,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .cal-hoje .cal-dia-num{color:var(--txt-dourado);font-weight:900}
 .cal-com-venda{background:var(--verde-claro)}
 .cal-com-venda:hover{background:#C4EBD1}
-.cal-hoje.cal-com-venda{background:#EDE4C8;border-color:var(--dourado)}
+.cal-hoje.cal-com-venda{background:#A8D8F5;border-color:var(--dourado)}
 .cal-com-entrega{border-left:4px solid var(--laranja)}
 .cal-dia-entrega{font-size:9px;font-weight:800;color:var(--txt-laranja);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-com-conta{border-right:4px solid var(--vermelho)}
@@ -225,27 +226,27 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 #orc-preview-box{background:white;width:100%;max-width:650px;border-radius:8px;overflow:hidden;margin-top:10px;margin-bottom:20px}
 #orc-preview-actions{background:var(--cinza-escuro);padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 #orc-print-area{background:white;padding:0}
-.orc-doc{background:#FFFFFF;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#282420}
-.orc-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:26px 28px 20px;border-bottom:3px solid #182E62}
+.orc-doc{background:#FFFFFF;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#021024}
+.orc-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:26px 28px 20px;border-bottom:3px solid #052659}
 .orc-header-brand{display:flex;align-items:center;gap:14px}
-.orc-header-brand img{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid #C9AC7D}
-.orc-header-brand h1{font-size:18px;font-weight:800;color:#182E62;letter-spacing:.2px}
-.orc-header-brand p{font-size:11px;color:#7A7267;margin-top:2px;font-weight:500}
-.orc-header-tag{background:#182E62;color:#FFFFFF;border-radius:10px;padding:10px 16px;text-align:right;min-width:150px}
-.orc-header-tag div{font-size:9px;color:#C9AC7D;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.orc-header-brand img{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid #7DA0CA}
+.orc-header-brand h1{font-size:18px;font-weight:800;color:#052659;letter-spacing:.2px}
+.orc-header-brand p{font-size:11px;color:#3F6C9B;margin-top:2px;font-weight:500}
+.orc-header-tag{background:#052659;color:#FFFFFF;border-radius:10px;padding:10px 16px;text-align:right;min-width:150px}
+.orc-header-tag div{font-size:9px;color:#C1E8FF;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
 .orc-header-tag b{display:block;font-size:13px;font-weight:700;margin:1px 0 6px}
 .orc-header-tag b:last-child{margin-bottom:0}
-.orc-titulo-doc{text-align:center;padding:14px 0 4px;font-size:12px;font-weight:800;letter-spacing:3px;color:#C9AC7D;text-transform:uppercase}
-.orc-cliente-box{margin:12px 28px;background:#FBF8F2;border:1px solid #E8E1D3;border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px}
+.orc-titulo-doc{text-align:center;padding:14px 0 4px;font-size:12px;font-weight:800;letter-spacing:3px;color:#5483B3;text-transform:uppercase}
+.orc-cliente-box{margin:12px 28px;background:#F3FAFF;border:1px solid #C1E8FF;border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px}
 .orc-cliente-item{}
-.orc-cliente-item span{display:block;font-size:9px;font-weight:700;color:#9C7B44;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
-.orc-cliente-item b{font-size:13.5px;color:#282420;font-weight:700}
+.orc-cliente-item span{display:block;font-size:9px;font-weight:700;color:#3F6C9B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+.orc-cliente-item b{font-size:13.5px;color:#021024;font-weight:700}
 .orc-tbl-wrap{margin:16px 28px}
 .orc-tbl{width:100%;border-collapse:collapse;border-radius:10px;overflow:hidden}
-.orc-tbl thead tr{background:#182E62}
+.orc-tbl thead tr{background:#052659}
 .orc-tbl thead th{color:#FFFFFF;padding:10px 12px;font-size:10.5px;text-transform:uppercase;text-align:left;letter-spacing:.4px;font-weight:700}
-.orc-tbl tbody td{padding:9px 12px;font-size:13px;border-bottom:1px solid #EFEAE0}
-.orc-tbl tbody tr:nth-child(even){background:#FBF8F2}
+.orc-tbl tbody td{padding:9px 12px;font-size:13px;border-bottom:1px solid #E3F3FF}
+.orc-tbl tbody tr:nth-child(even){background:#F3FAFF}
 .orc-tbl .orc-num{text-align:center}
 .orc-tbl .orc-val{text-align:right;font-variant-numeric:tabular-nums}
 .orc-desc-row td{color:#1E8E4E;font-style:italic;background:#EDF9F1!important}
@@ -253,35 +254,35 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
    que o orçamento de pedido: lista o que tem no kit e as opções de
    modelo com a diferença de valor, sem expor preço-cheio/desconto% */
 .kit-itens{margin:14px 28px 0}
-.kit-item{padding:12px 0;border-bottom:1px solid #EFEAE0}
+.kit-item{padding:12px 0;border-bottom:1px solid #E3F3FF}
 .kit-item:last-child{border-bottom:none}
-.kit-item-nome{font-size:14.5px;font-weight:700;color:#282420}
+.kit-item-nome{font-size:14.5px;font-weight:700;color:#021024}
 .kit-item-opcoes{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
-.kit-chip{background:#FBF8F2;border:1px solid #E8E1D3;border-radius:20px;padding:5px 12px 5px 13px;font-size:11.5px;color:#282420;display:inline-flex;align-items:center;gap:7px;font-variant-numeric:tabular-nums}
-.kit-chip.padrao{border-color:#C9AC7D;background:#F5EDDD;font-weight:700}
-.kit-chip .delta{color:#182E62;font-weight:700}
-.kit-chip.padrao .delta{color:#9C7B44}
-.kit-economia{text-align:center;font-size:12px;color:#9C7B44;font-weight:700;margin:14px 28px 0}
-.kit-preco-final{margin:10px 28px 4px;background:#182E62;border-radius:10px;padding:16px 20px;text-align:center}
-.kit-preco-final .label{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:#C9AC7D;font-weight:700}
+.kit-chip{background:#F3FAFF;border:1px solid #C1E8FF;border-radius:20px;padding:5px 12px 5px 13px;font-size:11.5px;color:#021024;display:inline-flex;align-items:center;gap:7px;font-variant-numeric:tabular-nums}
+.kit-chip.padrao{border-color:#7DA0CA;background:#C1E8FF;font-weight:700}
+.kit-chip .delta{color:#052659;font-weight:700}
+.kit-chip.padrao .delta{color:#052659}
+.kit-economia{text-align:center;font-size:12px;color:#3F6C9B;font-weight:700;margin:14px 28px 0}
+.kit-preco-final{margin:10px 28px 4px;background:#052659;border-radius:10px;padding:16px 20px;text-align:center}
+.kit-preco-final .label{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:#C1E8FF;font-weight:700}
 .kit-preco-final .valor{font-size:30px;font-weight:800;color:#FFFFFF;margin-top:2px}
-.orc-totais{margin:0 28px 16px;border-top:2px solid #182E62}
+.orc-totais{margin:0 28px 16px;border-top:2px solid #052659}
 .orc-totais-row{display:flex;justify-content:space-between;padding:7px 12px;font-size:12.5px}
-.orc-totais-row.sub{color:#7A7267}
+.orc-totais-row.sub{color:#3F6C9B}
 .orc-totais-row.desc{color:#1E8E4E;font-weight:600}
 .orc-economia-badge{margin:10px 0 0;background:#EDF9F1;border:1.5px dashed #1E8E4E;border-radius:10px;padding:10px 14px;text-align:center;font-size:13px;font-weight:800;color:#1E8E4E}
-.orc-total-final{display:flex;justify-content:space-between;align-items:center;background:#182E62;color:#FFFFFF;padding:14px 18px;border-radius:10px;margin-top:10px}
+.orc-total-final{display:flex;justify-content:space-between;align-items:center;background:#052659;color:#FFFFFF;padding:14px 18px;border-radius:10px;margin-top:10px}
 .orc-total-final span{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 .orc-total-final .orc-total-valores{text-align:right}
-.orc-total-final .orc-total-de{display:block;font-size:11.5px;font-weight:600;color:#8FA3D1;text-decoration:line-through;margin-bottom:1px}
-.orc-total-final b{font-size:22px;font-weight:800;color:#C9AC7D}
+.orc-total-final .orc-total-de{display:block;font-size:11.5px;font-weight:600;color:#7DA0CA;text-decoration:line-through;margin-bottom:1px}
+.orc-total-final b{font-size:22px;font-weight:800;color:#C1E8FF}
 .orc-info-cards{margin:0 28px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.orc-info-card{background:#F5EDDD;border-radius:10px;padding:10px 14px;font-size:11.5px;color:#282420}
-.orc-info-card b{color:#9C7B44;display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
-.orc-footer{padding:16px 28px 22px;text-align:center;border-top:1px solid #E8E1D3;margin-top:4px}
-.orc-footer-linha{width:60px;height:2px;background:#C9AC7D;margin:0 auto 10px;border-radius:2px}
-.orc-footer p{font-size:11px;color:#7A7267;font-weight:600}
-.orc-footer p b{color:#182E62}
+.orc-info-card{background:#C1E8FF;border-radius:10px;padding:10px 14px;font-size:11.5px;color:#021024}
+.orc-info-card b{color:#052659;display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+.orc-footer{padding:16px 28px 22px;text-align:center;border-top:1px solid #C1E8FF;margin-top:4px}
+.orc-footer-linha{width:60px;height:2px;background:#7DA0CA;margin:0 auto 10px;border-radius:2px}
+.orc-footer p{font-size:11px;color:#3F6C9B;font-weight:600}
+.orc-footer p b{color:#052659}
 
 @media print {
   body * { visibility: hidden; }
@@ -504,8 +505,8 @@ function inicializarPWA(){
       start_url:'./',
       scope:'./',
       display:'standalone',
-      background_color:'#F9F1E4',
-      theme_color:'#182E62',
+      background_color:'#DDF0FF',
+      theme_color:'#052659',
       orientation:'any',
       icons:[
         {src:iconeDataUri, sizes:'96x96', type:'image/png', purpose:'any maskable'}
@@ -2021,7 +2022,7 @@ SECTIONS.dashboard = () => {
           </div>`;
         }
         return `<div style="background:var(--cinza-ultra);border-radius:8px;padding:12px;display:flex;align-items:center;justify-content:center">
-          <span style="font-size:12px;color:var(--azul-claro);cursor:pointer;text-decoration:underline" onclick="goTo('config')">+ Definir meta de lucro</span>
+          <span style="font-size:12px;color:var(--txt-azul);cursor:pointer;text-decoration:underline" onclick="goTo('config')">+ Definir meta de lucro</span>
         </div>`;
       })()}
     </div>
@@ -2895,7 +2896,7 @@ function pedItemRow(it,i){
   const c=itemCalc(it);
   const temDesc=(it.desc_tipo&&it.desc_tipo!=='nenhum'&&(+it.desc_valor||0)>0);
   const varInfo=(it.prod&&!String(it.prod).startsWith('KIT:'))?getVariantesDoProduto(it.prod):null;
-  const varSelectHtml=varInfo?`<select onchange="window._pedTemp.itens[${i}].variante=this.value" style="width:100%;margin-top:3px;padding:5px 6px;border:1.5px solid ${it.variante?'var(--verde-med)':'var(--laranja)'};border-radius:4px;font-size:12px;background:${it.variante?'#FBF3E4':'var(--amarelo-claro)'}">
+  const varSelectHtml=varInfo?`<select onchange="window._pedTemp.itens[${i}].variante=this.value" style="width:100%;margin-top:3px;padding:5px 6px;border:1.5px solid ${it.variante?'var(--verde-med)':'var(--laranja)'};border-radius:4px;font-size:12px;background:${it.variante?'#E3F3FF':'var(--amarelo-claro)'}">
       <option value="">🔀 Escolher variante...</option>
       ${varInfo.variantes.map(v=>`<option value="${v.nome}" ${it.variante===v.nome?'selected':''}>${v.nome}</option>`).join('')}
     </select>`:'';
@@ -2905,7 +2906,7 @@ function pedItemRow(it,i){
     </label>`:'';
   const kitInfo=(it.prod && String(it.prod).startsWith('KIT:')) ? getItem(DB.kits, String(it.prod).replace('KIT:','')) : null;
   const kitModelosRow=kitInfo ? kitModelosPedidoHtml(kitInfo,it,i) : '';
-  return `<tr id="pr-${i}" style="background:${i%2===0?'#FBF3E4':'white'}">
+  return `<tr id="pr-${i}" style="background:${i%2===0?'#E3F3FF':'white'}">
     <td style="padding:4px;min-width:150px">${sselHTML(`pedprod${i}`, prodOpts, it.prod, placeholderBusca, `onChangePedProd(${i}, value)`)}</td>
     <td style="padding:4px"><input type="text" value="${it.desc||''}" oninput="window._pedTemp.itens[${i}].desc=this.value" style="width:100%;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px">${varSelectHtml}${jaProdHtml}</td>
     <td style="padding:4px;width:56px"><input type="number" min="1" value="${it.qtd||1}" oninput="window._pedTemp.itens[${i}].qtd=+this.value;updSubtotal(${i})" style="width:50px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
@@ -2999,7 +3000,7 @@ function abrirFormPedido(editId){
         <div style="font-size:10px;opacity:.7;margin-top:4px">Entrega</div>
         <input type="date" value="${normalizarData(pd.entrega||'')}" id="ped-entrega" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:12px;border-radius:4px;padding:3px 6px;width:100%">
         <select id="ped-status" style="margin-top:4px;background:rgba(255,255,255,0.2);border:none;color:white;font-size:11px;border-radius:4px;padding:3px 6px;width:100%">
-          ${['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option style="color:#282420;background:#FFFFFF" ${pd.status===s?'selected':''}>${s}</option>`).join('')}
+          ${['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option style="color:#021024;background:#FFFFFF" ${pd.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -3346,7 +3347,7 @@ function abrirPagamentos(pedidoId){
         :`<table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="background:var(--cinza-ultra)"><th style="padding:8px 10px;text-align:left">Data</th><th style="padding:8px 10px;text-align:left">Forma</th><th style="padding:8px 10px;text-align:right">Valor</th><th style="width:36px"></th></tr></thead>
           <tbody>
-            ${entradas.map((e,i)=>`<tr style="border-top:1px solid var(--cinza-claro);background:${i%2===0?'white':'#FBF3E4'}">
+            ${entradas.map((e,i)=>`<tr style="border-top:1px solid var(--cinza-claro);background:${i%2===0?'white':'#E3F3FF'}">
               <td style="padding:8px 10px">${e.data||'—'}</td>
               <td style="padding:8px 10px"><span class="badge badge-info">${e.forma}</span></td>
               <td style="padding:8px 10px;text-align:right;font-weight:700;color:var(--verde-med)">${R$(e.valor)}</td>
@@ -3474,10 +3475,10 @@ function abrirPreviewOrcamento(pedidoId){
         const qtdTotal=(+ki.qtd||1)*(+it.qtd||1);
         return `${qtdTotal}× ${nomeProd(prodEfetivo)}`;
       }).join(' · ');
-      if(conteudo) linhaConteudoKit=`<tr><td colspan="4" style="padding:2px 12px 9px;font-size:11.5px;color:#7A7267">🎁 <i>inclui:</i> ${conteudo}</td></tr>`;
+      if(conteudo) linhaConteudoKit=`<tr><td colspan="4" style="padding:2px 12px 9px;font-size:11.5px;color:#3F6C9B">🎁 <i>inclui:</i> ${conteudo}</td></tr>`;
     }
     return `<tr>
-      <td><b>${it.desc||nomeProd(it.prod)}</b>${it.variante?` <span style="color:#9C7B44;font-weight:600">· ${it.variante}</span>`:''}</td>
+      <td><b>${it.desc||nomeProd(it.prod)}</b>${it.variante?` <span style="color:#3F6C9B;font-weight:600">· ${it.variante}</span>`:''}</td>
       <td class="orc-num">${it.qtd||1}</td>
       <td class="orc-val">${R$(it.valor||0)}</td>
       <td class="orc-val" style="font-weight:700">${R$(c.sub)}</td>
@@ -4536,7 +4537,7 @@ SECTIONS.fichas = () => `
 
 function selFicha(prodId){
   document.querySelectorAll('[id^="ftc-"]').forEach(el=>el.style.background='');
-  const c=document.getElementById('ftc-'+prodId);if(c)c.style.background='#F5EDDD';
+  const c=document.getElementById('ftc-'+prodId);if(c)c.style.background='#C1E8FF';
   renderFichaDetalhe(prodId);
   document.getElementById('ficha-det')?.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
@@ -4894,7 +4895,7 @@ function kitItemRow(it,i){
   const prodOpts=ordNome(DB.produtos).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
   const temOpcoes=it.opcoes && it.opcoes.length>1;
   const subtotal=precoItemKit(it)*(+it.qtd||1);
-  return `<tr style="background:${i%2===0?'#FBF3E4':'white'}">
+  return `<tr style="background:${i%2===0?'#E3F3FF':'white'}">
     <td style="padding:4px;min-width:150px">
       ${temOpcoes?`<select onchange="onOpcaoEscolhida(${i},this.value)" style="width:100%;padding:6px 8px;border:1.5px solid var(--roxo);border-radius:4px;font-size:13px;background:var(--roxo-claro);color:var(--txt-roxo);font-weight:600">
         ${it.opcoes.map(pid=>{const p=getProd(pid);return `<option value="${pid}" ${it.prod===pid?'selected':''}>🔀 ${p?.nome||pid} — ${R$(p?.preco)}</option>`;}).join('')}
@@ -5082,7 +5083,7 @@ function abrirPreviewKit(kitId){
         </div>
       </div>
       <div class="orc-titulo-doc">🎁 ${k.nome}</div>
-      ${k.descricao?`<p style="text-align:center;color:#7A7267;font-size:12.5px;margin:-8px 0 14px">${k.descricao}</p>`:''}
+      ${k.descricao?`<p style="text-align:center;color:#3F6C9B;font-size:12.5px;margin:-8px 0 14px">${k.descricao}</p>`:''}
 
       <div class="kit-itens">${itensHtml}</div>
 
@@ -5168,9 +5169,9 @@ SECTIONS.consignados = () => {
   <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Pontos</div><div class="kpi-value">${DB.consignados.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Peças em Loja</div><div class="kpi-value">${totalPecas}</div></div>
-    <div class="kpi-card" style="background:#F5EDE4"><div class="kpi-label" style="color:#8A5A2B">💸 Custo Parado (produção)</div><div class="kpi-value" style="color:#8A5A2B">${R$(totalCusto)}</div></div>
+    <div class="kpi-card" style="background:var(--laranja-claro)"><div class="kpi-label" style="color:var(--txt-laranja)">💸 Custo Parado (produção)</div><div class="kpi-value" style="color:var(--txt-laranja)">${R$(totalCusto)}</div></div>
     <div class="kpi-card laranja"><div class="kpi-label">Valor em Loja (repasse)</div><div class="kpi-value">${R$(totalValor)}</div></div>
-    <div class="kpi-card" style="background:#DCEAFB"><div class="kpi-label" style="color:var(--txt-azul)">🔒 Lucro Parado (se vender tudo)</div><div class="kpi-value" style="color:var(--txt-azul)">${R$(totalLucroParado)}</div></div>
+    <div class="kpi-card" style="background:var(--azul-tint)"><div class="kpi-label" style="color:var(--txt-azul)">🔒 Lucro Parado (se vender tudo)</div><div class="kpi-value" style="color:var(--txt-azul)">${R$(totalLucroParado)}</div></div>
     <div class="kpi-card roxo"><div class="kpi-label">Já Vendido (repasse)</div><div class="kpi-value">${R$(totalVendido)}</div></div>
     <div class="kpi-card verde"><div class="kpi-label">💰 Seu Lucro Já Realizado</div><div class="kpi-value">${R$(totalLucro)}</div></div>
   </div>
@@ -5236,9 +5237,9 @@ SECTIONS.consignados = () => {
             <div style="padding:10px 14px 0">
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px">
                 <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:18px;font-weight:900;color:var(--txt-azul)">${pecas}</div></div>
-                <div style="background:#F5EDE4;border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:#8A5A2B">Custo parado</div><div style="font-size:13px;font-weight:800;color:#8A5A2B">${R$(custoParado)}</div></div>
+                <div style="background:var(--laranja-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-laranja)">Custo parado</div><div style="font-size:13px;font-weight:800;color:var(--txt-laranja)">${R$(custoParado)}</div></div>
                 <div style="background:var(--roxo-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-roxo)">Valor lá</div><div style="font-size:13px;font-weight:800;color:var(--txt-roxo)">${R$(valor)}</div></div>
-                <div style="background:#DCEAFB;border-radius:6px;padding:8px;text-align:center" title="Quanto ainda pode lucrar se o que está lá vender tudo"><div style="font-size:10px;color:var(--txt-azul)">Lucro parado</div><div style="font-size:13px;font-weight:800;color:var(--txt-azul)">${R$(lucroParado)}</div></div>
+                <div style="background:var(--azul-tint);border-radius:6px;padding:8px;text-align:center" title="Quanto ainda pode lucrar se o que está lá vender tudo"><div style="font-size:10px;color:var(--txt-azul)">Lucro parado</div><div style="font-size:13px;font-weight:800;color:var(--txt-azul)">${R$(lucroParado)}</div></div>
                 <div style="background:var(--verde-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-verde)">Vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-verde)">${R$(vendido)}</div></div>
                 <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center" title="Lucro já realizado do que já vendeu"><div style="font-size:10px;color:var(--txt-amarelo)">Lucro vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-amarelo)">${R$(lucroVendido)}</div></div>
               </div>
@@ -5487,7 +5488,7 @@ function resumoItensVendidos(v){
 function verHistoricoVisitas(consigId){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const vs=[...(c.visitas||[])].map((v,i)=>({...v,_idxOriginal:i})).reverse(); // mais recente primeiro
-  const CORES_TIPO={venda:'var(--txt-verde)','venda+repasse':'var(--txt-roxo)',repasse:'var(--azul-claro)',visita:'var(--cinza-med)'};
+  const CORES_TIPO={venda:'var(--txt-verde)','venda+repasse':'var(--txt-roxo)',repasse:'var(--txt-azul)',visita:'var(--cinza-med)'};
   openModal(`📋 Histórico de Visitas — ${c.nome}`,
     `<div class="tbl-wrap"><table>
       <thead><tr><th>Data</th><th>Tipo</th><th>O que foi vendido</th><th class="text-center">Vendido</th><th class="text-center">Recebido</th><th></th></tr></thead>
@@ -6608,7 +6609,7 @@ console.log('Morfê ERP carregado. Versão Google Sheets.');
 </body>
 </html>
 
-<style>#ped-status{color:#fff!important}#ped-status option{background:#fff!important;color:#282420!important}</style>
+<style>#ped-status{color:#fff!important}#ped-status option{background:#fff!important;color:#021024!important}</style>
 <script>
 async function baixarOrcamentoImagem(){const area=document.getElementById('orc-print-area');if(typeof html2canvas==='undefined'){toast('Carregando ferramenta de imagem, tenta de novo em 2s...','error');return;}toast('Gerando imagem...','success');try{const fonte=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();await fonte;await new Promise(r=>setTimeout(r,120));const canvas=await html2canvas(area,{scale:3,backgroundColor:'#ffffff',useCORS:true,logging:false}),nome='orcamento_'+new Date().toISOString().slice(0,10)+'.png',blob=await new Promise((ok,erro)=>canvas.toBlob(b=>b?ok(b):erro(new Error('Imagem indisponível')),'image/png',1)),touch=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||navigator.maxTouchPoints>0,arquivo=typeof File!=='undefined'?new File([blob],nome,{type:'image/png'}):null;if(touch&&arquivo&&navigator.canShare&&navigator.canShare({files:[arquivo]})){try{await navigator.share({files:[arquivo],title:'Orçamento Morfê Personalizados'});toast('Escolha “Salvar imagem” ou “Salvar em Arquivos”.');return;}catch(e){if(e&&e.name==='AbortError'){toast('Compartilhamento cancelado.');return;}}}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=nome;a.style.display='none';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);toast('Imagem baixada!');}catch(e){console.error(e);toast('Erro ao gerar imagem','error');}}
 function formCompra(c={}){const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join(''),mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} (estoque atual: ${m.estoque||0} ${m.unidade||'un'})`})),tipo=c.tipo||(c.materia_prima_id?'estoque':'despesa'),e=tipo==='estoque';return`<div class="form-grid"><div class="form-group full"><label class="form-label">Esta compra é para</label><select class="form-select" id="f-ctipo" onchange="atualizarTipoCompra()"><option value="despesa" ${!e?'selected':''}>🔧 Despesa, manutenção ou uso interno</option><option value="estoque" ${e?'selected':''}>📦 Reposição de estoque</option></select></div><div class="form-group full" id="compra-materia-group" style="display:${e?'flex':'none'}"><label class="form-label">Matéria-prima que vai receber estoque</label>${sselHTML('c-mp',mpOpts,c.materia_prima_id||'','Buscar matéria-prima...','autoPreencherCompra(value)')}</div><div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-cdata" type="date" value="${c.data||new Date().toISOString().slice(0,10)}"></div><div class="form-group"><label class="form-label">Fornecedor</label><select class="form-select" id="f-cforn"><option value="">—</option>${fo}</select></div><div class="form-group full"><label class="form-label" id="f-cprod-label">${e?'Descrição do item de estoque':'Descrição da despesa'}</label><input class="form-input" id="f-cprod" value="${c.produto||''}"></div><div class="form-group"><label class="form-label" id="f-cqtd-label">Quantidade</label><input class="form-input" id="f-cqtd" type="number" value="${e?(c.qtd||1):1}" ${e?'':'readonly'}></div><div class="form-group"><label class="form-label" id="f-ccu-label">${e?'Custo Un. (R$)':'Valor total (R$)'}</label><input class="form-input" id="f-ccu" type="number" step="0.01" value="${c.custo||''}"></div><div class="form-group"><label class="form-label">Forma</label><select class="form-select" id="f-cforma">${['PIX','Débito','Crédito','Boleto','Dinheiro'].map(f=>`<option ${c.forma===f?'selected':''}>${f}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Status</label><select class="form-select" id="f-cst">${['Pago','Em aberto','Atrasado'].map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}</select></div><div class="form-group full" id="compra-aviso-estoque" style="background:${e?'var(--verde-claro)':'var(--azul-claro)'};color:${e?'var(--txt-verde)':'var(--azul)'};padding:9px 11px;border-radius:6px;font-size:11.5px">${e?'📦 Ao salvar, esta compra soma a quantidade à matéria-prima escolhida e mexe no Caixa Disponível se marcar “Pago”.':'🔧 Esta despesa não altera o estoque. Ao marcar “Pago”, ela reduz o Caixa Disponível normalmente.'}</div></div>`;}
