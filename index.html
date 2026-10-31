@@ -348,6 +348,15 @@ body.tema-escuro .chip-serie[aria-pressed=true]{background:var(--azul-tint);bord
 .caixa-mov{display:flex;justify-content:space-between;gap:12px;padding:9px 18px;font-size:13px;border-bottom:1px solid var(--cinza-claro)}
 .caixa-mov[onclick]{cursor:pointer}
 .caixa-mov[onclick]:hover{background:var(--azul-tint)}
+.fech-consulta{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 18px 0;padding:12px;background:var(--azul-tint);border-radius:10px;font-size:13px}
+.fech-consulta input{width:auto;background:var(--bg-input)}
+.fech-consulta strong{font-size:17px}
+.fech-item{display:flex;width:100%;justify-content:space-between;align-items:center;gap:12px;background:none;border:none;border-top:1px solid var(--cinza-claro);padding:10px 18px;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:background .12s}
+.fech-item:hover{background:var(--azul-tint)}
+.fech-item small{display:block;font-size:11.5px;color:var(--cinza-med);margin-top:1px}
+.fech-valor{text-align:right;flex:none}
+.fech-valor b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
+@media(max-width:768px){.fech-consulta{margin:12px 12px 0}.fech-item{padding:10px 12px}}
 .caixa-dif{border-radius:10px;padding:12px;margin-top:10px;font-weight:700;font-size:14px;transition:background .15s,color .15s}
 @media(max-width:768px){
   .exp-barra{padding:12px 12px 0}
@@ -2513,18 +2522,66 @@ SECTIONS.caixa = () => {
     '<div class="kpi-card vermelho"><div class="kpi-label">⬇ Saídas</div><div class="kpi-value text-vermelho">'+R$(r.saidas)+'</div></div>'+
     (Math.abs(r.ajustes)>0.004?'<div class="kpi-card amarelo"><div class="kpi-label">Diferenças conferidas</div><div class="kpi-value">'+(r.ajustes>0?'+':'−')+' '+R$(Math.abs(r.ajustes))+'</div></div>':'')+
     '<div class="kpi-card roxo"><div class="kpi-label">Saldo final</div><div class="kpi-value" id="caixa-final">'+R$(r.final)+'</div><div class="kpi-sub">Em '+formatarDataBR(per.fim)+'</div></div></div>'+
+    '<div class="panel" id="fech-painel"><div class="panel-header"><span class="panel-title">📅 Quanto deveria ter em caixa</span><div class="exp-linha" id="fech-grans"></div></div><div class="fech-consulta"><label for="fech-data">Em qual dia?</label><input class="form-input" type="date" id="fech-data" max="'+hojeLocalStr()+'" value="'+_fech.data+'" onchange="_fech.data=this.value;desenharFechamentos()"><span id="fech-resposta" aria-live="polite"></span></div><div style="padding:10px 0 0" id="fech-lista"></div></div>'+
     '<div class="panel"><div class="panel-header"><span class="panel-title">Entradas e saídas no período</span></div><div class="graf" id="caixa-graf"></div><div class="graf-dica">Toque numa barra para ver só aquele período na lista abaixo.</div></div>'+
     '<div class="panel"><div class="panel-header"><span class="panel-title">Movimentos</span></div><div class="filtros-lista"><input class="search-input" type="search" aria-label="Buscar movimentos" placeholder="🔍 Pedido, cliente ou descrição..." value="'+escHtml(_caixaFiltro.q)+'" oninput="_caixaFiltro.q=this.value;_caixaLimite=100;desenharListaCaixa()"><select class="form-select" aria-label="Tipo de movimento" onchange="_caixaFiltro.tipo=this.value;_caixaLimite=100;desenharListaCaixa()">'+opcoesFiltro([['','Tudo'],['entrada','Só entradas'],['saida','Só saídas'],['ajuste','Só conferências']],_caixaFiltro.tipo)+'</select></div><div class="filtros-resumo" id="caixa-resumo" aria-live="polite"></div><div id="caixa-lista"></div></div>'+
     '<details class="panel" '+(window.innerWidth>768?'open':'')+'><summary class="panel-header"><span class="panel-title">🧮 Histórico de conferências ('+confs.length+')</span><span style="font-size:12px">Faltou: <strong style="color:var(--txt-vermelho)">'+R$(-faltas)+'</strong> · Sobrou: <strong style="color:var(--txt-verde)">'+R$(sobras)+'</strong></span></summary>'+
     (confs.length?confs.slice().reverse().map(c=>{ const bateu=Math.abs(c.diferenca)<0.005; return '<div class="divida-item"><div class="entrega-info"><strong>'+(bateu?'✅ Bateu':c.diferenca<0?'🔻 Faltaram '+R$(-c.diferenca):'🔺 Sobraram '+R$(c.diferenca))+'</strong><div style="font-size:12px;color:var(--cinza-med)">'+formatarDataBR(c.data)+' · Sistema '+R$(c.sistema)+' · Real '+R$(c.contado)+(c.motivo?' · '+escHtml(c.motivo):'')+(c.obs?' · '+escHtml(c.obs):'')+'</div></div><button class="btn btn-outline btn-xs" onclick="excluirConferencia(\''+c.id+'\')" aria-label="Apagar conferência">🗑️</button></div>'; }).join(''):'<p style="padding:14px 18px;margin:0;font-size:13px;color:var(--cinza-med)">Nenhuma conferência registrada.</p>')+'</details>';
 };
+// Saldo esperado ao fim de um dia: tudo que foi lançado até ele, mais as conferências feitas até ele.
+let _fech={gran:'mes',limite:12,data:''};
+function saldoCaixaEm(dia,movs=movimentosCaixa(),confs=conferenciasCaixa()){
+  return ajusteSemHistorico()
+    +movs.filter(m=>!m.data||m.data<=dia).reduce((s,m)=>s+(m.tipo==='entrada'?m.valor:-m.valor),0)
+    +confs.filter(c=>c.data<=dia).reduce((s,c)=>s+(+c.diferenca||0),0);
+}
+function fechamentosCaixa(gran,limite){
+  const hoje=hojeLocalStr(), movs=movimentosCaixa(), confs=conferenciasCaixa();
+  const datas=[...movs.map(m=>m.data),...confs.map(c=>c.data)].filter(d=>d&&d<=hoje).sort();
+  if(!datas.length) return {linhas:[],total:0};
+  let ini=datas[0];
+  if(gran==='dia'){ const c=somaDias(hoje,-(limite-1)); if(c>ini) ini=c; }
+  if(gran==='semana'){ const c=somaDias(hoje,-7*(limite-1)-((new Date(hoje+'T00:00:00').getDay()+6)%7)); if(c>ini) ini=c; }
+  const todos=expBuckets(ini,hoje,gran);
+  const totalPossivel=gran==='dia'?diasEntre(datas[0],hoje)+1:gran==='semana'?Math.ceil((diasEntre(datas[0],hoje)+1)/7):todos.length;
+  const linhas=todos.slice(-limite).reverse().map(b=>{
+    const dentro=m=>m.data>=b.ini&&m.data<=b.fim;
+    const ent=movs.filter(m=>m.tipo==='entrada'&&dentro(m)).reduce((s,m)=>s+m.valor,0);
+    const sai=movs.filter(m=>m.tipo==='saida'&&dentro(m)).reduce((s,m)=>s+m.valor,0);
+    const cf=confs.filter(dentro);
+    return {...b,ent,sai,dif:cf.reduce((s,c)=>s+(+c.diferenca||0),0),conferido:cf.length>0,saldo:saldoCaixaEm(b.fim,movs,confs),aberto:b.fim>=hoje};
+  });
+  return {linhas,total:totalPossivel};
+}
+function fechSetGran(g){ _fech.gran=g; _fech.limite=12; desenharFechamentos(); }
+function fechVerMovimentos(ini,fim,titulo){
+  _caixaBucket={ini,fim,titulo}; _caixaLimite=100; desenharListaCaixa();
+  document.getElementById('caixa-resumo')?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});
+}
+function desenharFechamentos(){
+  const lista=document.getElementById('fech-lista'); if(!lista) return;
+  document.getElementById('fech-grans').innerHTML=[['dia','Dia'],['semana','Semana'],['mes','Mês'],['ano','Ano']].map(([v,r])=>'<button class="chip" aria-pressed="'+(_fech.gran===v)+'" onclick="fechSetGran(\''+v+'\')">'+r+'</button>').join('');
+  const resp=document.getElementById('fech-resposta');
+  if(_fech.data){
+    const movs=movimentosCaixa().filter(m=>m.data===_fech.data), conf=conferenciasCaixa().filter(c=>c.data===_fech.data).at(-1);
+    const ent=movs.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+m.valor,0), sai=movs.filter(m=>m.tipo==='saida').reduce((s,m)=>s+m.valor,0);
+    resp.innerHTML='Deveria ter <strong>'+R$(saldoCaixaEm(_fech.data))+'</strong> no fim de '+formatarDataBR(_fech.data)+' · Entrou '+R$(ent)+' · Saiu '+R$(sai)+(conf?' · Conferido: '+R$(conf.contado):'');
+  } else resp.textContent='Escolha uma data para ver o saldo que o caixa deveria ter.';
+  const {linhas,total}=fechamentosCaixa(_fech.gran,_fech.limite);
+  if(!linhas.length){ lista.innerHTML='<p style="padding:6px 18px 16px;margin:0;font-size:13px;color:var(--cinza-med)">Ainda não há movimentos para calcular.</p>'; return; }
+  lista.innerHTML=linhas.map(l=>{
+    const mudou=l.ent-l.sai+l.dif;
+    return '<button class="fech-item" onclick="fechVerMovimentos(\''+l.ini+'\',\''+l.fim+'\',\''+l.titulo+'\')"><span style="min-width:0"><strong>'+l.titulo+'</strong>'+(l.aberto?' <span class="badge badge-info">em andamento</span>':'')+(l.conferido?' <span class="badge '+(Math.abs(l.dif)<0.005?'badge-ok':'badge-warn')+'">'+(Math.abs(l.dif)<0.005?'conferido':l.dif<0?'faltou '+R$(-l.dif):'sobrou '+R$(l.dif))+'</span>':'')+'<small>⬆ '+R$(l.ent)+' · ⬇ '+R$(l.sai)+' · '+(mudou>=0?'+':'−')+R$(Math.abs(mudou))+' no período</small></span><span class="fech-valor"><small>'+(l.aberto?'Deveria ter hoje':'Deveria fechar com')+'</small><b style="color:'+(l.saldo<0?'var(--txt-vermelho)':'inherit')+'">'+R$(l.saldo)+'</b></span></button>';
+  }).join('')+(total>linhas.length?'<div class="filtros-mais"><button class="btn btn-outline" onclick="_fech.limite+=12;desenharFechamentos()">Ver mais antigos</button></div>':'');
+}
 function iniciarTelaCaixa(){
+  desenharFechamentos();
   const per=caixaPeriodo(), dur=diasEntre(per.inicio,per.fim)+1, g=window.innerWidth<=768&&dur>14&&dur<=200?'semana':expGranAuto(per.inicio,per.fim), bs=expBuckets(per.inicio,per.fim,g), movs=movimentosCaixa();
   const soma=(b,t)=>movs.filter(m=>m.tipo===t&&m.data>=b.ini&&m.data<=b.fim).reduce((s,m)=>s+m.valor,0);
   const el=document.getElementById('caixa-graf');
   desenharGrafico(el,{titulo:'Entradas e saídas',rotulos:bs.map(b=>b.rotulo),titulosIdx:bs.map(b=>b.titulo),tipo:'barras',
     series:[{id:'ent',nome:'Entradas',cor:'--s2',valores:bs.map(b=>soma(b,'entrada'))},{id:'sai',nome:'Saídas',cor:'--s4',valores:bs.map(b=>soma(b,'saida'))}],
-    selecionado:_caixaBucket?bs.findIndex(b=>b.ini===_caixaBucket.ini):null,
+    selecionado:(()=>{ const i=_caixaBucket?bs.findIndex(b=>b.ini===_caixaBucket.ini):-1; return i<0?null:i; })(),
     aoSelecionar:i=>{ _caixaBucket=_caixaBucket&&_caixaBucket.ini===bs[i].ini?null:bs[i]; grafMarcarSelecao(el,_caixaBucket?i:null); _caixaLimite=100; desenharListaCaixa(); }});
   desenharListaCaixa();
 }
