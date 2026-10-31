@@ -308,6 +308,33 @@ body.tema-escuro .divida-faixa[aria-pressed=true]{border-color:var(--txt-azul)}
   .divida-acoes .btn{flex:0 0 auto;min-height:42px;padding:0 16px}
 }
 @media(max-width:400px){.dividas-faixas{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* DASHBOARD */
+.hoje-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:12px 18px 16px}
+.hoje-item{background:var(--azul-tint);border:none;border-radius:10px;padding:10px 12px;text-align:left;cursor:pointer;font:inherit;color:var(--cinza-escuro);min-height:64px;transition:box-shadow .12s}
+.hoje-item:hover{box-shadow:var(--sombra-sm)}
+.hoje-item strong{display:block;font-size:20px;font-weight:800;line-height:1.1;overflow-wrap:anywhere}
+.hoje-item span{font-size:12px}
+.hoje-item.urgente{background:var(--vermelho-claro);color:var(--txt-vermelho)}
+.dash-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.dash-2col .panel{margin-bottom:0}
+details.panel>summary{cursor:pointer;list-style:none}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary .panel-title::before{content:'▸ ';color:var(--cinza-med)}
+details.panel[open]>summary .panel-title::before{content:'▾ '}
+.meta-barra{height:6px;background:var(--cinza-claro);border-radius:3px;overflow:hidden;margin-top:6px}
+.meta-barra div{height:100%;background:var(--azul-claro)}
+.meta-barra div.feita{background:var(--verde-med)}
+.entrega-info{min-width:0;flex:1 1 200px}
+.entrega-tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+@media(max-width:768px){
+  .dash-2col{grid-template-columns:1fr}
+  .hoje-grade{padding:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* CARREGAMENTO */
+.sk{background:linear-gradient(90deg,var(--azul-tint) 25%,var(--cinza-claro) 50%,var(--azul-tint) 75%);background-size:200% 100%;animation:sk-brilho 1.3s linear infinite;border-radius:var(--radius)}
+@keyframes sk-brilho{to{background-position:-200% 0}}
+#toast button{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.6);color:#fff;border-radius:7px;padding:6px 10px;margin-left:10px;font:inherit;font-weight:700;cursor:pointer;min-height:34px}
+#toast.show{pointer-events:auto}
 /* FILTROS DE LISTA E CARDS CLICÁVEIS */
 .filtros-lista{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid var(--cinza-claro)}
 .filtros-lista .search-input{flex:2 1 220px;font-size:13px}
@@ -758,9 +785,15 @@ function entrarComGoogle(response){
 }
 
 // Lógica compartilhada depois de qualquer método de login dar certo
+let _carregandoInicial=false;
+function telaCarregandoHtml(){
+  const b=(a,e='')=>`<div class="sk" style="height:${a}px;${e}"></div>`;
+  return `<div aria-busy="true" aria-label="Carregando seus dados"><div class="kpi-grid" style="margin-bottom:16px">${b(84)}${b(84)}${b(84)}${b(84)}</div>${b(180,'margin-bottom:16px')}${b(260)}</div>`;
+}
 function finalizarLogin(){
   _isLoggedIn = true;
   carregarLocal();
+  _carregandoInicial=!DB.pedidos.length&&!DB.produtos.length&&!DB.clientes.length;
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   inicializarSidebar();
@@ -768,7 +801,10 @@ function finalizarLogin(){
   restaurarEstadoGruposNav();
   garantirGrupoAberto('dashboard');
   render('dashboard');
-  setTimeout(() => sincronizarSheets(), 500);
+  setTimeout(async () => {
+    try { await sincronizarSheets(); }
+    finally { if(_carregandoInicial){ _carregandoInicial=false; render(currentSection); } }
+  }, 500);
 }
 
 // Mostra o botão "Entrar com Google" — único jeito de logar agora. Se por
@@ -1364,6 +1400,18 @@ function toast(msg, tipo='success') {
   window._toastTimer = setTimeout(() => t.className = '', 3000);
 }
 
+// Aviso com botão de desfazer, para ações rápidas que não pedem confirmação
+function toastDesfazer(msg,desfazer,tipo='success'){
+  const el=document.getElementById('toast');
+  toast(msg,tipo);
+  const b=document.createElement('button');
+  b.textContent='Desfazer';
+  b.onclick=async()=>{ clearTimeout(window._toastTimer); el.className=''; await desfazer(); };
+  el.appendChild(b);
+  clearTimeout(window._toastTimer);
+  window._toastTimer=setTimeout(()=>el.className='',7000);
+}
+
 function statusBadge(s) {
   const m = { 'Ativo':'ok','Pago':'ok','Entregue':'ok','Pago integral':'ok','Confirmado':'ok',
     'Em aberto':'info','Em produção':'info','Pronto':'roxo',
@@ -1533,6 +1581,7 @@ function render(sec) {
   document.getElementById('page-title').textContent = TITLES[sec] || sec;
   const fn = SECTIONS[sec];
   const el = document.getElementById('content');
+  if (_carregandoInicial && fn) { el.innerHTML = telaCarregandoHtml(); return; }
   if (fn) { el.innerHTML = fn(); if(sec==='pedidos') atualizarListaPedidos(); if(sec==='areceber') atualizarListaAR(); if(sec==='clientes') aplicarFiltroClientes(); }
   else el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚧</div>Em construção</div>`;
 }
@@ -2083,6 +2132,32 @@ function abrirKpiLucro(){
   modalSomenteLeitura();
 }
 
+function painelHojeHtml(criticosMP){
+  const hoje=hojeLocalStr();
+  const ativos=DB.pedidos.filter(p=>p.status!=='Entregue'&&p.status!=='Cancelado');
+  const cobrancas=dividasAbertas().filter(dividaEstaAtrasada);
+  const contas=DB.apagar.filter(x=>x.status!=='Pago'&&x.venc&&normalizarData(x.venc)<=hojeLocalStr(7));
+  const n={
+    atrasadas:ativos.filter(p=>pedidoAtrasado(p,hoje)).length,
+    hoje:ativos.filter(p=>p.entrega&&normalizarData(p.entrega)===hoje).length,
+    produzir:DB.pedidos.filter(p=>p.status==='Confirmado'||p.status==='Em produção').length,
+    prontos:DB.pedidos.filter(p=>p.status==='Pronto').length,
+    arte:DB.pedidos.filter(artePendente).length,
+  };
+  const itens=[
+    [n.atrasadas,n.atrasadas,n.atrasadas===1?'entrega atrasada':'entregas atrasadas',"abrirPedidosFiltrados({entrega:'atrasada'})",true],
+    [cobrancas.length,R$(cobrancas.reduce((s,d)=>s+d.saldo,0)),cobrancas.length===1?'1 cobrança atrasada':`${cobrancas.length} cobranças atrasadas`,"_faixaDivida='atrasadas';goTo('areceber')",true],
+    [criticosMP,criticosMP,criticosMP===1?'insumo em estoque baixo':'insumos em estoque baixo',"goTo('materias')",true],
+    [n.hoje,n.hoje,n.hoje===1?'entrega hoje':'entregas hoje',"abrirPedidosFiltrados({entrega:'hoje'})",false],
+    [n.arte,n.arte,n.arte===1?'arte a resolver':'artes a resolver',"abrirPedidosFiltrados({arte:'pendente'})",false],
+    [n.produzir,n.produzir,n.produzir===1?'pedido para produzir':'pedidos para produzir',"_pedVisao='quadro';abrirPedidosFiltrados({})",false],
+    [n.prontos,n.prontos,n.prontos===1?'pronto para entregar':'prontos para entregar',"abrirPedidosFiltrados({etapa:'Pronto'})",false],
+    [contas.length,contas.length,contas.length===1?'conta vence em 7 dias':'contas vencem em 7 dias',"goTo('apagar')",false],
+  ].filter(i=>i[0]>0);
+  return `<div class="panel"><div class="panel-header"><span class="panel-title">☀️ Hoje</span></div>
+    ${itens.length?`<div class="hoje-grade">${itens.map(i=>`<button class="hoje-item ${i[4]?'urgente':''}" onclick="${i[3]}"><strong>${i[1]}</strong><span>${i[2]}</span></button>`).join('')}</div>`:'<p style="padding:16px 18px;margin:0;font-size:13px;color:var(--cinza-med)">✅ Nada pendente por aqui.</p>'}
+  </div>`;
+}
 SECTIONS.dashboard = () => {
   const efetivas = todasVendasEfetivas();
   const per=getPeriodoAtual(_dashPeriodo,_dashCustomIni,_dashCustomFim);
@@ -2125,8 +2200,9 @@ SECTIONS.dashboard = () => {
 
   const mesesNome=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const porMes={}, lucroPorMes={};
-  efetivas.forEach(v=>{const m=new Date(normalizarData(v.data)+'T00:00:00').getMonth();porMes[m]=(porMes[m]||0)+v.valorTotal;lucroPorMes[m]=(lucroPorMes[m]||0)+(v.valorTotal-v.custoTotal);});
-  const barMax=Math.max(...Object.values(porMes),...Object.values(lucroPorMes).map(v=>Math.abs(v)),1);
+  efetivas.forEach(v=>{const m=String(normalizarData(v.data)||'').slice(0,7);if(!m)return;porMes[m]=(porMes[m]||0)+v.valorTotal;lucroPorMes[m]=(lucroPorMes[m]||0)+(v.valorTotal-v.custoTotal);});
+  const mesesGrafico=Object.keys(porMes).sort().slice(-12);
+  const barMax=Math.max(...mesesGrafico.map(m=>porMes[m]),...mesesGrafico.map(m=>Math.abs(lucroPorMes[m]||0)),1);
 
   // Comparativo de receita com o mesmo intervalo relativo de dias do mês
   // anterior (do dia 1 até o dia de hoje) — nunca compara mês inteiro
@@ -2142,6 +2218,7 @@ SECTIONS.dashboard = () => {
   const top3=Object.entries(vendProd).sort((a,b)=>b[1]-a[1]).slice(0,3);
 
   return `
+  ${painelHojeHtml(criticosMP)}
   ${renderSeletorPeriodo('dash',_dashPeriodo,_dashCustomIni,_dashCustomFim)}
   <div style="background:var(--dourado-claro);color:var(--txt-dourado);padding:8px 14px;border-radius:8px;font-size:12px;margin-bottom:12px">
     📅 ${per.label} — ${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)}
@@ -2156,11 +2233,6 @@ SECTIONS.dashboard = () => {
     <div class="kpi-card ${aPagar>0?'vermelho':'verde'} kpi-click" role="button" tabindex="0" onclick="goTo('apagar')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
   </div>
 
-  ${criticosMP>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('materias')">⚠️ ${criticosMP} matéria(s)-prima em estoque crítico</div>`:''}
-  ${(()=>{const l=dividasAbertas().filter(dividaEstaAtrasada);return l.length?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="_faixaDivida='atrasadas';goTo('areceber')">💰 ${l.length} ${l.length===1?'cobrança atrasada':'cobranças atrasadas'}: ${R$(l.reduce((s,d)=>s+d.saldo,0))} — ver lista</div>`:'';})()}
-
-  ${(()=>{const n=DB.pedidos.filter(p=>pedidoAtrasado(p)).length;return n>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="abrirPedidosFiltrados({entrega:'atrasada'})">🚚 ${n} ${n===1?'pedido com entrega atrasada':'pedidos com entrega atrasada'} — ver lista</div>`:'';})()}
-
   ${DB.pedidos.some(p=>p.entrega && p.status!=='Entregue' && p.status!=='Cancelado')?`<div class="panel">
     <div class="panel-header">
       <span class="panel-title">🚚 Próximas Entregas</span>
@@ -2169,16 +2241,10 @@ SECTIONS.dashboard = () => {
       </div>
     </div>
     ${proximasEntregas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:20px;font-size:13px">Nenhuma entrega agendada nos próximos ${janelaEntregaDias} dias.</p>`:
-    `<div class="tbl-wrap"><table>
-      <thead><tr><th>Cliente</th><th>Itens</th><th>Entrega</th><th>Pagamento</th></tr></thead>
-      <tbody>${proximasEntregas.map(p=>{const r=rotuloEntrega(p.entrega);return`
-        <tr style="cursor:pointer" onclick="abrirResumoPedido('${p.id}')" title="Clique pra abrir">
-          <td class="fw-bold">${nomeVenda(p)}</td>
-          <td style="font-size:12px">${resumoItensPedido(p)}</td>
-          <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
-          <td class="text-center">${statusPagamentoPedido(p)}</td>
-        </tr>`;}).join('')}</tbody>
-    </table></div>`}
+    proximasEntregas.map(p=>{const r=rotuloEntrega(p.entrega);return`<div class="divida-item" style="cursor:pointer" tabindex="0" onclick="abrirResumoPedido('${p.id}')" onkeydown="if(event.key==='Enter')this.click()">
+      <div class="entrega-info"><strong>${nomeVenda(p)}</strong><div style="font-size:12px;color:var(--cinza-med)">${resumoItensPedido(p)}</div></div>
+      <div class="entrega-tags"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span>${arteBadge(p)}${statusPagamentoPedido(p)}</div>
+    </div>`;}).join('')}
   </div>`:''}
 
   ${DB.custos_fixos.some(c=>+c.dia_vencimento>0)?`<div class="panel">
@@ -2207,17 +2273,17 @@ SECTIONS.dashboard = () => {
       <div style="background:var(--cinza-ultra);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--cinza-med);text-transform:uppercase;font-weight:600">Meta Diária</div>
         <div style="font-size:17px;font-weight:800">${R$(fm.metaDiaria)}</div>
-        <div style="font-size:11px;color:${fm.pctMetaDiaria>=100?'var(--verde-med)':'var(--cinza-med)'}">Hoje: ${R$(fm.receitaHoje)} (${fm.pctMetaDiaria.toFixed(0)}%)</div>
+        <div style="font-size:11px;color:${fm.pctMetaDiaria>=100?'var(--verde-med)':'var(--cinza-med)'}">Hoje: ${R$(fm.receitaHoje)} (${fm.pctMetaDiaria.toFixed(0)}%)</div><div class="meta-barra"><div class="${fm.pctMetaDiaria>=100?'feita':''}" style="width:${Math.min(100,fm.pctMetaDiaria)}%"></div></div>
       </div>
       <div style="background:var(--cinza-ultra);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--cinza-med);text-transform:uppercase;font-weight:600">Meta Semanal</div>
         <div style="font-size:17px;font-weight:800">${R$(fm.metaSemanal)}</div>
-        <div style="font-size:11px;color:${fm.pctMetaSemanal>=100?'var(--verde-med)':'var(--cinza-med)'}">Semana: ${R$(fm.receitaSemana)} (${fm.pctMetaSemanal.toFixed(0)}%)</div>
+        <div style="font-size:11px;color:${fm.pctMetaSemanal>=100?'var(--verde-med)':'var(--cinza-med)'}">Semana: ${R$(fm.receitaSemana)} (${fm.pctMetaSemanal.toFixed(0)}%)</div><div class="meta-barra"><div class="${fm.pctMetaSemanal>=100?'feita':''}" style="width:${Math.min(100,fm.pctMetaSemanal)}%"></div></div>
       </div>
       <div style="background:var(--cinza-ultra);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--cinza-med);text-transform:uppercase;font-weight:600">Meta Mensal</div>
         <div style="font-size:17px;font-weight:800">${R$(fm.metaMensal)}</div>
-        <div style="font-size:11px;color:${fm.pctMetaMensal>=100?'var(--verde-med)':'var(--cinza-med)'}">Mês: ${R$(fm.receitaMes)} (${fm.pctMetaMensal.toFixed(0)}%)</div>
+        <div style="font-size:11px;color:${fm.pctMetaMensal>=100?'var(--verde-med)':'var(--cinza-med)'}">Mês: ${R$(fm.receitaMes)} (${fm.pctMetaMensal.toFixed(0)}%)</div><div class="meta-barra"><div class="${fm.pctMetaMensal>=100?'feita':''}" style="width:${Math.min(100,fm.pctMetaMensal)}%"></div></div>
       </div>
       <div style="background:var(--laranja-claro);border-radius:8px;padding:12px">
         <div style="font-size:10px;color:var(--txt-laranja);text-transform:uppercase;font-weight:600">Ticket Médio</div>
@@ -2250,8 +2316,8 @@ SECTIONS.dashboard = () => {
     <div class="kpi-card ${fm.capitalGiro>=0?'roxo':'vermelho'}"><div class="kpi-label">Capital de Giro</div><div class="kpi-value">${R$(fm.capitalGiro)}</div><div class="kpi-sub">Ativo circulante − A Pagar</div></div>
   </div>
 
-  <div class="panel">
-    <div class="panel-header"><span class="panel-title">🧊 Onde seu dinheiro está parado</span><span class="text-muted" style="font-size:11px">Total: ${R$(fm.valorParadoTotal)}</span></div>
+  <details class="panel" ${window.innerWidth>768?'open':''}>
+    <summary class="panel-header"><span class="panel-title">🧊 Onde seu dinheiro está parado</span><span class="text-muted" style="font-size:11px">Total: ${R$(fm.valorParadoTotal)}</span></summary>
     <div class="tbl-wrap"><table>
       <thead><tr><th>Onde está</th><th class="text-center">Valor Parado</th><th></th></tr></thead>
       <tbody>
@@ -2263,12 +2329,12 @@ SECTIONS.dashboard = () => {
       </tbody>
     </table></div>
     <div style="padding:10px 16px;font-size:11px;color:var(--cinza-med)">💡 "Parado" = dinheiro que já foi gasto ou está garantido, mas ainda não virou caixa disponível na sua mão.</div>
-  </div>
+  </details>
   `;})()}
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+  <div class="dash-2col">
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">📈 Receita & Lucro por Mês</span></div>
+      <div class="panel-header"><span class="panel-title">📈 Receita & Lucro — últimos 12 meses</span></div>
       <div style="padding:14px">
         ${Object.keys(porMes).length===0?'':`<div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-bottom:8px;font-size:10px;color:var(--cinza-med)">
           <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:var(--azul-claro);border-radius:2px;display:inline-block"></span>Receita</span>
@@ -2276,14 +2342,14 @@ SECTIONS.dashboard = () => {
         </div>`}
         <div style="display:flex;align-items:flex-end;gap:5px;height:90px">
           ${Object.keys(porMes).length===0?'<div style="color:var(--cinza-med);font-size:12px;margin:auto">Sem vendas ainda</div>':
-          Object.entries(porMes).map(([m,v])=>{const lucro=lucroPorMes[m]||0;return`
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
-              <div style="font-size:7px;color:var(--cinza-med)">${R$(v)}</div>
+          mesesGrafico.map(m=>{const v=porMes[m],lucro=lucroPorMes[m]||0;return`
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px" title="${mesesNome[+m.slice(5,7)-1]}/${m.slice(0,4)}: receita ${R$(v)}, lucro ${R$(lucro)}">
+              <div style="font-size:9px;color:var(--cinza-med);white-space:nowrap">${v>=1000?(v/1000).toFixed(1).replace('.',',')+'k':Math.round(v)}</div>
               <div style="display:flex;align-items:flex-end;gap:2px;width:100%;justify-content:center">
                 <div style="width:45%;background:var(--azul-claro);border-radius:3px 3px 0 0;height:${Math.round(v/barMax*70)}px;min-height:4px"></div>
                 <div style="width:45%;background:${lucro>=0?'var(--verde-med)':'var(--vermelho)'};border-radius:3px 3px 0 0;height:${Math.max(4,Math.round(Math.abs(lucro)/barMax*70))}px"></div>
               </div>
-              <div style="font-size:9px;color:var(--cinza-med)">${mesesNome[+m]}</div>
+              <div style="font-size:9px;color:var(--cinza-med)">${mesesNome[+m.slice(5,7)-1]}</div>
             </div>`;}).join('')}
         </div>
       </div>
@@ -2310,27 +2376,27 @@ SECTIONS.dashboard = () => {
       <button class="btn btn-success btn-sm" onclick="goTo('pedidos')">Ver Pedidos →</button>
     </div>
     <div class="tbl-wrap">
-      <table>
+      <table class="tbl-cards">
         <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Lucro</th><th>Status</th></tr></thead>
         <tbody>
           ${(()=>{const grupos=agruparVendasPorId(efetivas);
           if(grupos.length===0) return `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhuma venda ainda</td></tr>`;
-          return [...grupos].sort((a,b)=>(a.data||'').localeCompare(b.data||'')).slice(-15).reverse().map(g=>{
+          return [...grupos].sort((a,b)=>(a.data||'').localeCompare(b.data||'')).slice(window.innerWidth>768?-15:-6).reverse().map(g=>{
             const acao=g.origem==='consignado'?`verHistoricoVisitas('${g.id.split(':')[0]}')`
-              :g.origem==='pedido'?`verPedidoOrc('${g.id}')`
+              :g.origem==='pedido'?`abrirResumoPedido('${g.id}')`
               :g.origem==='venda'?`editarVenda('${g.id}')`:'';
             const lucroG=g.valorTotal-g.custoTotal;
             const resumoItens=g.itens.length===1
               ? (g.itens[0].produto?nomeProd(g.itens[0].produto):'(item avulso)')
               : `${g.itens.length} itens — `+g.itens.map(it=>it.produto?nomeProd(it.produto):'item avulso').join(', ');
             return `<tr ${acao?`onclick="${acao}" style="cursor:pointer" title="Clique pra abrir"`:''}>
-            <td class="fw-bold text-azul">${g.id} ${g.origem==='pedido'?'<span class="badge badge-info" style="font-size:9px">pedido</span>':g.origem==='consignado'?'<span class="badge badge-gray" style="font-size:9px">consignado</span>':''}</td>
-            <td>${g.data||'—'}</td>
-            <td>${nomeVenda(g)}</td>
-            <td style="font-size:12px">${resumoItens}</td>
-            <td class="fw-bold text-verde">${R$(g.valorTotal)}</td>
-            <td class="fw-bold" style="color:${lucroG>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroG)}</td>
-            <td>${statusBadge(g.status)}</td>
+            <td class="fw-bold text-azul pc-id">${g.id} ${g.origem==='pedido'?'<span class="badge badge-info" style="font-size:9px">pedido</span>':g.origem==='consignado'?'<span class="badge badge-gray" style="font-size:9px">consignado</span>':''}</td>
+            <td class="pc-data" data-label="Data">${g.data||'—'}</td>
+            <td class="pc-cliente" data-label="Cliente">${nomeVenda(g)}</td>
+            <td class="pc-itens" data-label="Itens" style="font-size:12px">${resumoItens}</td>
+            <td class="fw-bold text-verde pc-total" data-label="Total">${R$(g.valorTotal)}</td>
+            <td class="fw-bold pc-lucro" data-label="Lucro" style="color:${lucroG>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroG)}</td>
+            <td class="pc-status" data-label="Status">${statusBadge(g.status)}</td>
           </tr>`;}).join('');})()}
         </tbody>
       </table>
@@ -3137,7 +3203,7 @@ function textoBusca(v){ return String(v||'').normalize('NFD').replace(/[\u0300-\
 function pedidoEhVendaReal(p){ return p.status!=='Em aberto'&&p.status!=='Cancelado'; }
 function saldoPedido(p){ return Math.max(0,(+p.total||0)-(p.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0)); }
 function saldoPedidoAReceber(p){ return pedidoEhVendaReal(p)?saldoPedido(p):0; }
-const FILTRO_PED_VAZIO={q:'',etapa:'',pgto:'',entrega:''};
+const FILTRO_PED_VAZIO={q:'',etapa:'',pgto:'',entrega:'',arte:''};
 let _fPed={...FILTRO_PED_VAZIO}, _fPedLimite=50;
 function pedidoAtrasado(p,hoje=hojeLocalStr()){
   return !!p.entrega && p.status!=='Entregue' && p.status!=='Cancelado' && normalizarData(p.entrega)<hoje;
@@ -3153,6 +3219,8 @@ function pedidoPassaFiltro(p,f){
     if(f.pgto==='parcial'&&!(saldo>0.004&&pago>0.004)) return false;
     if(f.pgto==='pago'&&!(total>0&&saldo<=0.004)) return false;
   }
+  if(f.arte==='pendente'&&!artePendente(p)) return false;
+  if(f.arte==='Aprovada'&&p.arte_status!=='Aprovada') return false;
   if(f.entrega){
     const e=p.entrega?normalizarData(p.entrega):'', ativo=p.status!=='Entregue'&&p.status!=='Cancelado';
     if(f.entrega==='atrasada'&&!pedidoAtrasado(p,hoje)) return false;
@@ -3198,10 +3266,23 @@ async function mudarEtapaPedido(id,para){
   registrarHistoricoPedido(pd,'Etapa alterada',`${anterior.status||'—'} → ${para}`);
   registrarEstoqueNoHistorico(pd,res);
   await salvarItem('pedidos',pd);
-  toast(res.avisoFalta.length?`⚠️ Estoque insuficiente: ${res.avisoFalta.join(', ')}`:`${pd.id}: ${para}`+(res.baixou?' · 📦 Insumos baixados':res.devolveu?' · 📦 Estoque devolvido':''),res.avisoFalta.length?'error':'success');
+  toastDesfazer(res.avisoFalta.length?`⚠️ Estoque insuficiente: ${res.avisoFalta.join(', ')}`:`${pd.id}: ${para}`+(res.baixou?' · 📦 Insumos baixados':res.devolveu?' · 📦 Estoque devolvido':''),()=>desfazerEtapaPedido(id,anterior),res.avisoFalta.length?'error':'success');
   render(currentSection);
   if(_resumoPedidoId===id) desenharResumoPedido();
   return true;
+}
+// Volta exatamente ao estado anterior, usando o consumo guardado (não recalcula pela ficha atual).
+async function desfazerEtapaPedido(id,ant){
+  const pd=getItem(DB.pedidos,id); if(!pd) return;
+  const de=pd.status;
+  if(ant.estoque_baixado&&!pd.estoque_baixado) await aplicarBaixaEstoque(ant.consumo_insumos||{});
+  else if(!ant.estoque_baixado&&pd.estoque_baixado) await reverterBaixaEstoque(pd.consumo_insumos||{});
+  pd.status=ant.status; pd.estoque_baixado=ant.estoque_baixado; pd.consumo_insumos=ant.consumo_insumos;
+  registrarHistoricoPedido(pd,'Mudança desfeita',`${de} → ${ant.status}`);
+  await salvarItem('pedidos',pd);
+  toast(`${pd.id} voltou para ${ant.status}`);
+  render(currentSection);
+  if(_resumoPedidoId===id) desenharResumoPedido();
 }
 function kanbanPedidosHtml(achados){
   const hoje=hojeLocalStr();
@@ -3215,6 +3296,7 @@ function kanbanPedidosHtml(achados){
       return `<article class="kanban-card" tabindex="0" draggable="true" data-id="${p.id}" onclick="abrirResumoPedido('${p.id}')" onkeydown="if(event.key==='Enter'&&event.target===this)abrirResumoPedido('${p.id}')" ondragstart="event.dataTransfer.setData('text/plain','${p.id}');this.classList.add('arrastando')" ondragend="this.classList.remove('arrastando')">
         <div style="display:flex;justify-content:space-between;gap:6px"><strong>${escHtml(nomeVenda(p))}</strong><span style="font-size:10px;color:var(--cinza-med);white-space:nowrap">${p.id}</span></div>
         <div style="margin:4px 0;color:var(--cinza-med)">${resumoItensPedido(p)}</div>
+        ${p.arte_status?'<div style="margin-bottom:4px">'+arteBadge(p)+'</div>':''}
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap"><strong style="color:var(--txt-verde)">${R$(p.total||0)}</strong>${r?`<span class="badge" style="background:${r.bg};color:${r.cor}">${r.label}</span>`:''}</div>
         ${saldoPedido(p)>0.004?`<div style="font-size:11px;color:var(--txt-vermelho);margin-top:3px">Falta ${R$(saldoPedido(p))}</div>`:''}
         ${prox?`<button class="kanban-avancar" onclick="event.stopPropagation();mudarEtapaPedido('${p.id}','${prox[0]}')">${prox[1]} →</button>`:''}
@@ -3285,6 +3367,9 @@ function desenharResumoPedido(){
         <div class="drawer-barra"><div style="width:${pct}%"></div></div>
         <div class="drawer-linha"><span>Pago ${R$(pago)}</span><strong style="color:${saldo>0.004?'var(--txt-vermelho)':'var(--txt-verde)'}">${saldo>0.004?'Falta '+R$(saldo):'Quitado'}</strong></div>
       </div>
+      <div class="drawer-bloco"><div class="drawer-rotulo">Arte</div>
+        <select class="form-select" aria-label="Situação da arte" onchange="mudarArtePedido('${pd.id}',this.value)">${opcoesFiltro(ARTE_STATUS,pd.arte_status||'')}</select>
+      </div>
       <div class="drawer-bloco"><div class="drawer-rotulo">Estoque</div>${pd.estoque_baixado?'📦 Insumos já baixados':pd.status==='Em aberto'?'Baixa ao confirmar o pedido':'Sem baixa de insumos'}</div>
       ${pd.obs?`<div class="drawer-bloco"><div class="drawer-rotulo">Observações</div><div style="white-space:pre-wrap;overflow-wrap:anywhere">${escHtml(pd.obs)}</div></div>`:''}
       <div class="drawer-bloco"><div class="drawer-acoes">
@@ -3307,7 +3392,7 @@ function pedidoLinhaHtml(p){
         <td class="text-vermelho pc-custo" data-label="Custo">${R$(custoP)}</td>
         <td class="fw-bold pc-lucro" data-label="Lucro" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
         <td class="pc-pgto" data-label="Pagamento">${statusPgto(p)}</td>
-        <td class="pc-status" data-label="Status">${statusBadge(p.status)}</td>
+        <td class="pc-status" data-label="Status">${statusBadge(p.status)}${p.arte_status?'<div style="margin-top:3px">'+arteBadge(p)+'</div>':''}</td>
         <td class="text-center pc-est" data-label="Estoque">${p.estoque_baixado?`<span class="badge badge-ok" style="cursor:pointer" onclick="event.stopPropagation();modalVerConsumo('${p.id}')" title="Ver insumos consumidos">📦 Baixado</span>`:'<span class="badge badge-gray">—</span>'}</td>
         <td class="td-actions" onclick="event.stopPropagation()">
           <button class="btn btn-primary btn-xs" onclick="verPedidoOrc('${p.id}')" title="Editar">✏️</button>
@@ -3364,6 +3449,7 @@ SECTIONS.pedidos = () => {
       <select class="form-select" aria-label="Filtrar por etapa" onchange="filtrarPedidos('etapa',this.value)">${opcoesFiltro([['','Etapa'],['andamento','Em andamento'],...['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>[s,s])],_fPed.etapa)}</select>
       <select class="form-select" aria-label="Filtrar por pagamento" onchange="filtrarPedidos('pgto',this.value)">${opcoesFiltro([['','Pagamento'],['receber','A receber (confirmados)'],['pendente','Nada pago'],['parcial','Pago em parte'],['pago','Pago']],_fPed.pgto)}</select>
       <select class="form-select" aria-label="Filtrar por entrega" onchange="filtrarPedidos('entrega',this.value)">${opcoesFiltro([['','Entrega'],['atrasada','Atrasada'],['hoje','Entrega hoje'],['7d','Próximos 7 dias'],['sem','Sem data']],_fPed.entrega)}</select>
+      <select class="form-select" aria-label="Filtrar por arte" onchange="filtrarPedidos('arte',this.value)">${opcoesFiltro([['','Arte'],['pendente','Arte a resolver'],['Aprovada','Arte aprovada']],_fPed.arte)}</select>
     </div>
     <div class="filtros-resumo" id="ped-lista-resumo" aria-live="polite"></div>
     <div class="kanban" id="ped-kanban" style="display:none"></div>
@@ -3502,6 +3588,9 @@ function abrirFormPedido(editId){
         <input type="date" value="${normalizarData(pd.entrega||'')}" id="ped-entrega" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:12px;border-radius:4px;padding:3px 6px;width:100%">
         <select id="ped-status" style="margin-top:4px;background:rgba(255,255,255,0.2);border:none;color:white;font-size:11px;border-radius:4px;padding:3px 6px;width:100%">
           ${['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option style="color:#021024;background:#FFFFFF" ${pd.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <select id="ped-arte" aria-label="Situação da arte" style="margin-top:4px;background:rgba(255,255,255,0.2);border:none;color:white;font-size:11px;border-radius:4px;padding:3px 6px;width:100%">
+          ${ARTE_STATUS.map(([v,r])=>`<option value="${v}" style="color:#021024;background:#FFFFFF" ${(pd.arte_status||'')===v?'selected':''}>${r}</option>`).join('')}
         </select>
         <div style="font-size:10px;opacity:.8;margin-top:4px;line-height:1.3">📦 O estoque baixa ao confirmar</div>
       </div>
@@ -3677,6 +3766,29 @@ function remItemPed(i){
   calcTotalPed();
 }
 // ── ETAPAS DO PEDIDO ─────────────────────────────────────────
+const ARTE_STATUS=[['','Sem arte para aprovar'],['Pendente','Arte pendente'],['Ajustar','Arte: ajustar'],['Aprovada','Arte aprovada']];
+function arteBadge(p){
+  const a=p.arte_status;
+  if(!a) return '';
+  return `<span class="badge ${a==='Aprovada'?'badge-ok':a==='Ajustar'?'badge-danger':'badge-warn'}">🎨 Arte: ${a.toLowerCase()}</span>`;
+}
+function artePendente(p){ return (p.arte_status==='Pendente'||p.arte_status==='Ajustar')&&p.status!=='Entregue'&&p.status!=='Cancelado'; }
+async function mudarArtePedido(id,novo){
+  const pd=getItem(DB.pedidos,id); if(!pd||(pd.arte_status||'')===novo) return;
+  const ant=pd.arte_status||'';
+  pd.arte_status=novo;
+  registrarHistoricoPedido(pd,'Arte alterada',`${ant||'Sem arte'} → ${novo||'Sem arte'}`);
+  await salvarItem('pedidos',pd);
+  toastDesfazer(novo?`${pd.id}: arte ${novo.toLowerCase()}`:`${pd.id}: sem arte para aprovar`,async()=>{
+    pd.arte_status=ant;
+    registrarHistoricoPedido(pd,'Mudança desfeita',`Arte: ${novo||'Sem arte'} → ${ant||'Sem arte'}`);
+    await salvarItem('pedidos',pd);
+    render(currentSection);
+    if(_resumoPedidoId===id) desenharResumoPedido();
+  });
+  render(currentSection);
+  if(_resumoPedidoId===id) desenharResumoPedido();
+}
 const ETAPAS_PEDIDO=['Em aberto','Confirmado','Em produção','Pronto','Entregue'];
 // Orçamento ("Em aberto") e Cancelado não consomem estoque; as demais etapas sim.
 function statusBaixaEstoque(status){ return ETAPAS_PEDIDO.indexOf(status)>=1; }
@@ -3701,6 +3813,9 @@ function avisosMudancaStatus(pd,anterior){
       avisos.push(`Voltar de "${de}" para "${para}"?`+(para==='Em aberto'&&anterior.estoque_baixado?' O estoque usado será devolvido.':''));
     } else if(iPara>=0&&iPara-Math.max(iDe,de?iDe:1)>1){
       avisos.push(`Pular direto para "${para}"? Ficam para trás: ${ETAPAS_PEDIDO.slice(Math.max(iDe,de?iDe:1)+1,iPara).join(', ')}.`);
+    }
+    if(['Em produção','Pronto','Entregue'].includes(para)&&(pd.arte_status==='Pendente'||pd.arte_status==='Ajustar')){
+      avisos.push(pd.arte_status==='Ajustar'?'A arte deste pedido precisa de ajuste.':'A arte deste pedido ainda não foi aprovada.');
     }
     if(para==='Entregue'){
       const saldo=(+pd.total||0)-(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0);
@@ -3788,6 +3903,7 @@ async function salvarPedidoOrc(editId){
   pd.data=document.getElementById('ped-data')?.value||pd.data;
   pd.entrega=document.getElementById('ped-entrega')?.value||'';
   pd.status=document.getElementById('ped-status')?.value||'Em aberto';
+  pd.arte_status=document.getElementById('ped-arte')?.value||'';
   pd.forma=document.getElementById('ped-forma')?.value||'PIX';
   pd.obs=document.getElementById('ped-obs')?.value||'';
   pd.desconto_geral_tipo=document.getElementById('ped-descgeral-tipo')?.value||'nenhum';
@@ -3841,6 +3957,7 @@ async function salvarPedidoOrc(editId){
     registrarHistoricoPedido(pd,'Pedido criado',`Etapa: ${pd.status} · Total: ${R$(pd.total)}`);
   } else {
     if(pedidoAnterior.status!==pd.status) registrarHistoricoPedido(pd,'Etapa alterada',`${pedidoAnterior.status||'—'} → ${pd.status}`);
+    if((pedidoAnterior.arte_status||'')!==pd.arte_status) registrarHistoricoPedido(pd,'Arte alterada',`${pedidoAnterior.arte_status||'Sem arte'} → ${pd.arte_status||'Sem arte'}`);
     if(itensMudaram) registrarHistoricoPedido(pd,'Itens alterados');
     if(Math.abs((+pedidoAnterior.total||0)-(+pd.total||0))>0.004) registrarHistoricoPedido(pd,'Total alterado',`${R$(pedidoAnterior.total)} → ${R$(pd.total)}`);
     if((pedidoAnterior.entrega||'')!==(pd.entrega||'')) registrarHistoricoPedido(pd,'Entrega alterada',`${pedidoAnterior.entrega?formatarDataBR(normalizarData(pedidoAnterior.entrega)):'sem data'} → ${pd.entrega?formatarDataBR(normalizarData(pd.entrega)):'sem data'}`);
@@ -4456,7 +4573,7 @@ async function salvarAR(id=null){
   const obj={id:id||nextId(DB.areceber,'CR'),data:document.getElementById('f-ard').value,cliente:document.getElementById('f-arcli').value,descricao:document.getElementById('f-ardesc').value.trim(),valor:parseFloat(document.getElementById('f-arval').value)||0,venc:document.getElementById('f-arvenc').value,recebido:parseFloat(document.getElementById('f-arrec').value)||0,status:document.getElementById('f-arst').value,criado_em:id?getItem(DB.areceber,id)?.criado_em:new Date().toISOString()};
   await salvarItem('areceber',obj);toast(id?'Atualizado!':'Lançado!');closeModal();render('areceber');
 }
-async function marcarRecAR(id){const x=getItem(DB.areceber,id);x.recebido=x.valor;x.status='Pago';await salvarItem('areceber',x);toast('Marcado como recebido!');render('areceber');}
+async function marcarRecAR(id){const x=getItem(DB.areceber,id);const ant={recebido:x.recebido,status:x.status};x.recebido=x.valor;x.status='Pago';await salvarItem('areceber',x);toastDesfazer('Marcado como recebido!',async()=>{Object.assign(x,ant);await salvarItem('areceber',x);toast('Recebimento desfeito');render(currentSection);});render('areceber');}
 
 // ═══════════════════════════════════════════════════════════════
 // A PAGAR
@@ -4497,7 +4614,7 @@ async function salvarAP(id=null){
   const obj={id:id||nextId(DB.apagar,'CP'),data:document.getElementById('f-apd').value,credor:document.getElementById('f-apcred').value.trim(),descricao:document.getElementById('f-apdesc').value.trim(),valor:parseFloat(document.getElementById('f-apval').value)||0,venc:document.getElementById('f-apvenc').value,pago:parseFloat(document.getElementById('f-appago').value)||0,status:document.getElementById('f-apst').value,criado_em:id?getItem(DB.apagar,id)?.criado_em:new Date().toISOString()};
   await salvarItem('apagar',obj);toast(id?'Atualizado!':'Lançado!');closeModal();render('apagar');
 }
-async function marcarPagoAP(id){const x=getItem(DB.apagar,id);x.pago=x.valor;x.status='Pago';await salvarItem('apagar',x);toast('Marcado como pago!');render('apagar');}
+async function marcarPagoAP(id){const x=getItem(DB.apagar,id);const ant={pago:x.pago,status:x.status};x.pago=x.valor;x.status='Pago';await salvarItem('apagar',x);toastDesfazer('Marcado como pago!',async()=>{Object.assign(x,ant);await salvarItem('apagar',x);toast('Pagamento desfeito');render(currentSection);});render('apagar');}
 
 // ═══════════════════════════════════════════════════════════════
 // CUSTOS FIXOS
