@@ -2999,7 +2999,7 @@ function abrirFormPedido(editId){
         <div style="font-size:10px;opacity:.7;margin-top:4px">Entrega</div>
         <input type="date" value="${normalizarData(pd.entrega||'')}" id="ped-entrega" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:12px;border-radius:4px;padding:3px 6px;width:100%">
         <select id="ped-status" style="margin-top:4px;background:rgba(255,255,255,0.2);border:none;color:white;font-size:11px;border-radius:4px;padding:3px 6px;width:100%">
-          ${['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option ${pd.status===s?'selected':''}>${s}</option>`).join('')}
+          ${['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option style="color:#282420;background:#FFFFFF" ${pd.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </div>
     </div>
