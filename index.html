@@ -79,7 +79,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;backgrou
 .nav-icon{font-size:15px;width:20px;text-align:center}
 #main{margin-left:230px;min-height:100vh}
 #topbar{background:var(--cinza-ultra);padding:0 16px;padding-top:env(safe-area-inset-top,0px);height:calc(56px + env(safe-area-inset-top,0px));display:flex;align-items:center;justify-content:space-between;box-shadow:var(--sombra-sm);position:sticky;top:0;z-index:50}
-#page-title{font-size:16px;font-weight:700;color:var(--txt-azul);letter-spacing:-.1px}
+#page-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:700;color:var(--txt-azul);letter-spacing:-.1px}
 #topbar-right{display:flex;gap:8px;align-items:center}
 #menu-toggle{display:flex;align-items:center;justify-content:center;background:none;border:none;font-size:22px;cursor:pointer;color:var(--txt-azul);padding:8px;min-width:44px;min-height:44px;border-radius:8px}
 #menu-toggle:hover{background:var(--cinza-claro)}
@@ -231,25 +231,51 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
 }
+@media(max-width:480px){
+  #topbar{padding-left:10px;padding-right:10px;gap:6px}
+  #topbar-right{gap:4px;flex-shrink:0}
+  #topbar-right .btn{padding:4px 7px;min-width:34px}
+  #page-title{font-size:15px}
+  #sync-badge{display:inline-block;flex:none;width:25px;overflow:hidden;padding:3px 4px;white-space:nowrap;font-size:12px}
+}
+/* FILTROS DE LISTA E CARDS CLICÁVEIS */
+.filtros-lista{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid var(--cinza-claro)}
+.filtros-lista .search-input{flex:2 1 220px;font-size:13px}
+.filtros-lista .form-select{flex:1 1 135px;width:auto;min-width:0;font-size:13px}
+.filtros-mais:empty{display:none}
+.filtros-resumo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:8px 18px;font-size:12px;color:var(--cinza-med);min-height:36px}
+.filtros-mais{padding:12px 18px;text-align:center}
+.kpi-click{cursor:pointer}
+.kpi-click:focus-visible{outline:2px solid var(--azul-claro);outline-offset:2px}
+.kpi-click .kpi-label::after{content:' ›';font-weight:800}
+.lista-kpi-item{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:10px 4px;border-bottom:1px solid var(--cinza-claro);font-size:13px}
+.lista-kpi-item[onclick]{cursor:pointer}
+.lista-kpi-item[onclick]:hover{background:var(--azul-tint)}
+@media(max-width:768px){
+  .filtros-lista{padding:12px}
+  .filtros-lista .search-input{flex-basis:100%}
+  .filtros-lista .form-select{flex-basis:calc(50% - 4px)}
+  .filtros-resumo{padding:8px 12px}
+}
 /* LISTA DE PEDIDOS — tabela no notebook, cartões no tablet e no celular */
 @media(max-width:1180px){
-  .tbl-pedidos thead{display:none}
-  .tbl-pedidos{display:block}
-  .tbl-pedidos tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px;padding:12px}
-  .tbl-pedidos tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 10px;background:var(--bg-input);border:1px solid var(--cinza-claro);border-radius:12px;padding:13px}
-  .tbl-pedidos tbody td{display:block;padding:0}
-  .tbl-pedidos tbody td[colspan]{grid-column:1/-1}
-  .tbl-pedidos td[data-label]::before{content:attr(data-label);display:block;font-size:10px;font-weight:600;color:var(--cinza-med);margin-bottom:1px}
-  .tbl-pedidos .pc-id{grid-column:span 2;order:1;font-size:14px}
-  .tbl-pedidos .pc-status{order:2;text-align:right}
-  .tbl-pedidos .pc-status::before{display:none!important}
-  .tbl-pedidos .pc-cliente{grid-column:1/-1;order:3;font-size:14px}
-  .tbl-pedidos .pc-cliente::before,.tbl-pedidos .pc-itens::before{display:none!important}
-  .tbl-pedidos .pc-itens{grid-column:1/-1;order:4}
-  .tbl-pedidos .pc-total{order:5}.tbl-pedidos .pc-custo{order:6}.tbl-pedidos .pc-lucro{order:7}
-  .tbl-pedidos .pc-pgto{order:8}.tbl-pedidos .pc-data{order:9}.tbl-pedidos .pc-est{order:10;text-align:left!important}
-  .tbl-pedidos .td-actions{grid-column:1/-1;order:11;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;border-top:1px solid var(--cinza-claro);padding-top:10px}
-  .tbl-pedidos .td-actions .btn{width:100%;min-height:40px;min-width:0;font-size:14px;padding:4px 0;justify-content:center}
+  .tbl-cards thead{display:none}
+  .tbl-cards{display:block}
+  .tbl-cards tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px;padding:12px}
+  .tbl-cards tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 10px;background:var(--bg-input);border:1px solid var(--cinza-claro);border-radius:12px;padding:13px}
+  .tbl-cards tbody td{display:block;padding:0}
+  .tbl-cards tbody td[colspan]{grid-column:1/-1}
+  .tbl-cards td[data-label]::before{content:attr(data-label);display:block;font-size:10px;font-weight:600;color:var(--cinza-med);margin-bottom:1px}
+  .tbl-cards .pc-id{grid-column:span 2;order:1;font-size:14px}
+  .tbl-cards .pc-status{order:2;text-align:right}
+  .tbl-cards .pc-status::before{display:none!important}
+  .tbl-cards .pc-cliente{grid-column:1/-1;order:3;font-size:14px}
+  .tbl-cards .pc-cliente::before,.tbl-cards .pc-itens::before{display:none!important}
+  .tbl-cards .pc-itens{grid-column:1/-1;order:4}
+  .tbl-cards .pc-total{order:5}.tbl-cards .pc-custo{order:6}.tbl-cards .pc-lucro{order:7}
+  .tbl-cards .pc-pgto{order:8}.tbl-cards .pc-data{order:9}.tbl-cards .pc-est{order:10;text-align:left!important}
+  .tbl-cards .td-actions{grid-column:1/-1;order:11;display:flex;gap:6px;border-top:1px solid var(--cinza-claro);padding-top:10px}
+  .tbl-cards .td-actions .btn{flex:1;min-height:40px;min-width:0;font-size:14px;padding:4px 0;justify-content:center}
 }
 /* FORMULÁRIO DO PEDIDO — no celular cada item vira um bloco, sem rolagem lateral */
 @media(max-width:640px){
@@ -449,7 +475,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
 
   <div id="main">
     <div id="topbar">
-      <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
         <button id="menu-toggle" onclick="toggleSidebar()" title="Mostrar/esconder menu">☰</button>
         <span id="page-title">Dashboard</span>
       </div>
@@ -1434,7 +1460,7 @@ function render(sec) {
   document.getElementById('page-title').textContent = TITLES[sec] || sec;
   const fn = SECTIONS[sec];
   const el = document.getElementById('content');
-  if (fn) el.innerHTML = fn();
+  if (fn) { el.innerHTML = fn(); if(sec==='pedidos') atualizarListaPedidos(); if(sec==='areceber') atualizarListaAR(); }
   else el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚧</div>Em construção</div>`;
 }
 
@@ -1936,6 +1962,54 @@ function abrirDetalheDia(dataStr){
   document.getElementById('modal-save-btn').style.display='none';
 }
 
+// Janelas que explicam os números do Dashboard, usando os mesmos cálculos dos cards
+function modalSomenteLeitura(){
+  document.getElementById('modal-save-btn').style.display='none';
+  document.getElementById('modal-cancel-btn').textContent='Fechar';
+}
+function abrirKpiVendas(modo){
+  let vendas, rotulo;
+  if(modo==='mes'){
+    const agora=new Date();
+    vendas=todasVendasEfetivas().filter(v=>{const d=new Date(normalizarData(v.data)+'T00:00:00');return d.getMonth()===agora.getMonth()&&d.getFullYear()===agora.getFullYear();});
+    rotulo='Mês atual';
+  } else {
+    const per=getPeriodoAtual(_dashPeriodo,_dashCustomIni,_dashCustomFim);
+    vendas=vendasNoPeriodo(per.inicio,per.fim);
+    rotulo=`${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)}`;
+  }
+  const grupos=agruparVendasPorId(vendas).sort((a,b)=>String(normalizarData(b.data)).localeCompare(String(normalizarData(a.data))));
+  const total=vendas.reduce((s,v)=>s+v.valorTotal,0), custo=vendas.reduce((s,v)=>s+v.custoTotal,0);
+  openModal('💰 Vendas que formam este número',
+    `<div style="font-size:12px;color:var(--cinza-med);margin-bottom:10px">${rotulo}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">
+      <div style="background:var(--verde-claro);padding:10px;border-radius:8px"><div style="font-size:11px;color:var(--txt-verde)">Receita</div><div id="kpi-total" style="font-size:18px;font-weight:900;color:var(--txt-verde)">${R$(total)}</div></div>
+      <div style="background:var(--azul-tint);padding:10px;border-radius:8px"><div style="font-size:11px;color:var(--txt-azul)">Vendas</div><div style="font-size:18px;font-weight:900;color:var(--txt-azul)">${grupos.length}</div></div>
+      <div style="background:var(--roxo-claro);padding:10px;border-radius:8px"><div style="font-size:11px;color:var(--txt-roxo)">Ticket médio</div><div style="font-size:18px;font-weight:900;color:var(--txt-roxo)">${R$(grupos.length?total/grupos.length:0)}</div></div>
+      <div style="background:var(--roxo-claro);padding:10px;border-radius:8px"><div style="font-size:11px;color:var(--txt-roxo)">Lucro bruto</div><div style="font-size:18px;font-weight:900;color:var(--txt-roxo)">${R$(total-custo)}</div></div>
+    </div>
+    ${grupos.length===0?'<p style="text-align:center;color:var(--cinza-med);padding:20px">Nenhuma venda neste período.</p>':grupos.map(g=>{
+      const acao=g.origem==='consignado'?`closeModal();verHistoricoVisitas('${g.id.split(':')[0]}')`:g.origem==='pedido'?`closeModal();verPedidoOrc('${g.id}')`:g.origem==='venda'?`closeModal();editarVenda('${g.id}')`:'';
+      return `<div class="lista-kpi-item" ${acao?`onclick="${acao}"`:''}>
+        <div style="min-width:0"><strong>${nomeVenda(g)}</strong><div style="font-size:11px;color:var(--cinza-med)">${formatarDataBR(normalizarData(g.data))} · ${g.origem==='pedido'?'Pedido':g.origem==='consignado'?'Consignado':'Venda'} · ${g.itens.length} ${g.itens.length===1?'item':'itens'}</div></div>
+        <div style="font-weight:800;color:var(--txt-verde)">${R$(g.valorTotal)}</div>
+      </div>`;}).join('')}`,
+    ()=>closeModal(),'Fechar');
+  modalSomenteLeitura();
+}
+function abrirKpiLucro(){
+  const per=getPeriodoAtual(_dashPeriodo,_dashCustomIni,_dashCustomFim);
+  const vendas=vendasNoPeriodo(per.inicio,per.fim);
+  const receita=vendas.reduce((s,v)=>s+v.valorTotal,0), custo=vendas.reduce((s,v)=>s+v.custoTotal,0), fixos=custosFixosNoPeriodo(per.inicio,per.fim);
+  const linha=(r,v,forte)=>`<div class="lista-kpi-item" style="${forte?'font-weight:800;font-size:15px':''}"><span>${r}</span><span>${v}</span></div>`;
+  openModal('📈 Como o lucro é calculado',
+    `<div style="font-size:12px;color:var(--cinza-med);margin-bottom:8px">${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)}</div>
+    ${linha('Receita',R$(receita))}${linha('− Custo dos produtos',R$(custo))}${linha('− Custos fixos do período',R$(fixos))}${linha('= Lucro líquido',R$(receita-custo-fixos),true)}
+    <div style="margin-top:14px"><button class="btn btn-outline" style="width:100%" onclick="closeModal();abrirKpiVendas('periodo')">Ver as vendas do período</button></div>`,
+    ()=>closeModal(),'Fechar');
+  modalSomenteLeitura();
+}
+
 SECTIONS.dashboard = () => {
   const efetivas = todasVendasEfetivas();
   const per=getPeriodoAtual(_dashPeriodo,_dashCustomIni,_dashCustomFim);
@@ -1999,16 +2073,18 @@ SECTIONS.dashboard = () => {
     📅 ${per.label} — ${formatarDataBR(per.inicio)} até ${formatarDataBR(per.fim)}
   </div>
   <div class="kpi-grid">
-    <div class="kpi-card verde"><div class="kpi-label">Receita</div><div class="kpi-value">${R$(receitaPeriodo)}</div><div class="kpi-sub">${vendasPeriodo.length} venda${vendasPeriodo.length!==1?'s':''}${variacaoReceita!==null?` · <span style="color:${variacaoReceita>=0?'var(--verde-med)':'var(--vermelho)'};font-weight:700">${variacaoReceita>=0?'↑':'↓'} ${Math.abs(variacaoReceita).toFixed(0)}%</span> vs mês ant.`:''}</div></div>
-    <div class="kpi-card ${lucroLiquidoPeriodo>=0?'':'vermelho'}"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${lucroLiquidoPeriodo>=0?'text-verde':'text-vermelho'}">${R$(lucroLiquidoPeriodo)}</div><div class="kpi-sub">Receita − CPV − Custos Fixos</div></div>
-    <div class="kpi-card laranja"><div class="kpi-label">Receita Mês (atual)</div><div class="kpi-value">${R$(vendaMes)}</div><div class="kpi-sub">${pctMeta}% da meta</div></div>
-    <div class="kpi-card roxo"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticketPeriodo)}</div></div>
-    <div class="kpi-card ${aReceber>0?'amarelo':'verde'}"><div class="kpi-label">A Receber</div><div class="kpi-value">${R$(aReceber)}</div></div>
-    <div class="kpi-card ${aPagar>0?'vermelho':'verde'}"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
+    <div class="kpi-card verde kpi-click" role="button" tabindex="0" onclick="abrirKpiVendas('periodo')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Receita</div><div class="kpi-value">${R$(receitaPeriodo)}</div><div class="kpi-sub">${vendasPeriodo.length} venda${vendasPeriodo.length!==1?'s':''}${variacaoReceita!==null?` · <span style="color:${variacaoReceita>=0?'var(--verde-med)':'var(--vermelho)'};font-weight:700">${variacaoReceita>=0?'↑':'↓'} ${Math.abs(variacaoReceita).toFixed(0)}%</span> vs mês ant.`:''}</div></div>
+    <div class="kpi-card ${lucroLiquidoPeriodo>=0?'':'vermelho'} kpi-click" role="button" tabindex="0" onclick="abrirKpiLucro()" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${lucroLiquidoPeriodo>=0?'text-verde':'text-vermelho'}">${R$(lucroLiquidoPeriodo)}</div><div class="kpi-sub">Receita − CPV − Custos Fixos</div></div>
+    <div class="kpi-card laranja kpi-click" role="button" tabindex="0" onclick="abrirKpiVendas('mes')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Receita Mês (atual)</div><div class="kpi-value">${R$(vendaMes)}</div><div class="kpi-sub">${pctMeta}% da meta</div></div>
+    <div class="kpi-card roxo kpi-click" role="button" tabindex="0" onclick="abrirKpiVendas('periodo')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticketPeriodo)}</div></div>
+    <div class="kpi-card ${aReceber>0?'amarelo':'verde'} kpi-click" role="button" tabindex="0" onclick="abrirARFiltrado('Em aberto')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Receber</div><div class="kpi-value">${R$(aReceber)}</div></div>
+    <div class="kpi-card ${aPagar>0?'vermelho':'verde'} kpi-click" role="button" tabindex="0" onclick="goTo('apagar')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
   </div>
 
   ${criticosMP>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('materias')">⚠️ ${criticosMP} matéria(s)-prima em estoque crítico</div>`:''}
-  ${arVencidas>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="goTo('areceber')">⚠️ ${arVencidas} conta(s) a receber vencida(s)</div>`:''}
+  ${arVencidas>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="abrirARFiltrado('vencida')">⚠️ ${arVencidas} conta(s) a receber vencida(s)</div>`:''}
+
+  ${(()=>{const n=DB.pedidos.filter(p=>pedidoAtrasado(p)).length;return n>0?`<div style="background:var(--vermelho-claro);color:var(--txt-vermelho);border-left:4px solid var(--vermelho);padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:16px;cursor:pointer" onclick="abrirPedidosFiltrados({entrega:'atrasada'})">🚚 ${n} ${n===1?'pedido com entrega atrasada':'pedidos com entrega atrasada'} — ver lista</div>`:'';})()}
 
   ${DB.pedidos.some(p=>p.entrega && p.status!=='Entregue' && p.status!=='Cancelado')?`<div class="panel">
     <div class="panel-header">
@@ -2901,23 +2977,45 @@ function pedidoCalc(pd){
   return {subtotal,descItens,somaItens,descGeral,totalAcrescimos,total};
 }
 
-SECTIONS.pedidos = () => {
-  const lista=DB.pedidos;
-  return `
-  <div class="kpi-grid">
-    <div class="kpi-card verde"><div class="kpi-label">Total Pedidos</div><div class="kpi-value">${lista.length}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Valor Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+(+p.total||0),0))}</div></div>
-    <div class="kpi-card laranja"><div class="kpi-label">Custo Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+custoPedidoEstimado(p),0))}</div></div>
-    <div class="kpi-card roxo"><div class="kpi-label">🔬 Lucro Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+lucroPedidoEstimado(p),0))}</div></div>
-    <div class="kpi-card amarelo"><div class="kpi-label">Saldo a Receber</div><div class="kpi-value">${R$(lista.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0))}</div></div>
-  </div>
-  <div class="panel">
-    <div class="panel-header"><span class="panel-title">📋 Pedidos & Orçamentos</span>
-      <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button></div>
-    <div class="tbl-wrap"><table class="tbl-pedidos">
-      <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Custo</th><th>Lucro</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
-      <tbody>${lista.length===0?`<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido.</td></tr>`:
-      lista.slice().reverse().map(p=>{const custoP=custoPedidoEstimado(p);const lucroP=lucroPedidoEstimado(p);return`<tr>
+// Data de hoje no fuso de quem está usando (toISOString usa UTC e vira o dia à noite em Manaus)
+function hojeLocalStr(dias=0){
+  const d=new Date(); d.setDate(d.getDate()+dias);
+  return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
+function textoBusca(v){ return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+const FILTRO_PED_VAZIO={q:'',etapa:'',pgto:'',entrega:''};
+let _fPed={...FILTRO_PED_VAZIO}, _fPedLimite=50;
+function pedidoAtrasado(p,hoje=hojeLocalStr()){
+  return !!p.entrega && p.status!=='Entregue' && p.status!=='Cancelado' && normalizarData(p.entrega)<hoje;
+}
+function pedidoPassaFiltro(p,f){
+  const hoje=hojeLocalStr();
+  if(f.etapa==='andamento'){ if(!['Confirmado','Em produção','Pronto'].includes(p.status)) return false; }
+  else if(f.etapa && p.status!==f.etapa) return false;
+  if(f.pgto){
+    const total=+p.total||0, pago=(p.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0), saldo=total-pago;
+    if(f.pgto==='aberto'&&!(saldo>0.004)) return false;
+    if(f.pgto==='pendente'&&!(saldo>0.004&&pago<=0.004)) return false;
+    if(f.pgto==='parcial'&&!(saldo>0.004&&pago>0.004)) return false;
+    if(f.pgto==='pago'&&!(total>0&&saldo<=0.004)) return false;
+  }
+  if(f.entrega){
+    const e=p.entrega?normalizarData(p.entrega):'', ativo=p.status!=='Entregue'&&p.status!=='Cancelado';
+    if(f.entrega==='atrasada'&&!pedidoAtrasado(p,hoje)) return false;
+    if(f.entrega==='hoje'&&!(ativo&&e===hoje)) return false;
+    if(f.entrega==='7d'&&!(ativo&&e&&e>=hoje&&e<=hojeLocalStr(7))) return false;
+    if(f.entrega==='sem'&&!(ativo&&!e)) return false;
+  }
+  if(f.q){
+    const cli=getCli(p.cliente);
+    const alvo=textoBusca([p.id,nomeVenda(p),p.telefone,cli?.telefone,cli?.whatsapp,p.obs,String(resumoItensPedido(p)).replace(/<[^>]*>/g,' ')].join(' '));
+    if(!textoBusca(f.q).split(/\s+/).filter(Boolean).every(q=>alvo.includes(q))) return false;
+  }
+  return true;
+}
+function pedidoLinhaHtml(p){
+  const custoP=custoPedidoEstimado(p);const lucroP=lucroPedidoEstimado(p);
+  return`<tr>
         <td class="fw-bold text-azul pc-id">${p.id}</td><td class="pc-data" data-label="Data">${p.data||'—'}</td>
         <td class="fw-bold pc-cliente" data-label="Cliente">${nomeVenda(p)}</td>
         <td class="pc-itens" data-label="Itens" style="font-size:12px">${resumoItensPedido(p)}</td>
@@ -2935,9 +3033,50 @@ SECTIONS.pedidos = () => {
           <button class="btn btn-success btn-xs" onclick="wppPedido('${p.id}')" title="WhatsApp rápido">💬</button>
           <button class="btn btn-danger btn-xs" onclick="excluirItem('pedidos','${p.id}')">🗑️</button>
         </td>
-      </tr>`;}).join('')}
-      </tbody>
+      </tr>`;
+}
+function atualizarListaPedidos(){
+  const corpo=document.getElementById('ped-lista-corpo');
+  if(!corpo) return;
+  const ativos=Object.values(_fPed).some(Boolean);
+  const achados=DB.pedidos.filter(p=>pedidoPassaFiltro(p,_fPed)).reverse();
+  corpo.innerHTML=achados.length===0
+    ?`<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--cinza-med)">${DB.pedidos.length===0?'Nenhum pedido.':'Nenhum pedido com esses filtros.'}</td></tr>`
+    :achados.slice(0,_fPedLimite).map(pedidoLinhaHtml).join('');
+  document.getElementById('ped-lista-resumo').innerHTML=`<span><strong>${achados.length}</strong> ${achados.length===1?'pedido':'pedidos'} · ${R$(achados.reduce((s,p)=>s+(+p.total||0),0))}</span>${ativos?'<button class="btn btn-outline btn-xs" onclick="limparFiltrosPedidos()">✕ Limpar filtros</button>':''}`;
+  const resto=achados.length-_fPedLimite;
+  document.getElementById('ped-lista-mais').innerHTML=resto>0?`<button class="btn btn-outline" onclick="_fPedLimite+=50;atualizarListaPedidos()">Mostrar mais (${resto} restantes)</button>`:'';
+}
+function filtrarPedidos(campo,valor){ _fPed[campo]=valor; _fPedLimite=50; atualizarListaPedidos(); }
+function limparFiltrosPedidos(){ _fPed={...FILTRO_PED_VAZIO}; _fPedLimite=50; render('pedidos'); }
+function abrirPedidosFiltrados(f){ _fPed={...FILTRO_PED_VAZIO,...f}; _fPedLimite=50; goTo('pedidos'); }
+function opcoesFiltro(opcoes,atual){ return opcoes.map(([v,r])=>`<option value="${v}" ${atual===v?'selected':''}>${r}</option>`).join(''); }
+
+SECTIONS.pedidos = () => {
+  const lista=DB.pedidos;
+  return `
+  <div class="kpi-grid">
+    <div class="kpi-card verde"><div class="kpi-label">Total Pedidos</div><div class="kpi-value">${lista.length}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Valor Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+(+p.total||0),0))}</div></div>
+    <div class="kpi-card laranja"><div class="kpi-label">Custo Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+custoPedidoEstimado(p),0))}</div></div>
+    <div class="kpi-card roxo"><div class="kpi-label">🔬 Lucro Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+lucroPedidoEstimado(p),0))}</div></div>
+    <div class="kpi-card amarelo kpi-click" role="button" tabindex="0" onclick="abrirPedidosFiltrados({pgto:'aberto'})" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Saldo a Receber</div><div class="kpi-value">${R$(lista.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0))}</div></div>
+  </div>
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">📋 Pedidos & Orçamentos</span>
+      <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button></div>
+    <div class="filtros-lista">
+      <input class="search-input" id="ped-busca" type="search" placeholder="🔍 Nº, cliente, telefone ou produto..." aria-label="Buscar pedidos" value="${String(_fPed.q).replace(/"/g,'&quot;')}" oninput="filtrarPedidos('q',this.value)">
+      <select class="form-select" aria-label="Filtrar por etapa" onchange="filtrarPedidos('etapa',this.value)">${opcoesFiltro([['','Etapa'],['andamento','Em andamento'],...['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>[s,s])],_fPed.etapa)}</select>
+      <select class="form-select" aria-label="Filtrar por pagamento" onchange="filtrarPedidos('pgto',this.value)">${opcoesFiltro([['','Pagamento'],['aberto','Com saldo a receber'],['pendente','Nada pago'],['parcial','Pago em parte'],['pago','Pago']],_fPed.pgto)}</select>
+      <select class="form-select" aria-label="Filtrar por entrega" onchange="filtrarPedidos('entrega',this.value)">${opcoesFiltro([['','Entrega'],['atrasada','Atrasada'],['hoje','Entrega hoje'],['7d','Próximos 7 dias'],['sem','Sem data']],_fPed.entrega)}</select>
+    </div>
+    <div class="filtros-resumo" id="ped-lista-resumo" aria-live="polite"></div>
+    <div class="tbl-wrap"><table class="tbl-cards">
+      <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Custo</th><th>Lucro</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
+      <tbody id="ped-lista-corpo"></tbody>
     </table></div>
+    <div class="filtros-mais" id="ped-lista-mais"></div>
   </div>`;
 };
 
@@ -3870,27 +4009,57 @@ async function salvarProd(id=null){
 // ═══════════════════════════════════════════════════════════════
 // A RECEBER
 // ═══════════════════════════════════════════════════════════════
-SECTIONS.areceber = () => {
-  const hojeStr=new Date().toISOString().slice(0,10);
-  const isVencida=x=>x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeStr;
-  return`
+const FILTRO_AR_VAZIO={q:'',status:''};
+let _fAR={...FILTRO_AR_VAZIO};
+function contaARVencida(x){ return !!x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeLocalStr(); }
+function arPassaFiltro(x,f){
+  if(f.status==='vencida'){ if(!contaARVencida(x)) return false; }
+  else if(f.status && x.status!==f.status) return false;
+  if(f.q){
+    const alvo=textoBusca([x.id,nomeCli(x.cliente),x.descricao].join(' '));
+    if(!textoBusca(f.q).split(/\s+/).filter(Boolean).every(q=>alvo.includes(q))) return false;
+  }
+  return true;
+}
+function arLinhaHtml(x){
+  const vencida=contaARVencida(x), saldo=(+x.valor||0)-(+x.recebido||0);
+  return`<tr ${vencida?'style="background:var(--vermelho-claro)"':''}>
+        <td class="fw-bold text-azul pc-id">${x.id}</td><td class="pc-data" data-label="Data">${x.data||'—'}</td>
+        <td class="fw-bold pc-cliente" data-label="Cliente">${nomeCli(x.cliente)}</td><td class="pc-itens" data-label="Descrição">${x.descricao||'—'}</td>
+        <td class="fw-bold pc-total" data-label="Valor">${R$(x.valor)}</td><td class="text-verde pc-custo" data-label="Recebido">${R$(x.recebido)}</td>
+        <td class="${saldo>0?'text-vermelho':'text-verde'} fw-bold pc-lucro" data-label="Saldo">${R$(saldo)}</td>
+        <td class="pc-status" data-label="Status">${vencida?'<span class="badge badge-danger">⚠️ Vencida</span>':statusBadge(x.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn-success btn-xs" onclick="marcarRecAR('${x.id}')" title="Marcar recebido" aria-label="Marcar recebido">✅</button>
+          <button class="btn btn-primary btn-xs" onclick="editarAR('${x.id}')" title="Editar" aria-label="Editar">✏️</button>
+          <button class="btn btn-danger btn-xs" onclick="excluirItem('areceber','${x.id}')" title="Excluir" aria-label="Excluir">🗑️</button>
+        </td>
+      </tr>`;
+}
+function atualizarListaAR(){
+  const corpo=document.getElementById('ar-lista-corpo');
+  if(!corpo) return;
+  const ativos=Object.values(_fAR).some(Boolean);
+  const achados=DB.areceber.filter(x=>arPassaFiltro(x,_fAR)).reverse();
+  corpo.innerHTML=achados.length===0
+    ?`<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--cinza-med)">${DB.areceber.length===0?'Nenhum lançamento.':'Nenhum lançamento com esses filtros.'}</td></tr>`
+    :achados.map(arLinhaHtml).join('');
+  document.getElementById('ar-lista-resumo').innerHTML=`<span><strong>${achados.length}</strong> ${achados.length===1?'lançamento':'lançamentos'} · Valor ${R$(achados.reduce((s,x)=>s+(+x.valor||0),0))} · Saldo ${R$(achados.reduce((s,x)=>s+(+x.valor||0)-(+x.recebido||0),0))}</span>${ativos?'<button class="btn btn-outline btn-xs" onclick="limparFiltrosAR()">✕ Limpar filtros</button>':''}`;
+}
+function filtrarAR(campo,valor){ _fAR[campo]=valor; atualizarListaAR(); }
+function limparFiltrosAR(){ _fAR={...FILTRO_AR_VAZIO}; render('areceber'); }
+function abrirARFiltrado(status){ _fAR={...FILTRO_AR_VAZIO,status}; goTo('areceber'); }
+SECTIONS.areceber = () => { return `
   <div class="panel">
     <div class="panel-header"><span class="panel-title">📥 A Receber</span><button class="btn btn-success" onclick="novoAR()">+ Novo</button></div>
-    <div class="tbl-wrap"><table>
+    <div class="filtros-lista">
+      <input class="search-input" type="search" placeholder="🔍 Nº, cliente ou descrição..." aria-label="Buscar lançamentos" value="${String(_fAR.q).replace(/"/g,'&quot;')}" oninput="filtrarAR('q',this.value)">
+      <select class="form-select" aria-label="Filtrar por status" onchange="filtrarAR('status',this.value)">${opcoesFiltro([['','Status'],['vencida','Vencidas'],['Em aberto','Em aberto'],['Parcial','Parcial'],['Atrasado','Atrasado'],['Pago','Pago']],_fAR.status)}</select>
+    </div>
+    <div class="filtros-resumo" id="ar-lista-resumo" aria-live="polite"></div>
+    <div class="tbl-wrap"><table class="tbl-cards">
       <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Descrição</th><th>Valor</th><th>Recebido</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody>${DB.areceber.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum lançamento.</td></tr>`:
-      DB.areceber.slice().reverse().map(x=>{const vencida=isVencida(x);return`<tr ${vencida?'style="background:var(--vermelho-claro)"':''}>
-        <td class="fw-bold text-azul">${x.id}</td><td>${x.data||'—'}</td>
-        <td>${nomeCli(x.cliente)}</td><td>${x.descricao||'—'}</td>
-        <td class="fw-bold">${R$(x.valor)}</td><td class="text-verde">${R$(x.recebido)}</td>
-        <td class="${(+x.valor||0)-(+x.recebido||0)>0?'text-vermelho':'text-verde'} fw-bold">${R$((+x.valor||0)-(+x.recebido||0))}</td>
-        <td>${vencida?'<span class="badge badge-danger">⚠️ Vencida</span>':statusBadge(x.status)}</td>
-        <td class="td-actions">
-          <button class="btn btn-success btn-xs" onclick="marcarRecAR('${x.id}')" title="Marcar recebido">✅</button>
-          <button class="btn btn-primary btn-xs" onclick="editarAR('${x.id}')">✏️</button>
-          <button class="btn btn-danger btn-xs" onclick="excluirItem('areceber','${x.id}')">🗑️</button>
-        </td>
-      </tr>`;}).join('')}</tbody>
+      <tbody id="ar-lista-corpo"></tbody>
     </table></div>
   </div>`;
 };
