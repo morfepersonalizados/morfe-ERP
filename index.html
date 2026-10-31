@@ -357,6 +357,7 @@ body.tema-escuro .chip-serie[aria-pressed=true]{background:var(--azul-tint);bord
 .fech-valor{text-align:right;flex:none}
 .fech-valor b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
 @media(max-width:768px){.fech-consulta{margin:12px 12px 0}.fech-item{padding:10px 12px}}
+@media(max-width:1180px){.tot-custos td:empty{display:none}}
 .caixa-dif{border-radius:10px;padding:12px;margin-top:10px;font-weight:700;font-size:14px;transition:background .15s,color .15s}
 @media(max-width:768px){
   .exp-barra{padding:12px 12px 0}
@@ -1644,7 +1645,7 @@ function render(sec) {
   const fn = SECTIONS[sec];
   const el = document.getElementById('content');
   if (_carregandoInicial && fn) { el.innerHTML = telaCarregandoHtml(); return; }
-  if (fn) { el.innerHTML = fn(); if(sec==='pedidos') atualizarListaPedidos(); if(sec==='areceber') atualizarListaAR(); if(sec==='clientes') aplicarFiltroClientes(); if(sec==='dashboard') atualizarExplorador(false); if(sec==='caixa') iniciarTelaCaixa(); }
+  if (fn) { el.innerHTML = fn(); if(sec==='pedidos') atualizarListaPedidos(); if(sec==='areceber') atualizarListaAR(); if(sec==='clientes') aplicarFiltroClientes(); if(sec==='apagar') atualizarListaAP(); if(sec==='dashboard') atualizarExplorador(false); if(sec==='caixa') iniciarTelaCaixa(); }
   else el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚧</div>Em construção</div>`;
 }
 
@@ -1766,14 +1767,18 @@ function excluirItem(tabela, id) {
   const isCompra = tabela === 'compras';
   const cpRef = isCompra ? getItem(DB.compras, id) : null;
   const vaiRestaurarCompra = isCompra && cpRef?.estoque_aplicado;
+  const apRef = tabela === 'apagar' ? getItem(DB.apagar, id) : null;
+  const custoDaConta = apRef?.custo_fixo_id && apRef.mes_ref ? getItem(DB.custos_fixos, apRef.custo_fixo_id) : null;
   openModal('🗑️ Confirmar Exclusão',
     `<p style="font-size:14px;line-height:1.6">Excluir <strong>${id}</strong>?<br>
     ${vaiRestaurarPedido?'<span style="color:var(--verde-med);font-weight:600">📦 O estoque de insumos usado neste pedido será devolvido automaticamente.</span><br>':''}
     ${vaiRestaurarCompra?'<span style="color:var(--txt-vermelho);font-weight:600">📦 O estoque somado por essa compra será RETIRADO de volta automaticamente.</span><br>':''}
+    ${custoDaConta?'<span style="font-weight:600">🔁 Essa cobrança não será criada de novo. As próximas continuam normalmente.</span><br>':''}
     <span style="color:var(--cinza-med);font-size:12px">Esta ação não pode ser desfeita.</span></p>`,
     async () => {
       if(vaiRestaurarPedido){ await reverterBaixaEstoque(pdRef.consumo_insumos||{}); }
       if(vaiRestaurarCompra){ await reverterEntradaEstoque({[cpRef.estoque_aplicado.mpId]:cpRef.estoque_aplicado.qtd}); }
+      if(custoDaConta){ custoDaConta.meses_pulados=[...(Array.isArray(custoDaConta.meses_pulados)?custoDaConta.meses_pulados:[]),apRef.mes_ref]; await salvarItem('custos_fixos',custoDaConta); }
       await excluirItem_db(tabela, id);
       toast('Item excluído!'+(vaiRestaurarPedido?' Estoque devolvido.':vaiRestaurarCompra?' Estoque retirado de volta.':''));
       closeModal();
@@ -1875,7 +1880,7 @@ function metricasFinanceiras(){
     const receb=vs.reduce((ss,v)=>ss+(+v.valor_recebido||0),0);
     return s+Math.max(0,vend-receb);   // saldo da PARCERIA inteira
   },0);
-  const aPagarPendente=DB.apagar.filter(x=>x.status!=='Pago').reduce((s,x)=>s+Math.max(0,(+x.valor||0)-(+x.pago||0)),0);
+  const aPagarPendente=totalAPagar();
   const valorParadoTotal=valorEstoqueInsumos+valorConsignados+aReceberPendente+saldoPedidosPendente+saldoConsignadoPendente;
 
   const ativoCirculante=caixaDisponivel+aReceberPendente+saldoPedidosPendente+saldoConsignadoPendente+valorEstoqueInsumos+valorConsignados;
@@ -1932,14 +1937,14 @@ function diasComEntregas(mes, ano){
 function diasComContasFixas(mes, ano){
   const porDia = {};
   DB.apagar.forEach(x=>{
-    if(!x.custo_fixo_id || !x.venc || x.status==='Pago') return;
+    if(!x.venc || !apagarAberta(x)) return;
     const d = new Date(normalizarData(x.venc)+'T00:00:00');
     if(isNaN(d)) return;
     if(d.getMonth()===mes && d.getFullYear()===ano){
       const dia = d.getDate();
       if(!porDia[dia]) porDia[dia] = {qtd:0, valor:0};
       porDia[dia].qtd++;
-      porDia[dia].valor += (+x.valor||0);
+      porDia[dia].valor += saldoAP(x);
     }
   });
   return porDia;
@@ -2105,10 +2110,10 @@ function abrirDetalheDia(dataStr){
       </div>`;
     })()}
     ${(()=>{
-      const contasDia=DB.apagar.filter(x=>x.custo_fixo_id && normalizarData(x.venc)===dataStr && x.status!=='Pago');
+      const contasDia=DB.apagar.filter(x=>x.venc && normalizarData(x.venc)===dataStr && apagarAberta(x));
       if(contasDia.length===0) return '';
       return `<div style="margin-top:14px">
-        <div style="font-size:12px;font-weight:700;color:var(--txt-vermelho);margin-bottom:6px">📤 Contas fixas vencendo nesse dia</div>
+        <div style="font-size:12px;font-weight:700;color:var(--txt-vermelho);margin-bottom:6px">📤 Contas vencendo nesse dia</div>
         <div class="tbl-wrap"><table>
           <thead><tr><th>Conta</th><th>Valor</th><th>Status</th></tr></thead>
           <tbody>${contasDia.map(x=>`<tr style="cursor:pointer" onclick="closeModal();editarAP('${x.id}')">
@@ -2653,7 +2658,7 @@ function painelHojeHtml(criticosMP){
   const hoje=hojeLocalStr();
   const ativos=DB.pedidos.filter(p=>p.status!=='Entregue'&&p.status!=='Cancelado');
   const cobrancas=dividasAbertas().filter(dividaEstaAtrasada);
-  const contas=DB.apagar.filter(x=>x.status!=='Pago'&&x.venc&&normalizarData(x.venc)<=hojeLocalStr(7));
+  const contasVenc=DB.apagar.filter(x=>situacaoAP(x)==='vencida'), contas=DB.apagar.filter(x=>situacaoAP(x)==='breve');
   const n={
     atrasadas:ativos.filter(p=>pedidoAtrasado(p,hoje)).length,
     hoje:ativos.filter(p=>p.entrega&&normalizarData(p.entrega)===hoje).length,
@@ -2664,12 +2669,13 @@ function painelHojeHtml(criticosMP){
   const itens=[
     [n.atrasadas,n.atrasadas,n.atrasadas===1?'entrega atrasada':'entregas atrasadas',"abrirPedidosFiltrados({entrega:'atrasada'})",true],
     [cobrancas.length,R$(cobrancas.reduce((s,d)=>s+d.saldo,0)),cobrancas.length===1?'1 cobrança atrasada':`${cobrancas.length} cobranças atrasadas`,"_faixaDivida='atrasadas';goTo('areceber')",true],
+    [contasVenc.length,R$(contasVenc.reduce((s,x)=>s+saldoAP(x),0)),contasVenc.length===1?'1 conta vencida':contasVenc.length+' contas vencidas',"abrirAPFiltrado('vencidas')",true],
     [criticosMP,criticosMP,criticosMP===1?'insumo em estoque baixo':'insumos em estoque baixo',"goTo('materias')",true],
     [n.hoje,n.hoje,n.hoje===1?'entrega hoje':'entregas hoje',"abrirPedidosFiltrados({entrega:'hoje'})",false],
     [n.arte,n.arte,n.arte===1?'arte a resolver':'artes a resolver',"abrirPedidosFiltrados({arte:'pendente'})",false],
     [n.produzir,n.produzir,n.produzir===1?'pedido para produzir':'pedidos para produzir',"_pedVisao='quadro';abrirPedidosFiltrados({})",false],
     [n.prontos,n.prontos,n.prontos===1?'pronto para entregar':'prontos para entregar',"abrirPedidosFiltrados({etapa:'Pronto'})",false],
-    [contas.length,contas.length,contas.length===1?'conta vence em 7 dias':'contas vencem em 7 dias',"goTo('apagar')",false],
+    [contas.length,contas.length,contas.length===1?'conta vence em 7 dias':'contas vencem em 7 dias',"abrirAPFiltrado('breve')",false],
   ].filter(i=>i[0]>0);
   return `<div class="panel"><div class="panel-header"><span class="panel-title">☀️ Hoje</span></div>
     ${itens.length?`<div class="hoje-grade">${itens.map(i=>`<button class="hoje-item ${i[4]?'urgente':''}" onclick="${i[3]}"><strong>${i[1]}</strong><span>${i[2]}</span></button>`).join('')}</div>`:'<p style="padding:16px 18px;margin:0;font-size:13px;color:var(--cinza-med)">✅ Nada pendente por aqui.</p>'}
@@ -2690,7 +2696,7 @@ SECTIONS.dashboard = () => {
   const pctMeta = meta ? (vendaMes/meta*100).toFixed(0) : 0;
   const aReceber = DB.areceber.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
   const saldoPedidos = DB.pedidos.reduce((s,p)=>s+saldoPedidoAReceber(p),0);
-  const aPagar = DB.apagar.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
+  const aPagar = totalAPagar();
   const criticosMP = DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0)).length;
   const hojeStrAR = new Date().toISOString().slice(0,10);
   const arVencidas = DB.areceber.filter(x=>x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeStrAR).length;
@@ -2707,7 +2713,7 @@ SECTIONS.dashboard = () => {
   gerarContasFixasDoMes();
   const janelaContasDias = +(DB.config?.aviso_contas_dias || 7);
   const emJanelaContasStr=(()=>{const d=new Date(); d.setDate(d.getDate()+janelaContasDias); return d.toISOString().slice(0,10);})();
-  const proximasContas=DB.apagar.filter(x=>x.custo_fixo_id && x.status!=='Pago' && x.venc
+  const proximasContas=DB.apagar.filter(x=>apagarAberta(x) && x.venc
     && normalizarData(x.venc)<=emJanelaContasStr)
     .sort((a,b)=>normalizarData(a.venc).localeCompare(normalizarData(b.venc)));
   // Quanto mais perto o dia da entrega, mais "chamativa" fica a cor —
@@ -2741,7 +2747,7 @@ SECTIONS.dashboard = () => {
     <div class="kpi-card roxo kpi-click" role="button" tabindex="0" onclick="abrirKpiVendas('periodo')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticketPeriodo)}</div></div>
     <div class="kpi-card ${aReceber>0?'amarelo':'verde'} kpi-click" role="button" tabindex="0" onclick="abrirARFiltrado('Em aberto')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Receber (lançados)</div><div class="kpi-value">${R$(aReceber)}</div><div class="kpi-sub">Lançados à mão</div></div>
     <div class="kpi-card ${saldoPedidos>0?'amarelo':'verde'} kpi-click" role="button" tabindex="0" onclick="abrirPedidosFiltrados({pgto:'receber'})" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Saldo de Pedidos</div><div class="kpi-value">${R$(saldoPedidos)}</div><div class="kpi-sub">A receber de pedidos confirmados</div></div>
-    <div class="kpi-card ${aPagar>0?'vermelho':'verde'} kpi-click" role="button" tabindex="0" onclick="goTo('apagar')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
+    <div class="kpi-card ${aPagar>0?'vermelho':'verde'} kpi-click" role="button" tabindex="0" onclick="abrirAPFiltrado('abertas')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
   </div>
 
   <div class="panel" id="exp-painel">${exploradorEsqueletoHtml()}</div>
@@ -2760,20 +2766,20 @@ SECTIONS.dashboard = () => {
     </div>`;}).join('')}
   </div>`:''}
 
-  ${DB.custos_fixos.some(c=>+c.dia_vencimento>0)?`<div class="panel">
+  ${DB.apagar.some(apagarAberta)?`<div class="panel">
     <div class="panel-header">
-      <span class="panel-title">📤 Contas Fixas a Pagar</span>
+      <span class="panel-title">📤 Contas a Pagar</span>
       <div style="display:flex;gap:5px">
         ${[3,7,14,30].map(d=>`<button class="btn ${janelaContasDias===d?'btn-primary':'btn-outline'} btn-sm" onclick="mudarJanelaContas(${d})">${d}d</button>`).join('')}
       </div>
     </div>
-    ${proximasContas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:20px;font-size:13px">Nenhuma conta fixa vencendo nos próximos ${janelaContasDias} dias.</p>`:
+    ${proximasContas.length===0?`<p style="text-align:center;color:var(--cinza-med);padding:20px;font-size:13px">Nenhuma conta vencendo nos próximos ${janelaContasDias} dias.</p>`:
     `<div class="tbl-wrap"><table>
       <thead><tr><th>Conta</th><th>Valor</th><th>Vencimento</th></tr></thead>
       <tbody>${proximasContas.map(x=>{const r=rotuloUrgencia(x.venc,hojeStrAR);return`
         <tr style="cursor:pointer" onclick="editarAP('${x.id}')" title="Clique pra abrir">
           <td class="fw-bold">${x.credor||x.descricao}</td>
-          <td class="fw-bold text-vermelho">${R$(x.valor)}</td>
+          <td class="fw-bold text-vermelho">${R$(saldoAP(x))}</td>
           <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
         </tr>`;}).join('')}</tbody>
     </table></div>`}
@@ -5074,26 +5080,67 @@ async function marcarRecAR(id){const x=getItem(DB.areceber,id);const ant={recebi
 // ═══════════════════════════════════════════════════════════════
 // A PAGAR
 // ═══════════════════════════════════════════════════════════════
-SECTIONS.apagar = () => `
+let _fAP={q:'',sit:'abertas'};
+function abrirAPFiltrado(sit){ _fAP={q:'',sit}; goTo('apagar'); }
+function apPassaFiltro(x){
+  const s=situacaoAP(x), f=_fAP.sit;
+  if(f==='abertas'&&s==='paga') return false;
+  if(f==='vencidas'&&s!=='vencida') return false;
+  if(f==='breve'&&s!=='breve') return false;
+  if(f==='pagas'&&s!=='paga') return false;
+  if(_fAP.q){ const a=textoBusca([x.id,x.credor,x.descricao].join(' ')); if(!textoBusca(_fAP.q).split(/\s+/).filter(Boolean).every(q=>a.includes(q))) return false; }
+  return true;
+}
+function apLinhaHtml(x){
+  const c=x.custo_fixo_id?getItem(DB.custos_fixos,x.custo_fixo_id):null, aberta=apagarAberta(x);
+  return `<tr>
+    <td class="fw-bold text-azul pc-id">${x.id}</td><td class="pc-data" data-label="Vencimento">${x.venc?formatarDataBR(normalizarData(x.venc)):'—'}</td>
+    <td class="fw-bold pc-cliente" data-label="Conta">${escHtml(x.credor||x.descricao||'—')}</td>
+    <td class="pc-itens" data-label="Descrição">${/^Conta fixa/.test(x.descricao||'')?'':escHtml(x.descricao||'')}${c?' <span class="badge badge-info">🔁 '+FREQ_CUSTO[freqCusto(c)].nome+'</span>':''}</td>
+    <td class="fw-bold pc-total" data-label="Valor">${R$(x.valor)}</td><td class="text-verde pc-custo" data-label="Pago">${R$(x.pago)}</td>
+    <td class="${saldoAP(x)>0&&aberta?'text-vermelho':'text-verde'} fw-bold pc-lucro" data-label="Falta">${R$(aberta?saldoAP(x):0)}</td>
+    <td class="pc-status" data-label="Situação">${badgeSituacaoAP(x)}</td>
+    <td class="td-actions">
+      ${aberta?`<button class="btn btn-success btn-xs" onclick="marcarPagoAP('${x.id}')" title="Marcar paga" aria-label="Marcar paga">✅</button>`:''}
+      <button class="btn btn-primary btn-xs" onclick="editarAP('${x.id}')" title="Editar" aria-label="Editar">✏️</button>
+      <button class="btn btn-danger btn-xs" onclick="excluirItem('apagar','${x.id}')" title="Excluir" aria-label="Excluir">🗑️</button>
+    </td>
+  </tr>`;
+}
+function atualizarListaAP(){
+  const corpo=document.getElementById('ap-lista-corpo'); if(!corpo) return;
+  const achados=DB.apagar.filter(apPassaFiltro);
+  const v=x=>x.venc?normalizarData(x.venc):'9999';
+  achados.sort((a,b)=>_fAP.sit==='pagas'||_fAP.sit==='todas'?v(b).localeCompare(v(a)):v(a).localeCompare(v(b)));
+  corpo.innerHTML=achados.length?achados.map(apLinhaHtml).join(''):`<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--cinza-med)">${_fAP.sit==='abertas'?'Nenhuma conta em aberto. 🎉':'Nenhuma conta com esse filtro.'}</td></tr>`;
+  document.getElementById('ap-resumo').innerHTML=`<span><strong>${achados.length}</strong> ${achados.length===1?'conta':'contas'} · Falta pagar ${R$(achados.filter(apagarAberta).reduce((s,x)=>s+saldoAP(x),0))}</span>`;
+}
+function filtrarAP(sit){ _fAP.sit=sit; render('apagar'); }
+SECTIONS.apagar = () => {
+  gerarContasFixasDoMes();
+  const hojeMes=hojeLocalStr().slice(0,7), ab=DB.apagar.filter(apagarAberta);
+  const soma=l=>l.reduce((s,x)=>s+saldoAP(x),0), venc=ab.filter(x=>situacaoAP(x)==='vencida'), breve=ab.filter(x=>situacaoAP(x)==='breve');
+  const pagoMes=DB.apagar.filter(x=>(+x.pago||0)>0&&String(x.pago_em||(x.venc?normalizarData(x.venc):'')).slice(0,7)===hojeMes).reduce((s,x)=>s+(+x.pago||0),0);
+  const card=(cl,r,v,sub,sit)=>`<div class="kpi-card ${cl} kpi-click" role="button" tabindex="0" onclick="filtrarAP('${sit}')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">${r}</div><div class="kpi-value">${R$(v)}</div><div class="kpi-sub">${sub}</div></div>`;
+  return `<div class="kpi-grid">
+    ${card(venc.length?'vermelho':'verde','Vencidas',soma(venc),venc.length+(venc.length===1?' conta':' contas'),'vencidas')}
+    ${card('amarelo','Vencem em 7 dias',soma(breve),breve.length+(breve.length===1?' conta':' contas'),'breve')}
+    ${card('','Total a pagar',soma(ab),ab.length+(ab.length===1?' conta':' contas'),'abertas')}
+    ${card('verde','Pago neste mês',pagoMes,'Ver contas pagas','pagas')}
+  </div>
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">📤 A Pagar</span><button class="btn btn-success" onclick="novoAP()">+ Novo</button></div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Nº</th><th>Data</th><th>Credor</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody>${DB.apagar.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum lançamento.</td></tr>`:
-      DB.apagar.slice().reverse().map(x=>`<tr>
-        <td class="fw-bold text-azul">${x.id}</td><td>${x.data||'—'}</td>
-        <td>${x.credor||'—'}</td><td>${x.descricao||'—'}</td>
-        <td class="fw-bold text-vermelho">${R$(x.valor)}</td><td class="text-verde">${R$(x.pago)}</td>
-        <td class="${(+x.valor||0)-(+x.pago||0)>0?'text-vermelho':'text-verde'} fw-bold">${R$((+x.valor||0)-(+x.pago||0))}</td>
-        <td>${statusBadge(x.status)}</td>
-        <td class="td-actions">
-          <button class="btn btn-success btn-xs" onclick="marcarPagoAP('${x.id}')" title="Marcar pago">✅</button>
-          <button class="btn btn-primary btn-xs" onclick="editarAP('${x.id}')">✏️</button>
-          <button class="btn btn-danger btn-xs" onclick="excluirItem('apagar','${x.id}')">🗑️</button>
-        </td>
-      </tr>`).join('')}</tbody>
+    <div class="panel-header"><span class="panel-title">📤 Contas a Pagar</span><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-outline" onclick="goTo('custos')">🔁 Contas recorrentes</button><button class="btn btn-success" onclick="novoAP()">+ Conta avulsa</button></div></div>
+    <div class="filtros-lista">
+      <input class="search-input" type="search" aria-label="Buscar contas" placeholder="🔍 Conta ou descrição..." value="${escHtml(_fAP.q)}" oninput="_fAP.q=this.value;atualizarListaAP()">
+      <select class="form-select" aria-label="Filtrar contas" onchange="filtrarAP(this.value)">${opcoesFiltro([['abertas','Em aberto'],['vencidas','Vencidas'],['breve','Vencem em 7 dias'],['pagas','Pagas'],['todas','Todas']],_fAP.sit)}</select>
+    </div>
+    <div class="filtros-resumo" id="ap-resumo" aria-live="polite"></div>
+    <div class="tbl-wrap"><table class="tbl-cards">
+      <thead><tr><th>Nº</th><th>Vencimento</th><th>Conta</th><th>Descrição</th><th>Valor</th><th>Pago</th><th>Falta</th><th>Situação</th><th>Ações</th></tr></thead>
+      <tbody id="ap-lista-corpo"></tbody>
     </table></div>
   </div>`;
+};
 
 function novoAP(){openModal('➕ A Pagar',formAP(),()=>salvarAP());}
 function editarAP(id){openModal('✏️ Editar',formAP(getItem(DB.apagar,id)),()=>salvarAP(id));}
@@ -5104,11 +5151,15 @@ function formAP(x={}){return`<div class="form-grid">
   <div class="form-group"><label class="form-label">Valor (R$)</label><input class="form-input" id="f-apval" type="number" step="0.01" value="${x.valor||''}"></div>
   <div class="form-group"><label class="form-label">Vencimento</label><input class="form-input" id="f-apvenc" type="date" value="${x.venc||''}"></div>
   <div class="form-group"><label class="form-label">Pago (R$)</label><input class="form-input" id="f-appago" type="number" step="0.01" value="${x.pago||0}"></div>
-  <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="f-apst">${['Em aberto','Pago','Atrasado'].map(s=>`<option ${x.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+  <div class="form-group"><label class="form-label">Situação</label><div style="padding-top:8px">${x.id?badgeSituacaoAP(x):'Calculada pelo valor pago e vencimento'}</div></div>
 </div>`;}
 async function salvarAP(id=null){
-  const obj={id:id||nextId(DB.apagar,'CP'),data:document.getElementById('f-apd').value,credor:document.getElementById('f-apcred').value.trim(),descricao:document.getElementById('f-apdesc').value.trim(),valor:parseFloat(document.getElementById('f-apval').value)||0,venc:document.getElementById('f-apvenc').value,pago:parseFloat(document.getElementById('f-appago').value)||0,status:document.getElementById('f-apst').value,criado_em:id?getItem(DB.apagar,id)?.criado_em:new Date().toISOString()};
+  const obj={id:id||nextId(DB.apagar,'CP'),data:document.getElementById('f-apd').value,credor:document.getElementById('f-apcred').value.trim(),descricao:document.getElementById('f-apdesc').value.trim(),valor:parseFloat(document.getElementById('f-apval').value)||0,venc:document.getElementById('f-apvenc').value,pago:parseFloat(document.getElementById('f-appago').value)||0,status:'Em aberto',criado_em:id?getItem(DB.apagar,id)?.criado_em:new Date().toISOString()};
   const antAP=id?getItem(DB.apagar,id):null;
+  // Sem isso, editar uma conta recorrente perdia o vínculo com o custo e ela era criada de novo
+  if(antAP?.custo_fixo_id){ obj.custo_fixo_id=antAP.custo_fixo_id; obj.mes_ref=antAP.mes_ref; }
+  if(antAP?.criado_em) obj.criado_em=antAP.criado_em;
+  obj.status=(+obj.pago||0)>=(+obj.valor||0)&&(+obj.valor||0)>0?'Pago':(+obj.pago||0)>0?'Parcial':'Em aberto';
   obj.pago_em=(+obj.pago||0)!==(+antAP?.pago||0)?hojeLocalStr():(antAP?.pago_em||'');
   await salvarItem('apagar',obj);toast(id?'Atualizado!':'Lançado!');closeModal();render('apagar');
 }
@@ -5118,7 +5169,48 @@ async function marcarPagoAP(id){const x=getItem(DB.apagar,id);const ant={pago:x.
 // CUSTOS FIXOS
 // ═══════════════════════════════════════════════════════════════
 // Helpers de cálculo de Custos e Taxas — usados também nas Fichas Técnicas
-function custosFixosMensais(){ return DB.custos_fixos.filter(c=>c.tipo!=='percentual').reduce((s,c)=>s+(+c.valor||0),0); }
+// Frequência de cada custo. Quem não tem o campo é mensal, como sempre foi.
+const FREQ_CUSTO={mensal:{nome:'Todo mês',meses:1},trimestral:{nome:'A cada 3 meses',meses:3},semestral:{nome:'A cada 6 meses',meses:6},anual:{nome:'Todo ano',meses:12},unica:{nome:'Só uma vez',meses:0}};
+function freqCusto(c){ return FREQ_CUSTO[c.frequencia]?c.frequencia:'mensal'; }
+// Quanto o custo pesa por mês. "Só uma vez" não entra na média: é uma conta avulsa.
+function custoMensalEq(c){ const m=FREQ_CUSTO[freqCusto(c)].meses; return m?(+c.valor||0)/m:0; }
+function custosFixosMensais(){ return DB.custos_fixos.filter(c=>c.tipo!=='percentual').reduce((s,c)=>s+custoMensalEq(c),0); }
+// Datas futuras e passadas de um custo que não é mensal, a partir da primeira cobrança
+function ocorrenciasCusto(c,ateMes){
+  if(!c.primeiro_venc) return [];
+  const pri=normalizarData(c.primeiro_venc), m=FREQ_CUSTO[freqCusto(c)].meses;
+  if(!m) return [pri];
+  const l=[];
+  for(let i=0;i<400;i++){ const d=somaMeses(pri,i*m); if(d.slice(0,7)>ateMes) break; l.push(d); }
+  return l;
+}
+function vencimentoMensal(c,mes){ const [a,m]=mes.split('-').map(Number); return mes+'-'+String(Math.min(+c.dia_vencimento,new Date(a,m,0).getDate())).padStart(2,'0'); }
+function proximoVencCusto(c){
+  const hoje=hojeLocalStr(), f=freqCusto(c);
+  if(f==='mensal'){ if(!(+c.dia_vencimento>0)) return ''; const v=vencimentoMensal(c,hoje.slice(0,7)); return v>=hoje?v:vencimentoMensal(c,somaMeses(hoje.slice(0,8)+'01',1).slice(0,7)); }
+  if(!c.primeiro_venc) return '';
+  if(f==='unica') return normalizarData(c.primeiro_venc);
+  return ocorrenciasCusto(c,somaMeses(hoje.slice(0,8)+'01',48).slice(0,7)).find(d=>d>=hoje)||'';
+}
+function custoTemVencimento(c){ return freqCusto(c)==='mensal'?+c.dia_vencimento>0:!!c.primeiro_venc; }
+// Contas a pagar: toda tela usa estas mesmas funções, para os números nunca divergirem.
+function saldoAP(x){ return Math.max(0,(+x.valor||0)-(+x.pago||0)); }
+function apagarAberta(x){ return x.status!=='Pago'&&saldoAP(x)>0.004; }
+function situacaoAP(x){
+  if(!apagarAberta(x)) return 'paga';
+  const v=x.venc?normalizarData(x.venc):'', hoje=hojeLocalStr();
+  if(v&&v<hoje) return 'vencida';
+  if(v&&v<=hojeLocalStr(7)) return 'breve';
+  return 'aberta';
+}
+function badgeSituacaoAP(x){
+  const s=situacaoAP(x), parcial=(+x.pago||0)>0.004&&s!=='paga'?' · parcial':'';
+  if(s==='paga') return '<span class="badge badge-ok">✅ Paga</span>';
+  if(s==='vencida') return '<span class="badge badge-danger">⚠️ Vencida'+parcial+'</span>';
+  if(s==='breve') return '<span class="badge badge-warn">⏰ Vence em breve'+parcial+'</span>';
+  return '<span class="badge badge-info">Em aberto'+parcial+'</span>';
+}
+function totalAPagar(){ return DB.apagar.filter(apagarAberta).reduce((s,x)=>s+saldoAP(x),0); }
 
 // Junta cadastros de custo fixo duplicados (mesmo nome, mesmo tipo) — isso
 // evita dois problemas de uma vez: gerar uma conta por mês PRA CADA cópia
@@ -5162,42 +5254,45 @@ function desduplicarCustosFixos(){
 // nem valor pago). Roda toda vez que o Dashboard é aberto; é barato
 // quando não tem nada novo pra gerar, já que só lê e compara.
 function gerarContasFixasDoMes(){
+  if(_carregandoInicial) return;
   desduplicarCustosFixos();
   desduplicarContasFixas();
-  const hoje=new Date();
-  const mesRef=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-  const recorrentes=DB.custos_fixos.filter(c=>c.tipo!=='percentual' && +c.dia_vencimento>0);
+  const hoje=hojeLocalStr(), mesAtual=hoje.slice(0,7);
   const nomesJaGerados=new Set();
-  recorrentes.forEach(c=>{
+  DB.custos_fixos.filter(c=>c.tipo!=='percentual'&&custoTemVencimento(c)).forEach(c=>{
     const chaveNome=(c.descricao||'').trim().toLowerCase();
-    // Reforço extra: mesmo que ainda sobre algum duplicado que o
-    // desduplicarCustosFixos não pegou, nunca gera 2 contas com o mesmo
-    // nome no mesmo laço
+    // Reforço: mesmo que sobre um cadastro duplicado, nunca gera 2 contas com o mesmo nome no mesmo laço
     if(nomesJaGerados.has(chaveNome)) return;
     nomesJaGerados.add(chaveNome);
-    // Confere por custo_fixo_id (caminho normal) E por nome+mês como
-    // reforço (caso esse campo tenha se perdido em algum ponto — por
-    // exemplo, dois aparelhos gerando quase ao mesmo tempo antes de
-    // sincronizar um com o outro). Sem esse reforço dá pra duplicar a
-    // mesma conta em vez de só uma vez por mês.
-    const jaExiste=DB.apagar.some(x=>
-      (x.custo_fixo_id===c.id && x.mes_ref===mesRef) ||
-      (x.mes_ref===mesRef && (x.credor||'').trim().toLowerCase()===chaveNome)
-    );
-    if(jaExiste) return;
-    const ultimoDiaMes=new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
-    const dia=Math.min(+c.dia_vencimento, ultimoDiaMes);
-    const venc=`${mesRef}-${String(dia).padStart(2,'0')}`;
-    const obj={
-      id:nextId(DB.apagar,'CP'), data:new Date().toISOString().slice(0,10),
-      credor:c.descricao, descricao:`Conta fixa mensal: ${c.descricao}`,
-      valor:+c.valor||0, venc, pago:0, status:'Em aberto',
-      custo_fixo_id:c.id, mes_ref:mesRef, criado_em:new Date().toISOString()
-    };
-    DB.apagar.push(obj);
-    salvarLocal();
-    _ultimaEdicaoLocal[`apagar:${obj.id}`] = Date.now();
-    enviarParaSheetsBackground('upsert','apagar',obj);
+    const f=freqCusto(c), pulados=Array.isArray(c.meses_pulados)?c.meses_pulados:[];
+    const dele=DB.apagar.filter(x=>x.mes_ref&&(x.custo_fixo_id===c.id||(x.credor||'').trim().toLowerCase()===chaveNome));
+    const meses=new Set(dele.map(x=>x.mes_ref)), ultimo=[...meses].sort().pop()||'';
+    let vencs=[];
+    if(f==='mensal'){
+      // Sem histórico começa no mês atual, para não criar dívida antiga; com histórico recupera os meses sem abrir o sistema.
+      let mes=ultimo&&ultimo<mesAtual?somaMeses(ultimo+'-01',1).slice(0,7):mesAtual;
+      for(let i=0;i<24&&mes<=mesAtual;i++){ vencs.push(vencimentoMensal(c,mes)); mes=somaMeses(mes+'-01',1).slice(0,7); }
+    } else if(f==='unica'){
+      if(!meses.size) vencs=[normalizarData(c.primeiro_venc)];
+    } else {
+      const oc=ocorrenciasCusto(c,mesAtual);
+      vencs=ultimo?oc.filter(d=>d.slice(0,7)>ultimo):oc.slice(-1);
+    }
+    vencs.forEach(venc=>{
+      const mesRef=venc.slice(0,7);
+      if(meses.has(mesRef)||pulados.includes(mesRef)) return;
+      const obj={
+        id:nextId(DB.apagar,'CP'), data:hojeLocalStr(),
+        credor:c.descricao, descricao:`Conta fixa (${FREQ_CUSTO[f].nome.toLowerCase()}): ${c.descricao}`,
+        valor:+c.valor||0, venc, pago:0, status:'Em aberto',
+        custo_fixo_id:c.id, mes_ref:mesRef, criado_em:new Date().toISOString()
+      };
+      DB.apagar.push(obj);
+      meses.add(mesRef);
+      salvarLocal();
+      _ultimaEdicaoLocal[`apagar:${obj.id}`] = Date.now();
+      enviarParaSheetsBackground('upsert','apagar',obj);
+    });
   });
 }
 
@@ -5362,31 +5457,33 @@ SECTIONS.custos = () => {
   const rateio = custoFixoRateado();
   const vendas = +(DB.config?.vendas_esperadas_mes||100)||100;
   return`<div class="kpi-grid">
-    <div class="kpi-card amarelo"><div class="kpi-label">Custos Fixos / Mês</div><div class="kpi-value">${R$(totalFixo)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Custos Fixos / Ano</div><div class="kpi-value">${R$(totalFixo*12)}</div></div>
+    <div class="kpi-card amarelo"><div class="kpi-label">Custos / Mês (média)</div><div class="kpi-value">${R$(totalFixo)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Custos / Ano (média)</div><div class="kpi-value">${R$(totalFixo*12)}</div></div>
     <div class="kpi-card roxo"><div class="kpi-label">Rateio por Unidade</div><div class="kpi-value">${R$(rateio)}</div><div class="kpi-sub">÷ ${vendas} vendas/mês</div></div>
   </div>
 
   <div style="background:var(--amarelo-claro);color:var(--txt-amarelo);padding:12px 14px;border-radius:8px;font-size:12.5px;font-weight:600;margin-bottom:16px">
-    💡 <strong>Como funciona:</strong> Custos <strong>fixos mensais</strong> (aluguel, assinaturas, softwares) são divididos pela sua estimativa de vendas/mês e somados ao custo de cada produto. Já os <strong>percentuais</strong> (impostos, taxa de cartão, taxa de delivery) são aplicados direto sobre o preço de venda. Tudo isso já entra automático no cálculo da aba <strong>Fichas Técnicas</strong>.
+    💡 <strong>Como funciona:</strong> Custos em R$ (aluguel, assinaturas, softwares) pesam pela <strong>média por mês</strong>, conforme a frequência de cada um, e são divididos pela sua estimativa de vendas/mês e somados ao custo de cada produto. Já os <strong>percentuais</strong> (impostos, taxa de cartão, taxa de delivery) são aplicados direto sobre o preço de venda. Tudo isso já entra automático no cálculo da aba <strong>Fichas Técnicas</strong>.
   </div>
 
   <div class="panel">
-    <div class="panel-header"><span class="panel-title">📌 Custos Fixos Mensais</span><button class="btn btn-success" onclick="novoCF('fixo')">+ Novo Custo Fixo</button></div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Descrição</th><th>Categoria</th><th>Mensal</th><th>Anual</th><th>Ações</th></tr></thead>
-      <tbody>${fixos.length===0?`<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum custo fixo cadastrado. Ex: aluguel, internet, softwares de arte...</td></tr>`:
-      fixos.map(c=>`<tr>
-        <td class="fw-bold">${c.descricao}</td>
-        <td><span class="badge badge-info">${c.categoria||'Custo Fixo Geral'}</span></td>
-        <td class="fw-bold text-vermelho">${R$(c.valor)}</td>
-        <td class="text-muted">${R$((+c.valor||0)*12)}</td>
+    <div class="panel-header"><span class="panel-title">📌 Custos e contas recorrentes</span><button class="btn btn-success" onclick="novoCF('fixo')">+ Novo Custo</button></div>
+    ${(()=>{const n=fixos.filter(c=>!custoTemVencimento(c)).length;return n?`<div style="padding:10px 18px;font-size:12.5px;background:var(--amarelo-claro);color:var(--txt-amarelo)">⚠️ ${n} ${n===1?'custo sem vencimento entra':'custos sem vencimento entram'} no cálculo de preço e lucro, mas não ${n===1?'aparece':'aparecem'} em A Pagar. Edite para definir o dia, se quiser controlar o pagamento.</div>`:'';})()}
+    <div class="tbl-wrap"><table class="tbl-cards">
+      <thead><tr><th>Descrição</th><th>Frequência</th><th>Cobrança</th><th>Por mês</th><th>Próximo vencimento</th><th>Ações</th></tr></thead>
+      <tbody>${fixos.length===0?`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum custo cadastrado. Ex: aluguel, internet, softwares de arte...</td></tr>`:
+      fixos.map(c=>{const pv=proximoVencCusto(c);return`<tr>
+        <td class="fw-bold pc-cliente" data-label="Descrição">${c.descricao}</td>
+        <td class="pc-pgto" data-label="Frequência"><span class="badge badge-info">${FREQ_CUSTO[freqCusto(c)].nome}</span></td>
+        <td class="fw-bold text-vermelho pc-total" data-label="Cobrança">${R$(c.valor)}</td>
+        <td class="pc-custo" data-label="Por mês">${freqCusto(c)==='unica'?'—':R$(custoMensalEq(c))}</td>
+        <td class="pc-lucro" data-label="Próximo vencimento">${pv?formatarDataBR(pv):custoTemVencimento(c)?'—':'<span class="badge badge-warn">Sem vencimento</span>'}</td>
         <td class="td-actions">
-          <button class="btn btn-primary btn-xs" onclick="editarCF('${c.id}')">✏️</button>
-          <button class="btn btn-danger btn-xs" onclick="excluirItem('custos_fixos','${c.id}')">🗑️</button>
+          <button class="btn btn-primary btn-xs" onclick="editarCF('${c.id}')" aria-label="Editar">✏️</button>
+          <button class="btn btn-danger btn-xs" onclick="excluirItem('custos_fixos','${c.id}')" aria-label="Excluir">🗑️</button>
         </td>
-      </tr>`).join('')}
-      ${fixos.length?`<tr style="background:var(--azul);color:white;font-weight:700"><td>TOTAL</td><td></td><td>${R$(totalFixo)}</td><td>${R$(totalFixo*12)}</td><td></td></tr>`:''}</tbody>
+      </tr>`;}).join('')}
+      ${fixos.length?`<tr class="tot-custos" style="background:var(--azul);color:white;font-weight:700"><td class="pc-cliente">TOTAL POR MÊS</td><td></td><td></td><td class="pc-total">${R$(totalFixo)}</td><td></td><td></td></tr>`:''}</tbody>
     </table></div>
   </div>
 
@@ -5428,15 +5525,15 @@ async function salvarVendasMes(){
   toast('Estimativa atualizada!');render('custos');
 }
 
-function novoCF(tipoPadrao='fixo'){openModal(tipoPadrao==='percentual'?'➕ Nova Taxa/Imposto':'➕ Custo Fixo',formCF({tipo:tipoPadrao}),()=>salvarCF());}
-function editarCF(id){openModal('✏️ Editar',formCF(getItem(DB.custos_fixos,id)),()=>salvarCF(id));}
+function novoCF(tipoPadrao='fixo'){openModal(tipoPadrao==='percentual'?'➕ Nova Taxa/Imposto':'➕ Novo Custo',formCF({tipo:tipoPadrao}),()=>salvarCF());toggleFreqCF();}
+function editarCF(id){openModal('✏️ Editar',formCF(getItem(DB.custos_fixos,id)),()=>salvarCF(id));toggleFreqCF();}
 function formCF(c={}){
   const tipo=c.tipo||'fixo';
   return`<div class="form-grid">
   <div class="form-group full"><label class="form-label">Descrição *</label><input class="form-input" id="f-cfdesc" placeholder="Ex: Rapid Mockup, Aluguel, Simples Nacional..." value="${c.descricao||''}"></div>
   <div class="form-group"><label class="form-label">Tipo</label>
     <select class="form-select" id="f-cftipo" onchange="toggleTipoCF()">
-      <option value="fixo" ${tipo==='fixo'?'selected':''}>💰 Custo Fixo Mensal (R$)</option>
+      <option value="fixo" ${tipo==='fixo'?'selected':''}>💰 Custo em R$</option>
       <option value="percentual" ${tipo==='percentual'?'selected':''}>📊 Taxa/Imposto (%)</option>
     </select>
   </div>
@@ -5451,32 +5548,67 @@ function formCF(c={}){
           <option value="Outro" ${c.categoria==='Outro'?'selected':''}>Outro</option>`}
     </select>
   </div>
-  <div class="form-group" id="f-cfval-wrap"><label class="form-label" id="f-cfval-lbl">${tipo==='percentual'?'Percentual (%)':'Valor Mensal (R$)'}</label><input class="form-input" id="f-cfval" type="number" step="0.01" value="${c.valor||''}"></div>
-  <div class="form-group" id="f-cfdia-wrap" style="${tipo==='percentual'?'display:none':''}">
+  <div class="form-group" id="f-cfval-wrap"><label class="form-label" id="f-cfval-lbl">${tipo==='percentual'?'Percentual (%)':'Valor de cada cobrança (R$)'}</label><input class="form-input" id="f-cfval" type="number" step="0.01" value="${c.valor||''}" oninput="toggleFreqCF()"></div>
+  <div class="form-group" id="f-cffreq-wrap" style="${tipo==='percentual'?'display:none':''}">
+    <label class="form-label" for="f-cffreq">Com que frequência?</label>
+    <select class="form-select" id="f-cffreq" onchange="toggleFreqCF()">${Object.entries(FREQ_CUSTO).map(([v,o])=>`<option value="${v}" ${freqCusto(c)===v?'selected':''}>${o.nome}</option>`).join('')}</select>
+  </div>
+  <div class="form-group" id="f-cfvenc-wrap" style="${tipo==='percentual'||freqCusto(c)==='mensal'?'display:none':''}">
+    <label class="form-label" for="f-cfvenc">Data da próxima cobrança</label>
+    <input class="form-input" id="f-cfvenc" type="date" value="${c.primeiro_venc?normalizarData(c.primeiro_venc):''}">
+  </div>
+  <div class="form-group" id="f-cfdia-wrap" style="${tipo==='percentual'||freqCusto(c)!=='mensal'?'display:none':''}">
     <label class="form-label">Dia de Vencimento (opcional)</label>
     <input class="form-input" id="f-cfdia" type="number" min="1" max="31" placeholder="Ex: 8" value="${c.dia_vencimento||''}">
   </div>
   <div class="form-group full"><label class="form-label">Obs</label><input class="form-input" id="f-cfobs" value="${c.obs||''}"></div>
 </div>
-${tipo==='percentual'?'':'<p style="font-size:11.5px;color:var(--cinza-med);margin-top:8px">💡 Se preencher o dia, essa conta aparece sozinha em "A Pagar" todo mês nessa data, some no Calendário e vira um aviso no Dashboard conforme o dia se aproxima.</p>'}`;}
+${tipo==='percentual'?'':'<p id="f-cfajuda" style="font-size:11.5px;color:var(--cinza-med);margin-top:8px"></p>'}`;}
+function toggleFreqCF(){
+  const tipo=document.getElementById('f-cftipo')?.value, f=document.getElementById('f-cffreq')?.value, ehFixo=tipo!=='percentual';
+  const mostra=(id,v)=>{ const e=document.getElementById(id); if(e) e.style.display=v?'':'none'; };
+  mostra('f-cffreq-wrap',ehFixo); mostra('f-cfdia-wrap',ehFixo&&f==='mensal'); mostra('f-cfvenc-wrap',ehFixo&&f!=='mensal');
+  const aj=document.getElementById('f-cfajuda'); if(!aj) return;
+  const val=parseFloat(document.getElementById('f-cfval')?.value)||0, m=FREQ_CUSTO[f]?.meses||0;
+  aj.textContent=!ehFixo?'':f==='unica'?'💡 Vira uma única conta em A Pagar e não entra na média de custo mensal dos produtos.'
+    :f==='mensal'?'💡 Com o dia preenchido, a conta aparece sozinha em A Pagar todo mês. Sem o dia, o custo só entra no cálculo de preço e lucro.'
+    :`💡 Equivale a ${R$(val/m)} por mês no cálculo de preço e lucro. A conta aparece em A Pagar no mês de cada cobrança.`;
+}
 function toggleTipoCF(){
   const tipo=document.getElementById('f-cftipo').value;
   const lbl=document.getElementById('f-cfval-lbl');
-  if(lbl)lbl.textContent = tipo==='percentual'?'Percentual (%)':'Valor Mensal (R$)';
+  if(lbl)lbl.textContent = tipo==='percentual'?'Percentual (%)':'Valor de cada cobrança (R$)';
   const catWrap=document.getElementById('f-cfcat-wrap');
   if(catWrap){
     catWrap.innerHTML = tipo==='fixo'
       ? `<label class="form-label">Categoria</label><select class="form-select" id="f-cfcat"><option>Custo Fixo Geral</option></select>`
       : `<label class="form-label">Categoria</label><select class="form-select" id="f-cfcat"><option value="Imposto">Imposto</option><option value="Taxa Cartão">Taxa Cartão</option><option value="Taxa Delivery">Taxa Delivery</option><option value="Outro">Outro</option></select>`;
   }
-  const diaWrap=document.getElementById('f-cfdia-wrap');
-  if(diaWrap) diaWrap.style.display = tipo==='percentual'?'none':'';
+  toggleFreqCF();
 }
 async function salvarCF(id=null){
   const obj={id:id||nextId(DB.custos_fixos,'CF'),descricao:document.getElementById('f-cfdesc').value.trim(),tipo:document.getElementById('f-cftipo').value,categoria:document.getElementById('f-cfcat').value,valor:parseFloat(document.getElementById('f-cfval').value)||0,dia_vencimento:parseInt(document.getElementById('f-cfdia')?.value)||0,obs:document.getElementById('f-cfobs').value.trim(),criado_em:id?getItem(DB.custos_fixos,id)?.criado_em:new Date().toISOString()};
   if(!obj.descricao){toast('Informe a descrição','error');return;}
   if(obj.dia_vencimento && (obj.dia_vencimento<1 || obj.dia_vencimento>31)){toast('Dia de vencimento precisa ser entre 1 e 31','error');return;}
-  await salvarItem('custos_fixos',obj);toast(id?'Atualizado!':'Adicionado!');closeModal();render('custos');
+  const antCF=id?getItem(DB.custos_fixos,id):null;
+  obj.meses_pulados=antCF?.meses_pulados||[];
+  if(obj.tipo!=='percentual'){
+    obj.frequencia=document.getElementById('f-cffreq')?.value||'mensal';
+    obj.primeiro_venc=obj.frequencia==='mensal'?'':(document.getElementById('f-cfvenc')?.value||'');
+    if(obj.frequencia!=='mensal'){
+      obj.dia_vencimento=0;
+      if(!obj.primeiro_venc){toast('Informe a data da próxima cobrança','error');return;}
+    }
+  }
+  await salvarItem('custos_fixos',obj);
+  // Contas ainda sem nenhum pagamento acompanham o cadastro; as já pagas ficam como estão.
+  if(id) for(const x of DB.apagar.filter(x=>x.custo_fixo_id===id&&apagarAberta(x)&&!(+x.pago>0))){
+    const nv={...x,valor:obj.valor,credor:obj.descricao};
+    if(obj.frequencia==='mensal'&&obj.dia_vencimento>0&&x.mes_ref) nv.venc=vencimentoMensal(obj,x.mes_ref);
+    if(nv.valor!==x.valor||nv.credor!==x.credor||nv.venc!==x.venc) await salvarItem('apagar',nv);
+  }
+  gerarContasFixasDoMes();
+  toast(id?'Atualizado!':'Adicionado!');closeModal();render('custos');
 }
 
 // ═══════════════════════════════════════════════════════════════
