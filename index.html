@@ -220,6 +220,71 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
   .modal-overlay{align-items:flex-end;padding:0}
 }
 
+/* TOQUE E CELULAR — campos sem zoom automático do iPhone e alvos fáceis de tocar */
+.modal{max-height:95dvh}
+@media(max-width:768px){
+  input,select,textarea{font-size:16px!important}
+}
+@media(pointer:coarse){
+  .btn-xs{min-height:38px;min-width:38px;font-size:13px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+/* LISTA DE PEDIDOS — tabela no notebook, cartões no tablet e no celular */
+@media(max-width:1180px){
+  .tbl-pedidos thead{display:none}
+  .tbl-pedidos{display:block}
+  .tbl-pedidos tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px;padding:12px}
+  .tbl-pedidos tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 10px;background:var(--bg-input);border:1px solid var(--cinza-claro);border-radius:12px;padding:13px}
+  .tbl-pedidos tbody td{display:block;padding:0}
+  .tbl-pedidos tbody td[colspan]{grid-column:1/-1}
+  .tbl-pedidos td[data-label]::before{content:attr(data-label);display:block;font-size:10px;font-weight:600;color:var(--cinza-med);margin-bottom:1px}
+  .tbl-pedidos .pc-id{grid-column:span 2;order:1;font-size:14px}
+  .tbl-pedidos .pc-status{order:2;text-align:right}
+  .tbl-pedidos .pc-status::before{display:none!important}
+  .tbl-pedidos .pc-cliente{grid-column:1/-1;order:3;font-size:14px}
+  .tbl-pedidos .pc-cliente::before,.tbl-pedidos .pc-itens::before{display:none!important}
+  .tbl-pedidos .pc-itens{grid-column:1/-1;order:4}
+  .tbl-pedidos .pc-total{order:5}.tbl-pedidos .pc-custo{order:6}.tbl-pedidos .pc-lucro{order:7}
+  .tbl-pedidos .pc-pgto{order:8}.tbl-pedidos .pc-data{order:9}.tbl-pedidos .pc-est{order:10;text-align:left!important}
+  .tbl-pedidos .td-actions{grid-column:1/-1;order:11;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;border-top:1px solid var(--cinza-claro);padding-top:10px}
+  .tbl-pedidos .td-actions .btn{width:100%;min-height:40px;min-width:0;font-size:14px;padding:4px 0;justify-content:center}
+}
+/* FORMULÁRIO DO PEDIDO — no celular cada item vira um bloco, sem rolagem lateral */
+@media(max-width:640px){
+  .ped-topo{grid-template-columns:1fr!important}
+  .ped-topo-datas input,.ped-topo-datas select{padding:8px!important}
+}
+@media(max-width:760px){
+  .ped-tabela-wrap{overflow:visible!important}
+  .ped-tabela{min-width:0!important;display:block}
+  .ped-tabela thead{display:none}
+  .ped-tabela tbody,.ped-tabela tfoot{display:block}
+  .ped-tabela td{display:block;padding:0;width:auto!important;min-width:0!important}
+  .ped-tabela tr{display:block}
+  .ped-tabela tr.ped-item{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:12px;position:relative;border-bottom:1px solid var(--cinza-claro)}
+  .ped-item td{padding:0!important}
+  .ped-item td[data-label]::before{content:attr(data-label);display:block;font-size:11px;font-weight:600;color:var(--cinza-med);margin-bottom:3px}
+  .ped-item .pi-prod{grid-column:1/-1;padding-right:46px!important}
+  .ped-item .pi-desc{grid-column:1/-1}
+  .ped-item .pi-rem{position:absolute;top:12px;right:12px}
+  .ped-item .pi-rem button{min-width:38px;min-height:38px}
+  .ped-item input[type=text],.ped-item input[type=number]{width:100%!important;min-height:40px}
+  .ped-item .pi-dcto select{width:64px!important;flex:0 0 64px;min-height:40px}
+  .ped-item .pi-dcto input{flex:1;min-width:0}
+  .ped-item .pi-tot{text-align:left!important;font-size:18px!important;align-self:center}
+  .ped-item label{font-size:12px!important;margin-top:6px!important}
+  .ped-item label input{width:18px!important;height:18px!important;min-height:0!important;flex:none}
+  .ped-tabela tfoot tr:not([style*="display:none"]){display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .ped-tabela tfoot td[colspan="5"],.ped-tabela tfoot td[colspan="2"]{padding:8px 12px!important;text-align:left!important}
+  .ped-tabela tfoot td[colspan="2"]{text-align:right!important;white-space:nowrap}
+  .ped-tabela tfoot td[colspan="7"]{width:100%!important}
+  .ped-tabela tfoot button{min-height:42px;font-size:14px!important}
+  .ped-tabela tfoot select{flex:1;min-width:150px;min-height:40px}
+  .ped-tabela tfoot input{min-height:40px}
+}
+
 /* ORCAMENTO - PREVIEW ESTILO PEDIDO */
 #orc-preview-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:600;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
 #orc-preview-overlay.open{display:flex}
@@ -407,7 +472,7 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
     </div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-outline" id="modal-cancel-btn" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" id="modal-save-btn" onclick="modalSave()">Salvar</button>
     </div>
   </div>
@@ -1311,10 +1376,11 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
   document.getElementById('modal').style.maxWidth = '560px';
   _modalSaveFn = saveFn;
   document.getElementById('modal-overlay').classList.add('open');
-  setTimeout(() => { document.querySelector('#modal-body input, #modal-body select')?.focus(); }, 150);
+  if(window.matchMedia('(pointer:fine)').matches) setTimeout(() => { document.querySelector('#modal-body input, #modal-body select')?.focus(); }, 150);
 }
 
 function closeModal() {
+  document.getElementById('modal-cancel-btn').textContent='Cancelar';
   document.getElementById('modal-overlay').classList.remove('open');
   document.getElementById('modal').style.maxWidth = '560px';
 }
@@ -2848,23 +2914,24 @@ SECTIONS.pedidos = () => {
   <div class="panel">
     <div class="panel-header"><span class="panel-title">📋 Pedidos & Orçamentos</span>
       <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button></div>
-    <div class="tbl-wrap"><table>
+    <div class="tbl-wrap"><table class="tbl-pedidos">
       <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Custo</th><th>Lucro</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
       <tbody>${lista.length===0?`<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhum pedido.</td></tr>`:
       lista.slice().reverse().map(p=>{const custoP=custoPedidoEstimado(p);const lucroP=lucroPedidoEstimado(p);return`<tr>
-        <td class="fw-bold text-azul">${p.id}</td><td>${p.data||'—'}</td>
-        <td class="fw-bold">${nomeVenda(p)}</td>
-        <td style="font-size:12px">${resumoItensPedido(p)}</td>
-        <td class="fw-bold text-verde">${R$(p.total||0)}</td>
-        <td class="text-vermelho">${R$(custoP)}</td>
-        <td class="fw-bold" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
-        <td>${statusPgto(p)}</td>
-        <td>${statusBadge(p.status)}</td>
-        <td class="text-center">${p.estoque_baixado?`<span class="badge badge-ok" style="cursor:pointer" onclick="modalVerConsumo('${p.id}')" title="Ver insumos consumidos">📦 Baixado</span>`:'<span class="badge badge-gray">—</span>'}</td>
+        <td class="fw-bold text-azul pc-id">${p.id}</td><td class="pc-data" data-label="Data">${p.data||'—'}</td>
+        <td class="fw-bold pc-cliente" data-label="Cliente">${nomeVenda(p)}</td>
+        <td class="pc-itens" data-label="Itens" style="font-size:12px">${resumoItensPedido(p)}</td>
+        <td class="fw-bold text-verde pc-total" data-label="Total">${R$(p.total||0)}</td>
+        <td class="text-vermelho pc-custo" data-label="Custo">${R$(custoP)}</td>
+        <td class="fw-bold pc-lucro" data-label="Lucro" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
+        <td class="pc-pgto" data-label="Pagamento">${statusPgto(p)}</td>
+        <td class="pc-status" data-label="Status">${statusBadge(p.status)}</td>
+        <td class="text-center pc-est" data-label="Estoque">${p.estoque_baixado?`<span class="badge badge-ok" style="cursor:pointer" onclick="modalVerConsumo('${p.id}')" title="Ver insumos consumidos">📦 Baixado</span>`:'<span class="badge badge-gray">—</span>'}</td>
         <td class="td-actions">
           <button class="btn btn-primary btn-xs" onclick="verPedidoOrc('${p.id}')" title="Editar">✏️</button>
           <button class="btn btn-outline btn-xs" onclick="abrirPreviewOrcamento('${p.id}')" title="Gerar Orçamento p/ enviar">🧾</button>
           <button class="btn btn-warning btn-xs" onclick="abrirPagamentos('${p.id}')" title="Pagamentos">💳</button>
+          <button class="btn btn-outline btn-xs" onclick="verHistoricoPedido('${p.id}')" title="Histórico do pedido">📜</button>
           <button class="btn btn-success btn-xs" onclick="wppPedido('${p.id}')" title="WhatsApp rápido">💬</button>
           <button class="btn btn-danger btn-xs" onclick="excluirItem('pedidos','${p.id}')">🗑️</button>
         </td>
@@ -2906,12 +2973,12 @@ function pedItemRow(it,i){
     </label>`:'';
   const kitInfo=(it.prod && String(it.prod).startsWith('KIT:')) ? getItem(DB.kits, String(it.prod).replace('KIT:','')) : null;
   const kitModelosRow=kitInfo ? kitModelosPedidoHtml(kitInfo,it,i) : '';
-  return `<tr id="pr-${i}" style="background:${i%2===0?'#E3F3FF':'white'}">
-    <td style="padding:4px;min-width:150px">${sselHTML(`pedprod${i}`, prodOpts, it.prod, placeholderBusca, `onChangePedProd(${i}, value)`)}</td>
-    <td style="padding:4px"><input type="text" value="${it.desc||''}" oninput="window._pedTemp.itens[${i}].desc=this.value" style="width:100%;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px">${varSelectHtml}${jaProdHtml}</td>
-    <td style="padding:4px;width:56px"><input type="number" min="1" value="${it.qtd||1}" oninput="window._pedTemp.itens[${i}].qtd=+this.value;updSubtotal(${i})" style="width:50px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
-    <td style="padding:4px;width:82px"><input type="number" step="0.01" value="${it.valor||''}" oninput="window._pedTemp.itens[${i}].valor=+this.value;updSubtotal(${i})" style="width:76px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
-    <td style="padding:4px;width:96px">
+  return `<tr id="pr-${i}" class="ped-item" style="background:${i%2===0?'#E3F3FF':'white'}">
+    <td class="pi-prod" data-label="Produto/Kit" style="padding:4px;min-width:150px">${sselHTML(`pedprod${i}`, prodOpts, it.prod, placeholderBusca, `onChangePedProd(${i}, value)`)}</td>
+    <td class="pi-desc" data-label="Arte/Descrição" style="padding:4px"><input type="text" value="${it.desc||''}" oninput="window._pedTemp.itens[${i}].desc=this.value" style="width:100%;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px">${varSelectHtml}${jaProdHtml}</td>
+    <td class="pi-qtd" data-label="Quantidade" style="padding:4px;width:56px"><input type="number" min="1" value="${it.qtd||1}" oninput="window._pedTemp.itens[${i}].qtd=+this.value;updSubtotal(${i})" style="width:50px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
+    <td class="pi-val" data-label="Valor unitário" style="padding:4px;width:82px"><input type="number" step="0.01" value="${it.valor||''}" oninput="window._pedTemp.itens[${i}].valor=+this.value;updSubtotal(${i})" style="width:76px;padding:6px;border:1px solid var(--cinza-claro);border-radius:5px;font-size:14px;text-align:center"></td>
+    <td class="pi-dcto" data-label="Desconto do item" style="padding:4px;width:96px">
       <div style="display:flex;gap:2px">
         <select onchange="window._pedTemp.itens[${i}].desc_tipo=this.value;updSubtotal(${i})" style="width:44px;padding:5px 1px;border:1px solid ${temDesc?'var(--laranja)':'var(--cinza-claro)'};border-radius:4px;font-size:11px">
           <option value="nenhum" ${(!it.desc_tipo||it.desc_tipo==='nenhum')?'selected':''}>–</option>
@@ -2921,8 +2988,8 @@ function pedItemRow(it,i){
         <input type="number" step="0.01" value="${it.desc_valor||''}" placeholder="0" oninput="window._pedTemp.itens[${i}].desc_valor=+this.value;updSubtotal(${i})" style="width:48px;padding:5px 2px;border:1px solid ${temDesc?'var(--laranja)':'var(--cinza-claro)'};border-radius:4px;font-size:12px;text-align:center">
       </div>
     </td>
-    <td style="padding:4px;width:80px;font-weight:700;color:var(--verde-med);text-align:center;font-size:13px" id="sb-${i}">${R$(c.tot)}</td>
-    <td style="padding:4px;width:30px"><button onclick="remItemPed(${i})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;padding:4px 7px;cursor:pointer;font-size:14px">×</button></td>
+    <td class="pi-tot" data-label="Total do item" style="padding:4px;width:80px;font-weight:700;color:var(--verde-med);text-align:center;font-size:13px" id="sb-${i}">${R$(c.tot)}</td>
+    <td class="pi-rem" style="padding:4px;width:30px"><button onclick="remItemPed(${i})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;padding:4px 7px;cursor:pointer;font-size:14px">×</button></td>
   </tr>${kitModelosRow}`;
 }
 // Quando um item do pedido é um KIT que tem produtos alternativos
@@ -2986,13 +3053,13 @@ function abrirFormPedido(editId){
 
   document.getElementById('modal-title').textContent=editId?`✏️ Pedido ${pd.id}`:`📋 Novo ${pd.id}`;
   document.getElementById('modal-body').innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:12px">
+    <div class="ped-topo" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:12px">
       <div>
         <div style="margin-bottom:8px">${sselHTML('ped-cli', cliOpts, pd.cliente, 'Buscar cliente...', 'onChangePedCli(value)')}</div>
         <input class="form-input" id="ped-clinome" placeholder="Nome do cliente" value="${pd.cliente_nome||''}" style="margin-bottom:6px">
         <input class="form-input" id="ped-tel" placeholder="WhatsApp (ex: 92999990000)" value="${pd.telefone||''}">
       </div>
-      <div style="background:var(--azul);color:white;border-radius:8px;padding:12px;min-width:145px">
+      <div class="ped-topo-datas" style="background:var(--azul);color:white;border-radius:8px;padding:12px;min-width:145px">
         <div style="font-size:10px;opacity:.7">Nº Pedido</div>
         <div style="font-size:18px;font-weight:900">${pd.id}</div>
         <div style="font-size:10px;opacity:.7;margin-top:6px">Data</div>
@@ -3002,10 +3069,11 @@ function abrirFormPedido(editId){
         <select id="ped-status" style="margin-top:4px;background:rgba(255,255,255,0.2);border:none;color:white;font-size:11px;border-radius:4px;padding:3px 6px;width:100%">
           ${['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option style="color:#021024;background:#FFFFFF" ${pd.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
+        <div style="font-size:10px;opacity:.8;margin-top:4px;line-height:1.3">📦 O estoque baixa ao confirmar</div>
       </div>
     </div>
-    <div style="overflow-x:auto;border:1.5px solid var(--cinza-claro);border-radius:8px;margin-bottom:10px">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px">
+    <div class="ped-tabela-wrap" style="overflow-x:auto;border:1.5px solid var(--cinza-claro);border-radius:8px;margin-bottom:10px">
+      <table class="ped-tabela" style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px">
         <thead><tr style="background:var(--verde);color:white">
           <th style="padding:7px 4px">Produto/Kit</th><th style="padding:7px 4px">Arte/Desc.</th>
           <th style="padding:7px 4px;width:56px;text-align:center">Qtd</th>
@@ -3174,6 +3242,90 @@ function remItemPed(i){
   if(tb)tb.innerHTML=window._pedTemp.itens.map((it,idx)=>pedItemRow(it,idx)).join('');
   calcTotalPed();
 }
+// ── ETAPAS DO PEDIDO ─────────────────────────────────────────
+const ETAPAS_PEDIDO=['Em aberto','Confirmado','Em produção','Pronto','Entregue'];
+// Orçamento ("Em aberto") e Cancelado não consomem estoque; as demais etapas sim.
+function statusBaixaEstoque(status){ return ETAPAS_PEDIDO.indexOf(status)>=1; }
+function registrarHistoricoPedido(pd,evento,detalhe){
+  if(!Array.isArray(pd.historico)) pd.historico=[];
+  pd.historico.push({em:new Date().toISOString(),evento,detalhe:detalhe||''});
+  if(pd.historico.length>60) pd.historico=pd.historico.slice(-60);
+}
+// Avisos de mudança de etapa fora do caminho normal. Não bloqueia: pedido de
+// balcão pode ir direto pra "Entregue", mas precisa ser uma escolha consciente.
+function avisosMudancaStatus(pd,anterior){
+  const de=anterior?anterior.status:null, para=pd.status, avisos=[];
+  const iDe=ETAPAS_PEDIDO.indexOf(de), iPara=ETAPAS_PEDIDO.indexOf(para);
+  if(de!==para){
+    if(para==='Cancelado'){
+      if(de) avisos.push('Cancelar este pedido?'+(anterior.estoque_baixado?' O estoque usado será devolvido.':''));
+      const pago=(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0);
+      if(de&&pago>0) avisos.push(`Ele tem ${R$(pago)} pagos: a devolução ao cliente não é feita pelo sistema.`);
+    } else if(de==='Cancelado'){
+      avisos.push(`Reabrir este pedido cancelado como "${para}"?`+(statusBaixaEstoque(para)?' O estoque será baixado.':''));
+    } else if(iDe>=0&&iPara>=0&&iPara<iDe){
+      avisos.push(`Voltar de "${de}" para "${para}"?`+(para==='Em aberto'&&anterior.estoque_baixado?' O estoque usado será devolvido.':''));
+    } else if(iPara>=0&&iPara-Math.max(iDe,de?iDe:1)>1){
+      avisos.push(`Pular direto para "${para}"? Ficam para trás: ${ETAPAS_PEDIDO.slice(Math.max(iDe,de?iDe:1)+1,iPara).join(', ')}.`);
+    }
+    if(para==='Entregue'){
+      const saldo=(+pd.total||0)-(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0);
+      if(saldo>0.004) avisos.push(`Ainda faltam ${R$(saldo)} para receber deste pedido.`);
+    }
+  }
+  return avisos;
+}
+// Mantém o estoque coerente com a etapa do pedido. "anterior" é a foto de como
+// o pedido estava antes (null se é novo). Pedidos antigos em aberto que já
+// baixaram continuam como estão até mudarem de item ou serem cancelados, e
+// pedidos antigos sem baixa (ex: histórico importado) não baixam só por salvar.
+async function sincronizarEstoquePedido(pd,anterior,itensMudaram){
+  const jaBaixou=!!anterior?.estoque_baixado;
+  const consumoAnterior=jaBaixou?(anterior.consumo_insumos||{}):{};
+  const consome=statusBaixaEstoque(pd.status);
+  const consumiaAntes=anterior?statusBaixaEstoque(anterior.status):false;
+  let consumo=anterior?.consumo_insumos||{}, baixado=jaBaixou, avisoFalta=[];
+  const reverter=jaBaixou&&(itensMudaram||pd.status==='Cancelado'||(!consome&&consumiaAntes));
+  if(reverter){
+    await reverterBaixaEstoque(consumoAnterior);
+    consumo={}; baixado=false;
+  }
+  if(consome&&!baixado&&(itensMudaram||!consumiaAntes)){
+    consumo=calcularConsumoInsumos(pd);
+    avisoFalta=verificarEstoqueInsuficiente(consumo);
+    await aplicarBaixaEstoque(consumo);
+    baixado=Object.keys(consumo).length>0;
+  }
+  // O que REALMENTE mudou no estoque nesta gravação (reverteu antes, aplicou depois)
+  const consumoFinal=baixado?consumo:{};
+  const chaves=new Set([...Object.keys(consumoAnterior),...Object.keys(consumoFinal)]);
+  let dif=0;
+  chaves.forEach(k=>{ if((+consumoFinal[k]||0)!==(+consumoAnterior[k]||0)) dif++; });
+  pd.consumo_insumos=consumo;
+  pd.estoque_baixado=baixado;
+  return {dif,avisoFalta,baixou:baixado&&!jaBaixou,devolveu:jaBaixou&&!baixado};
+}
+function registrarEstoqueNoHistorico(pd,res){
+  if(res.baixou) registrarHistoricoPedido(pd,'Estoque baixado');
+  else if(res.devolveu) registrarHistoricoPedido(pd,'Estoque devolvido');
+  else if(res.dif>0) registrarHistoricoPedido(pd,'Estoque ajustado',`${res.dif} ${res.dif===1?'insumo':'insumos'}`);
+}
+function verHistoricoPedido(id){
+  const pd=getItem(DB.pedidos,id);if(!pd)return;
+  const lista=(pd.historico||[]).slice().reverse();
+  openModal(`📜 Histórico — ${pd.id}`,
+    lista.length===0
+      ?'<p style="font-size:13px;color:var(--cinza-med);line-height:1.6">Nenhuma alteração registrada ainda. O histórico começa a contar a partir da próxima mudança neste pedido.</p>'
+      :`<div>${lista.map(e=>`<div style="padding:9px 0;border-bottom:1px solid var(--cinza-claro)">
+          <div style="font-size:13px;font-weight:700">${e.evento}</div>
+          ${e.detalhe?`<div style="font-size:12px;margin-top:2px">${e.detalhe}</div>`:''}
+          <div style="font-size:11px;color:var(--cinza-med);margin-top:2px">${new Date(e.em).toLocaleString('pt-BR')}</div>
+        </div>`).join('')}</div>`,
+    ()=>closeModal(),'Fechar');
+  document.getElementById('modal-save-btn').style.display='none';
+  document.getElementById('modal-cancel-btn').textContent='Fechar';
+}
+
 async function salvarPedidoOrc(editId){
   const pd=window._pedTemp;
   pd.cliente=document.getElementById('ped-cli_val')?.value||pd.cliente;
@@ -3233,41 +3385,33 @@ async function salvarPedidoOrc(editId){
     if(!confirm(`⚠️ Você não escolheu a variante de: ${nomes}.\n\nO estoque vai ser abatido do insumo padrão. Continuar mesmo assim?`)) return;
   }
 
-  // ── BAIXA AUTOMÁTICA DE ESTOQUE ──────────────────────────────
+  // ── ETAPA E BAIXA DE ESTOQUE ─────────────────────────────────
   const pedidoAnterior=editId?getItem(DB.pedidos,editId):null;
-  // Só reverte e recalcula o consumo se algo que REALMENTE afeta o consumo
-  // mudou (produto, quantidade, variante, modelo de kit, "já produzida" ou
-  // virou/saiu de Cancelado). Sem essa checagem, salvar de novo um pedido
-  // antigo (só pra mudar a data de entrega, por exemplo) recalculava o
-  // consumo pela Ficha Técnica ATUAL — se ela tivesse sido corrigida depois,
-  // o pedido antigo levava uma baixa/devolução de estoque fantasma, sem
-  // nenhuma mudança real no que foi produzido pra esse pedido.
+  const virouEtapaComBaixa=statusBaixaEstoque(pd.status)&&!(pedidoAnterior&&statusBaixaEstoque(pedidoAnterior.status));
+  if(virouEtapaComBaixa&&!(pd.itens||[]).some(it=>it.prod||(it.desc||'').trim())){
+    toast('Adicione um item antes de confirmar o pedido','error');return;
+  }
+  const avisosStatus=avisosMudancaStatus(pd,pedidoAnterior);
+  if(avisosStatus.length>0&&!confirm('⚠️ '+avisosStatus.join('\n\n'))) return;
+  // Só recalcula o consumo se algo que REALMENTE afeta o consumo mudou
+  // (produto, quantidade, variante, modelo de kit ou "já produzida"). Sem essa
+  // checagem, salvar de novo um pedido antigo (só pra mudar a data de entrega,
+  // por exemplo) recalculava pela Ficha Técnica ATUAL e gerava baixa/devolução
+  // fantasma, sem nenhuma mudança real no que foi produzido pra esse pedido.
   const itensParaComparar=itens=>(itens||[]).map(it=>({prod:it.prod||'',qtd:+it.qtd||0,variante:it.variante||'',jaProduzida:!!it.jaProduzida,kit_modelos:it.kit_modelos||{}}));
   const itensMudaram=!pedidoAnterior
-    || JSON.stringify(itensParaComparar(pd.itens))!==JSON.stringify(itensParaComparar(pedidoAnterior.itens))
-    || (pd.status==='Cancelado')!==(pedidoAnterior.status==='Cancelado');
-  const consumoAnterior=(pedidoAnterior?.estoque_baixado?(pedidoAnterior.consumo_insumos||{}):{});
-  let novoConsumo=pedidoAnterior?.consumo_insumos||{};
-  let avisoFalta=[];
-  if(itensMudaram){
-    // Reverte o consumo anterior (se esse pedido já tinha baixado estoque antes)
-    if(pedidoAnterior?.estoque_baixado){
-      await reverterBaixaEstoque(pedidoAnterior.consumo_insumos||{});
-    }
-    // Calcula e aplica o novo consumo — a não ser que o pedido esteja Cancelado
-    novoConsumo={};
-    if(pd.status!=='Cancelado'){
-      novoConsumo=calcularConsumoInsumos(pd);
-      avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
-      await aplicarBaixaEstoque(novoConsumo);
-    }
+    || JSON.stringify(itensParaComparar(pd.itens))!==JSON.stringify(itensParaComparar(pedidoAnterior.itens));
+  const resEstoque=await sincronizarEstoquePedido(pd,pedidoAnterior,itensMudaram);
+  const avisoFalta=resEstoque.avisoFalta, _dif=resEstoque.dif;
+  if(!pedidoAnterior){
+    registrarHistoricoPedido(pd,'Pedido criado',`Etapa: ${pd.status} · Total: ${R$(pd.total)}`);
+  } else {
+    if(pedidoAnterior.status!==pd.status) registrarHistoricoPedido(pd,'Etapa alterada',`${pedidoAnterior.status||'—'} → ${pd.status}`);
+    if(itensMudaram) registrarHistoricoPedido(pd,'Itens alterados');
+    if(Math.abs((+pedidoAnterior.total||0)-(+pd.total||0))>0.004) registrarHistoricoPedido(pd,'Total alterado',`${R$(pedidoAnterior.total)} → ${R$(pd.total)}`);
+    if((pedidoAnterior.entrega||'')!==(pd.entrega||'')) registrarHistoricoPedido(pd,'Entrega alterada',`${pedidoAnterior.entrega?formatarDataBR(normalizarData(pedidoAnterior.entrega)):'sem data'} → ${pd.entrega?formatarDataBR(normalizarData(pd.entrega)):'sem data'}`);
   }
-  // O que REALMENTE mudou no estoque nesta gravação (reverteu antes, aplicou depois)
-  const _chaves=new Set([...Object.keys(consumoAnterior),...Object.keys(novoConsumo)]);
-  let _dif=0;
-  _chaves.forEach(k=>{ if((+novoConsumo[k]||0)!==(+consumoAnterior[k]||0)) _dif++; });
-  pd.consumo_insumos=novoConsumo;
-  pd.estoque_baixado=Object.keys(novoConsumo).length>0;
+  registrarEstoqueNoHistorico(pd,resEstoque);
   // ──────────────────────────────────────────────────────────────
 
   // "_tipoItem" é só uma dica pra tela filtrar produto/kit na hora de
@@ -3283,7 +3427,7 @@ async function salvarPedidoOrc(editId){
   } else {
     const _sufixoCliente=_clienteAutoCriado?' · 👤 Cliente cadastrado.':'';
     toast((!editId
-      ? 'Pedido salvo! '+(pd.estoque_baixado?'📦 Insumos baixados do estoque.':'')
+      ? 'Pedido salvo! '+(pd.estoque_baixado?'📦 Insumos baixados do estoque.':pd.status==='Em aberto'?'O estoque só baixa ao confirmar.':'')
       : _dif===0
         ? 'Pedido atualizado! Estoque não mudou.'
         : `Pedido atualizado! 📦 Estoque ajustado (${_dif} ${_dif===1?'insumo':'insumos'}).`)+_sufixoCliente);
@@ -3374,7 +3518,9 @@ async function confirmarEntrada(pedidoId){
   if(valor<=0){toast('Informe um valor','error');return;}
   const pd=getItem(DB.pedidos,pedidoId);if(!pd)return;
   if(!pd.entradas)pd.entradas=[];
+  const anteriorEst={status:pd.status,estoque_baixado:pd.estoque_baixado,consumo_insumos:pd.consumo_insumos};
   pd.entradas.push({valor,forma,data});
+  registrarHistoricoPedido(pd,'Pagamento registrado',`${R$(valor)} · ${forma}`);
   const pago=pd.entradas.reduce((s,e)=>s+(+e.valor||0),0);
   pd.status_pgto=pago>=(+pd.total||0)?'Pago integral':pago>0?'Parcial':'Pendente';
   // Confirma o pedido sozinho assim que bate 50% pago — só sobe de "Em
@@ -3385,16 +3531,22 @@ async function confirmarEntrada(pedidoId){
   if(pd.status==='Em aberto' && (+pd.total||0)>0 && pago>=(+pd.total||0)*0.5){
     pd.status='Confirmado';
     confirmouAgora=true;
+    registrarHistoricoPedido(pd,'Etapa alterada','Em aberto → Confirmado (50% pago)');
   }
+  const resEst=await sincronizarEstoquePedido(pd,anteriorEst,false);
+  registrarEstoqueNoHistorico(pd,resEst);
   await salvarItem('pedidos',pd);
-  toast(`${R$(valor)} registrado!`+(confirmouAgora?' 🎉 Pedido confirmado automaticamente (50% pago)!':''));
+  toast(`${R$(valor)} registrado!`+(confirmouAgora?' 🎉 Pedido confirmado automaticamente (50% pago)!'+(resEst.baixou?' 📦 Insumos baixados.':''):'')+(resEst.avisoFalta.length?` ⚠️ Estoque insuficiente: ${resEst.avisoFalta.join(', ')}`:''),resEst.avisoFalta.length?'error':'success');
   closeModal();
   setTimeout(()=>abrirPagamentos(pedidoId),100);
 }
 
 async function remEntrada(pedidoId,idx){
   const pd=getItem(DB.pedidos,pedidoId);if(!pd||!pd.entradas)return;
+  const anteriorEst={status:pd.status,estoque_baixado:pd.estoque_baixado,consumo_insumos:pd.consumo_insumos};
+  const removida=pd.entradas[idx];
   pd.entradas.splice(idx,1);
+  registrarHistoricoPedido(pd,'Pagamento removido',`${R$(removida?.valor)} · ${removida?.forma||''}`);
   const pago=pd.entradas.reduce((s,e)=>s+(+e.valor||0),0);
   pd.status_pgto=pago>=(+pd.total||0)?'Pago integral':pago>0?'Parcial':'Pendente';
   // Espelha o auto-avanço de confirmarEntrada: se esse pedido só estava
@@ -3405,7 +3557,9 @@ async function remEntrada(pedidoId,idx){
   // Pronto/Entregue, que são escolhas manuais de quem já está produzindo).
   if(pd.status==='Confirmado' && pago<(+pd.total||0)*0.5){
     pd.status='Em aberto';
+    registrarHistoricoPedido(pd,'Etapa alterada','Confirmado → Em aberto (menos de 50% pago)');
   }
+  registrarEstoqueNoHistorico(pd,await sincronizarEstoquePedido(pd,anteriorEst,false));
   await salvarItem('pedidos',pd);
   closeModal();
   setTimeout(()=>abrirPagamentos(pedidoId),100);
