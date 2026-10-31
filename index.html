@@ -238,6 +238,51 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
   #page-title{font-size:15px}
   #sync-badge{display:inline-block;flex:none;width:25px;overflow:hidden;padding:3px 4px;white-space:nowrap;font-size:12px}
 }
+/* RESUMO DO PEDIDO — painel à direita; no celular sobe de baixo */
+#drawer-overlay{position:fixed;inset:0;background:rgba(2,16,36,.45);z-index:400;opacity:0;pointer-events:none;transition:opacity .18s}
+#drawer-overlay.open{opacity:1;pointer-events:auto}
+#drawer{position:absolute;top:0;right:0;bottom:0;width:min(430px,100%);background:var(--cinza-ultra);box-shadow:var(--sombra-lg);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .2s ease}
+#drawer-overlay.open #drawer{transform:none}
+.drawer-topo{padding:16px 18px;padding-top:calc(16px + env(safe-area-inset-top,0px));background:var(--azul);color:#fff;display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.drawer-topo button{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;min-width:38px;min-height:38px}
+.drawer-corpo{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:16px 18px}
+.drawer-bloco{padding:12px 0;border-bottom:1px solid var(--cinza-claro);font-size:13px}
+.drawer-bloco:last-child{border-bottom:none}
+.drawer-rotulo{font-size:11px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px}
+.drawer-linha{display:flex;justify-content:space-between;gap:12px;padding:3px 0}
+.drawer-acoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.drawer-acoes .btn{justify-content:center;min-height:42px}
+.drawer-barra{height:7px;background:var(--cinza-claro);border-radius:4px;overflow:hidden;margin:8px 0 4px}
+.drawer-barra div{height:100%;background:var(--verde-med)}
+@media(max-width:600px){
+  #drawer{top:auto;left:0;width:100%;max-height:92dvh;border-radius:16px 16px 0 0;transform:translateY(100%);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .drawer-topo{border-radius:16px 16px 0 0;padding-top:16px}
+}
+/* QUADRO DE PEDIDOS — colunas por etapa */
+.visao-ped{display:inline-flex;border:1.5px solid var(--azul-claro);border-radius:var(--radius-sm);overflow:hidden}
+.visao-ped button{background:transparent;border:none;padding:8px 12px;font:inherit;font-size:12px;font-weight:600;color:var(--txt-azul);cursor:pointer;min-height:38px}
+.visao-ped button[aria-pressed=true]{background:var(--azul);color:#fff}
+body.tema-escuro .visao-ped button[aria-pressed=true]{background:var(--dourado-escuro)}
+.kanban{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:12px 18px 18px}
+.kanban-col{background:var(--azul-tint);border-radius:12px;padding:8px;min-height:180px;transition:box-shadow .12s}
+.kanban-col.alvo{box-shadow:inset 0 0 0 2px var(--azul-claro)}
+.kanban-col h3{display:flex;justify-content:space-between;gap:6px;font-size:12px;padding:4px 4px 8px;color:var(--txt-azul)}
+.kanban-card{display:block;width:100%;background:var(--bg-input);border:1px solid var(--cinza-claro);border-radius:10px;padding:10px;margin-bottom:8px;font-size:12px;cursor:pointer;transition:box-shadow .12s}
+.kanban-card:hover{box-shadow:var(--sombra-sm)}
+.kanban-card:focus-visible{outline:2px solid var(--azul-claro);outline-offset:1px}
+.kanban-card[draggable=true]{cursor:grab}
+.kanban-card.arrastando{opacity:.45}
+.kanban-avancar{width:100%;margin-top:8px;min-height:36px;background:none;border:1.5px solid var(--azul-claro);border-radius:7px;color:var(--txt-azul);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
+.kanban-avancar:hover{background:var(--azul-tint)}
+@media(max-width:1180px){
+  .kanban{display:flex;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  .kanban-col{flex:0 0 260px;scroll-snap-align:start}
+}
+@media(max-width:600px){
+  .kanban{padding:12px}
+  .kanban-col{flex-basis:82%}
+  .kanban-avancar{min-height:42px;font-size:13px}
+}
 /* FILTROS DE LISTA E CARDS CLICÁVEIS */
 .filtros-lista{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid var(--cinza-claro)}
 .filtros-lista .search-input{flex:2 1 220px;font-size:13px}
@@ -490,6 +535,9 @@ body:not(.sidebar-hidden) #sidebar{transform:translateX(0)}
   </div>
 </div>
 
+<div id="drawer-overlay" onclick="if(event.target===this)fecharResumoPedido()">
+  <aside id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-titulo" tabindex="-1"></aside>
+</div>
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal" id="modal">
     <div class="modal-header">
@@ -1427,7 +1475,7 @@ function modalSave() {
     if (btn) { btn.disabled = false; btn.style.opacity = ''; }
   });
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if(document.getElementById('modal-overlay').classList.contains('open')) closeModal(); else fecharResumoPedido(); } });
 
 // ═══════════════════════════════════════════════════════════════
 // NAVEGAÇÃO
@@ -1706,7 +1754,7 @@ function metricasFinanceiras(){
   const valorEstoqueInsumos=DB.materias.reduce((s,m)=>s+Math.max(0,(+m.estoque||0))*(+m.custo||0),0);
   const valorConsignados=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+i.preco||0),s),0);
   const aReceberPendente=DB.areceber.filter(x=>x.status!=='Pago').reduce((s,x)=>s+Math.max(0,(+x.valor||0)-(+x.recebido||0)),0);
-  const saldoPedidosPendente=DB.pedidos.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0);
+  const saldoPedidosPendente=DB.pedidos.reduce((s,p)=>s+saldoPedidoAReceber(p),0);
   // Vendido no consignado mas o parceiro ainda não repassou o dinheiro
   const saldoConsignadoPendente=DB.consignados.reduce((s,c)=>{
     const vs=c.visitas||[];
@@ -2024,6 +2072,7 @@ SECTIONS.dashboard = () => {
   const vendaMes = efetivas.filter(v=>{const d=new Date(normalizarData(v.data)+'T00:00:00');return d.getMonth()+1===mes&&d.getFullYear()===ano;}).reduce((s,v)=>s+v.valorTotal,0);
   const pctMeta = meta ? (vendaMes/meta*100).toFixed(0) : 0;
   const aReceber = DB.areceber.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
+  const saldoPedidos = DB.pedidos.reduce((s,p)=>s+saldoPedidoAReceber(p),0);
   const aPagar = DB.apagar.filter(x=>x.status==='Em aberto').reduce((s,x)=>s+(+x.valor||0),0);
   const criticosMP = DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0)).length;
   const hojeStrAR = new Date().toISOString().slice(0,10);
@@ -2077,7 +2126,8 @@ SECTIONS.dashboard = () => {
     <div class="kpi-card ${lucroLiquidoPeriodo>=0?'':'vermelho'} kpi-click" role="button" tabindex="0" onclick="abrirKpiLucro()" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${lucroLiquidoPeriodo>=0?'text-verde':'text-vermelho'}">${R$(lucroLiquidoPeriodo)}</div><div class="kpi-sub">Receita − CPV − Custos Fixos</div></div>
     <div class="kpi-card laranja kpi-click" role="button" tabindex="0" onclick="abrirKpiVendas('mes')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Receita Mês (atual)</div><div class="kpi-value">${R$(vendaMes)}</div><div class="kpi-sub">${pctMeta}% da meta</div></div>
     <div class="kpi-card roxo kpi-click" role="button" tabindex="0" onclick="abrirKpiVendas('periodo')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">${R$(ticketPeriodo)}</div></div>
-    <div class="kpi-card ${aReceber>0?'amarelo':'verde'} kpi-click" role="button" tabindex="0" onclick="abrirARFiltrado('Em aberto')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Receber</div><div class="kpi-value">${R$(aReceber)}</div></div>
+    <div class="kpi-card ${aReceber>0?'amarelo':'verde'} kpi-click" role="button" tabindex="0" onclick="abrirARFiltrado('Em aberto')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Receber (lançados)</div><div class="kpi-value">${R$(aReceber)}</div><div class="kpi-sub">Lançados à mão</div></div>
+    <div class="kpi-card ${saldoPedidos>0?'amarelo':'verde'} kpi-click" role="button" tabindex="0" onclick="abrirPedidosFiltrados({pgto:'receber'})" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Saldo de Pedidos</div><div class="kpi-value">${R$(saldoPedidos)}</div><div class="kpi-sub">A receber de pedidos confirmados</div></div>
     <div class="kpi-card ${aPagar>0?'vermelho':'verde'} kpi-click" role="button" tabindex="0" onclick="goTo('apagar')" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">A Pagar</div><div class="kpi-value text-vermelho">${R$(aPagar)}</div></div>
   </div>
 
@@ -2097,7 +2147,7 @@ SECTIONS.dashboard = () => {
     `<div class="tbl-wrap"><table>
       <thead><tr><th>Cliente</th><th>Itens</th><th>Entrega</th><th>Pagamento</th></tr></thead>
       <tbody>${proximasEntregas.map(p=>{const r=rotuloEntrega(p.entrega);return`
-        <tr style="cursor:pointer" onclick="verPedidoOrc('${p.id}')" title="Clique pra abrir">
+        <tr style="cursor:pointer" onclick="abrirResumoPedido('${p.id}')" title="Clique pra abrir">
           <td class="fw-bold">${nomeVenda(p)}</td>
           <td style="font-size:12px">${resumoItensPedido(p)}</td>
           <td class="text-center"><span class="badge" style="background:${r.bg};color:${r.cor};font-weight:700">${r.label}</span></td>
@@ -2183,7 +2233,7 @@ SECTIONS.dashboard = () => {
         <tr><td>🧱 Insumos em estoque</td><td class="text-center fw-bold text-azul">${R$(fm.valorEstoqueInsumos)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('materias')">Ver</button></td></tr>
         <tr><td>🤝 Produtos em consignação</td><td class="text-center fw-bold text-roxo">${R$(fm.valorConsignados)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('consignados')">Ver</button></td></tr>
         <tr><td>📥 A Receber (pendente)</td><td class="text-center fw-bold" style="color:var(--txt-amarelo)">${R$(fm.aReceberPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('areceber')">Ver</button></td></tr>
-        <tr><td>📋 Saldo de pedidos em aberto</td><td class="text-center fw-bold" style="color:var(--txt-amarelo)">${R$(fm.saldoPedidosPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('pedidos')">Ver</button></td></tr>
+        <tr><td>📋 Saldo de pedidos a receber</td><td class="text-center fw-bold" style="color:var(--txt-amarelo)">${R$(fm.saldoPedidosPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="abrirPedidosFiltrados({pgto:'receber'})">Ver</button></td></tr>
         <tr><td>🤝 Vendido no consignado, ainda não repassado</td><td class="text-center fw-bold" style="color:var(--txt-amarelo)">${R$(fm.saldoConsignadoPendente)}</td><td><button class="btn btn-outline btn-xs" onclick="goTo('consignados')">Ver</button></td></tr>
       </tbody>
     </table></div>
@@ -2983,6 +3033,10 @@ function hojeLocalStr(dias=0){
   return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
 }
 function textoBusca(v){ return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+// Orçamento ainda não é dívida do cliente, e pedido cancelado deixou de ser.
+function pedidoEhVendaReal(p){ return p.status!=='Em aberto'&&p.status!=='Cancelado'; }
+function saldoPedido(p){ return Math.max(0,(+p.total||0)-(p.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0)); }
+function saldoPedidoAReceber(p){ return pedidoEhVendaReal(p)?saldoPedido(p):0; }
 const FILTRO_PED_VAZIO={q:'',etapa:'',pgto:'',entrega:''};
 let _fPed={...FILTRO_PED_VAZIO}, _fPedLimite=50;
 function pedidoAtrasado(p,hoje=hojeLocalStr()){
@@ -2994,7 +3048,7 @@ function pedidoPassaFiltro(p,f){
   else if(f.etapa && p.status!==f.etapa) return false;
   if(f.pgto){
     const total=+p.total||0, pago=(p.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0), saldo=total-pago;
-    if(f.pgto==='aberto'&&!(saldo>0.004)) return false;
+    if(f.pgto==='receber'&&!(saldoPedidoAReceber(p)>0.004)) return false;
     if(f.pgto==='pendente'&&!(saldo>0.004&&pago<=0.004)) return false;
     if(f.pgto==='parcial'&&!(saldo>0.004&&pago>0.004)) return false;
     if(f.pgto==='pago'&&!(total>0&&saldo<=0.004)) return false;
@@ -3013,9 +3067,133 @@ function pedidoPassaFiltro(p,f){
   }
   return true;
 }
+const PROXIMA_ETAPA={'Em aberto':['Confirmado','Confirmar pedido'],'Confirmado':['Em produção','Iniciar produção'],'Em produção':['Pronto','Marcar como pronto'],'Pronto':['Entregue','Marcar como entregue']};
+function escHtml(v){ return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+let _pedVisao=(()=>{ try{ return localStorage.getItem('morfe_ped_visao')==='quadro'?'quadro':'lista'; }catch(e){ return 'lista'; } })();
+function definirVisaoPedidos(v){
+  _pedVisao=v;
+  try{ localStorage.setItem('morfe_ped_visao',v); }catch(e){}
+  document.getElementById('ped-v-lista').setAttribute('aria-pressed',v==='lista');
+  document.getElementById('ped-v-quadro').setAttribute('aria-pressed',v==='quadro');
+  atualizarListaPedidos();
+}
+function itensSemVariante(pd){
+  return (pd.itens||[]).filter(it=>it.prod&&!String(it.prod).startsWith('KIT:')&&getVariantesDoProduto(it.prod)&&!it.variante);
+}
+// Mudança de etapa pelo painel e pelo quadro: mesmas regras e efeitos do formulário.
+async function mudarEtapaPedido(id,para){
+  const pd=getItem(DB.pedidos,id);
+  if(!pd||pd.status===para) return false;
+  const anterior={status:pd.status,estoque_baixado:pd.estoque_baixado,consumo_insumos:pd.consumo_insumos};
+  const virouBaixa=statusBaixaEstoque(para)&&!statusBaixaEstoque(pd.status);
+  if(virouBaixa&&!(pd.itens||[]).some(it=>it.prod||(it.desc||'').trim())){ toast('Adicione um item antes de confirmar o pedido','error'); return false; }
+  const avisos=avisosMudancaStatus({...pd,status:para},anterior);
+  if(avisos.length>0&&!confirm('⚠️ '+avisos.join('\n\n'))) return false;
+  if(virouBaixa&&!pd.estoque_baixado){
+    const sem=itensSemVariante(pd);
+    if(sem.length>0&&!confirm(`⚠️ Você não escolheu a variante de: ${sem.map(it=>it.desc||nomeProd(it.prod)).join(', ')}.\n\nO estoque vai ser abatido do insumo padrão. Continuar mesmo assim?`)) return false;
+  }
+  pd.status=para;
+  const res=await sincronizarEstoquePedido(pd,anterior,false);
+  registrarHistoricoPedido(pd,'Etapa alterada',`${anterior.status||'—'} → ${para}`);
+  registrarEstoqueNoHistorico(pd,res);
+  await salvarItem('pedidos',pd);
+  toast(res.avisoFalta.length?`⚠️ Estoque insuficiente: ${res.avisoFalta.join(', ')}`:`${pd.id}: ${para}`+(res.baixou?' · 📦 Insumos baixados':res.devolveu?' · 📦 Estoque devolvido':''),res.avisoFalta.length?'error':'success');
+  render(currentSection);
+  if(_resumoPedidoId===id) desenharResumoPedido();
+  return true;
+}
+function kanbanPedidosHtml(achados){
+  const hoje=hojeLocalStr();
+  return ETAPAS_PEDIDO.map(etapa=>{
+    let daEtapa=achados.filter(p=>p.status===etapa);
+    const soma=daEtapa.reduce((s,p)=>s+(+p.total||0),0), qtd=daEtapa.length;
+    if(etapa==='Entregue') daEtapa=daEtapa.slice(0,15);
+    else daEtapa=daEtapa.slice().sort((a,b)=>String(a.entrega?normalizarData(a.entrega):'9').localeCompare(String(b.entrega?normalizarData(b.entrega):'9')));
+    const cards=daEtapa.map(p=>{
+      const r=p.entrega&&etapa!=='Entregue'?rotuloUrgencia(p.entrega,hoje):null, prox=PROXIMA_ETAPA[etapa];
+      return `<article class="kanban-card" tabindex="0" draggable="true" data-id="${p.id}" onclick="abrirResumoPedido('${p.id}')" onkeydown="if(event.key==='Enter'&&event.target===this)abrirResumoPedido('${p.id}')" ondragstart="event.dataTransfer.setData('text/plain','${p.id}');this.classList.add('arrastando')" ondragend="this.classList.remove('arrastando')">
+        <div style="display:flex;justify-content:space-between;gap:6px"><strong>${escHtml(nomeVenda(p))}</strong><span style="font-size:10px;color:var(--cinza-med);white-space:nowrap">${p.id}</span></div>
+        <div style="margin:4px 0;color:var(--cinza-med)">${resumoItensPedido(p)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap"><strong style="color:var(--txt-verde)">${R$(p.total||0)}</strong>${r?`<span class="badge" style="background:${r.bg};color:${r.cor}">${r.label}</span>`:''}</div>
+        ${saldoPedido(p)>0.004?`<div style="font-size:11px;color:var(--txt-vermelho);margin-top:3px">Falta ${R$(saldoPedido(p))}</div>`:''}
+        ${prox?`<button class="kanban-avancar" onclick="event.stopPropagation();mudarEtapaPedido('${p.id}','${prox[0]}')">${prox[1]} →</button>`:''}
+      </article>`;
+    }).join('');
+    const oculto=qtd-daEtapa.length;
+    return `<section class="kanban-col" aria-label="${etapa}" ondragover="event.preventDefault();this.classList.add('alvo')" ondragleave="this.classList.remove('alvo')" ondrop="soltarPedidoQuadro(event,this,'${etapa}')">
+      <h3><span>${etapa} (${qtd})</span><span style="font-weight:600">${R$(soma)}</span></h3>
+      ${cards||'<div style="font-size:11px;color:var(--cinza-med);text-align:center;padding:14px 4px">Nenhum pedido</div>'}
+      ${oculto>0?`<div style="font-size:11px;color:var(--cinza-med);text-align:center;padding:4px">+${oculto} na lista</div>`:''}
+    </section>`;
+  }).join('');
+}
+function soltarPedidoQuadro(ev,col,etapa){
+  ev.preventDefault(); col.classList.remove('alvo');
+  const id=ev.dataTransfer.getData('text/plain');
+  if(id) mudarEtapaPedido(id,etapa);
+}
+let _resumoPedidoId=null, _resumoFocoAnterior=null;
+function abrirResumoPedido(id){
+  if(!getItem(DB.pedidos,id)) return;
+  _resumoFocoAnterior=document.activeElement;
+  _resumoPedidoId=id;
+  desenharResumoPedido();
+  document.getElementById('drawer-overlay').classList.add('open');
+  document.getElementById('drawer').focus();
+}
+function fecharResumoPedido(){
+  if(!_resumoPedidoId) return;
+  _resumoPedidoId=null;
+  document.getElementById('drawer-overlay').classList.remove('open');
+  if(_resumoFocoAnterior&&document.contains(_resumoFocoAnterior)) _resumoFocoAnterior.focus();
+}
+function acaoResumoPedido(fn,id){ fecharResumoPedido(); fn(id); }
+function desenharResumoPedido(){
+  const pd=getItem(DB.pedidos,_resumoPedidoId);
+  if(!pd){ fecharResumoPedido(); return; }
+  const total=+pd.total||0, pago=(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0), saldo=saldoPedido(pd), pct=total>0?Math.min(100,pago/total*100):0;
+  const tel=pd.telefone||getCli(pd.cliente)?.whatsapp||getCli(pd.cliente)?.telefone||'';
+  const ativo=pd.status!=='Entregue'&&pd.status!=='Cancelado';
+  const urg=pd.entrega&&ativo?rotuloUrgencia(pd.entrega,hojeLocalStr()):null;
+  const prox=PROXIMA_ETAPA[pd.status];
+  const itens=(pd.itens||[]).filter(i=>i.desc||i.prod);
+  document.getElementById('drawer').innerHTML=`
+    <div class="drawer-topo">
+      <div style="min-width:0"><div style="font-size:12px;opacity:.8">${pd.id} · ${pd.data?formatarDataBR(normalizarData(pd.data)):'sem data'}</div>
+        <div id="drawer-titulo" style="font-size:17px;font-weight:800;overflow-wrap:anywhere">${escHtml(nomeVenda(pd))}</div>
+        ${tel?`<div style="font-size:12px;opacity:.85">${escHtml(tel)}</div>`:''}</div>
+      <button onclick="fecharResumoPedido()" aria-label="Fechar">×</button>
+    </div>
+    <div class="drawer-corpo">
+      <div class="drawer-bloco" style="padding-top:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">${statusBadge(pd.status)}${urg?`<span class="badge" style="background:${urg.bg};color:${urg.cor}">🚚 ${urg.label}</span>`:pd.entrega?`<span style="font-size:12px;color:var(--cinza-med)">Entrega: ${formatarDataBR(normalizarData(pd.entrega))}</span>`:ativo?'<span style="font-size:12px;color:var(--cinza-med)">Sem data de entrega</span>':''}</div>
+        ${prox?`<button class="btn btn-primary" id="drawer-proxima" style="width:100%;justify-content:center;min-height:46px;font-size:14px" onclick="mudarEtapaPedido('${pd.id}','${prox[0]}')">${prox[1]} →</button>`:''}
+        ${pd.status==='Cancelado'?`<button class="btn btn-outline" style="width:100%;justify-content:center;min-height:44px" onclick="mudarEtapaPedido('${pd.id}','Em aberto')">Reabrir como orçamento</button>`:''}
+      </div>
+      <div class="drawer-bloco"><div class="drawer-rotulo">Itens</div>
+        ${itens.length?itens.map(it=>`<div class="drawer-linha"><span>${+it.qtd||1}× ${escHtml(it.desc||nomeProd(it.prod))}${it.variante?` · ${escHtml(it.variante)}`:''}</span><strong style="white-space:nowrap">${R$(itemCalc(it).tot)}</strong></div>`).join(''):'<span style="color:var(--cinza-med)">Nenhum item</span>'}
+      </div>
+      <div class="drawer-bloco"><div class="drawer-rotulo">Pagamento</div>
+        <div class="drawer-linha"><span>Total</span><strong>${R$(total)}</strong></div>
+        <div class="drawer-barra"><div style="width:${pct}%"></div></div>
+        <div class="drawer-linha"><span>Pago ${R$(pago)}</span><strong style="color:${saldo>0.004?'var(--txt-vermelho)':'var(--txt-verde)'}">${saldo>0.004?'Falta '+R$(saldo):'Quitado'}</strong></div>
+      </div>
+      <div class="drawer-bloco"><div class="drawer-rotulo">Estoque</div>${pd.estoque_baixado?'📦 Insumos já baixados':pd.status==='Em aberto'?'Baixa ao confirmar o pedido':'Sem baixa de insumos'}</div>
+      ${pd.obs?`<div class="drawer-bloco"><div class="drawer-rotulo">Observações</div><div style="white-space:pre-wrap;overflow-wrap:anywhere">${escHtml(pd.obs)}</div></div>`:''}
+      <div class="drawer-bloco"><div class="drawer-acoes">
+        <button class="btn btn-outline" onclick="acaoResumoPedido(verPedidoOrc,'${pd.id}')">✏️ Editar</button>
+        <button class="btn btn-outline" onclick="acaoResumoPedido(abrirPagamentos,'${pd.id}')">💳 Pagamentos</button>
+        <button class="btn btn-outline" onclick="acaoResumoPedido(abrirPreviewOrcamento,'${pd.id}')">🧾 Orçamento</button>
+        <button class="btn btn-outline" onclick="acaoResumoPedido(wppPedido,'${pd.id}')">💬 WhatsApp</button>
+        <button class="btn btn-outline" onclick="acaoResumoPedido(verHistoricoPedido,'${pd.id}')">📜 Histórico</button>
+        ${ativo?`<button class="btn btn-outline" style="color:var(--txt-vermelho)" onclick="mudarEtapaPedido('${pd.id}','Cancelado')">Cancelar pedido</button>`:''}
+      </div></div>
+    </div>`;
+}
 function pedidoLinhaHtml(p){
   const custoP=custoPedidoEstimado(p);const lucroP=lucroPedidoEstimado(p);
-  return`<tr>
+  return`<tr tabindex="0" style="cursor:pointer" onclick="abrirResumoPedido('${p.id}')" onkeydown="if(event.key==='Enter'&&event.target===this)abrirResumoPedido('${p.id}')">
         <td class="fw-bold text-azul pc-id">${p.id}</td><td class="pc-data" data-label="Data">${p.data||'—'}</td>
         <td class="fw-bold pc-cliente" data-label="Cliente">${nomeVenda(p)}</td>
         <td class="pc-itens" data-label="Itens" style="font-size:12px">${resumoItensPedido(p)}</td>
@@ -3024,8 +3202,8 @@ function pedidoLinhaHtml(p){
         <td class="fw-bold pc-lucro" data-label="Lucro" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
         <td class="pc-pgto" data-label="Pagamento">${statusPgto(p)}</td>
         <td class="pc-status" data-label="Status">${statusBadge(p.status)}</td>
-        <td class="text-center pc-est" data-label="Estoque">${p.estoque_baixado?`<span class="badge badge-ok" style="cursor:pointer" onclick="modalVerConsumo('${p.id}')" title="Ver insumos consumidos">📦 Baixado</span>`:'<span class="badge badge-gray">—</span>'}</td>
-        <td class="td-actions">
+        <td class="text-center pc-est" data-label="Estoque">${p.estoque_baixado?`<span class="badge badge-ok" style="cursor:pointer" onclick="event.stopPropagation();modalVerConsumo('${p.id}')" title="Ver insumos consumidos">📦 Baixado</span>`:'<span class="badge badge-gray">—</span>'}</td>
+        <td class="td-actions" onclick="event.stopPropagation()">
           <button class="btn btn-primary btn-xs" onclick="verPedidoOrc('${p.id}')" title="Editar">✏️</button>
           <button class="btn btn-outline btn-xs" onclick="abrirPreviewOrcamento('${p.id}')" title="Gerar Orçamento p/ enviar">🧾</button>
           <button class="btn btn-warning btn-xs" onclick="abrirPagamentos('${p.id}')" title="Pagamentos">💳</button>
@@ -3040,11 +3218,15 @@ function atualizarListaPedidos(){
   if(!corpo) return;
   const ativos=Object.values(_fPed).some(Boolean);
   const achados=DB.pedidos.filter(p=>pedidoPassaFiltro(p,_fPed)).reverse();
-  corpo.innerHTML=achados.length===0
+  const noQuadro=_pedVisao==='quadro';
+  document.getElementById('ped-kanban').style.display=noQuadro?'':'none';
+  document.getElementById('ped-lista-tabela').style.display=noQuadro?'none':'';
+  if(noQuadro){ document.getElementById('ped-kanban').innerHTML=kanbanPedidosHtml(achados); corpo.innerHTML=''; }
+  else corpo.innerHTML=achados.length===0
     ?`<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--cinza-med)">${DB.pedidos.length===0?'Nenhum pedido.':'Nenhum pedido com esses filtros.'}</td></tr>`
     :achados.slice(0,_fPedLimite).map(pedidoLinhaHtml).join('');
-  document.getElementById('ped-lista-resumo').innerHTML=`<span><strong>${achados.length}</strong> ${achados.length===1?'pedido':'pedidos'} · ${R$(achados.reduce((s,p)=>s+(+p.total||0),0))}</span>${ativos?'<button class="btn btn-outline btn-xs" onclick="limparFiltrosPedidos()">✕ Limpar filtros</button>':''}`;
-  const resto=achados.length-_fPedLimite;
+  document.getElementById('ped-lista-resumo').innerHTML=`<span><strong>${achados.length}</strong> ${achados.length===1?'pedido':'pedidos'} · ${R$(achados.reduce((s,p)=>s+(+p.total||0),0))}${noQuadro?' · Cancelados ficam só na lista':''}</span>${ativos?'<button class="btn btn-outline btn-xs" onclick="limparFiltrosPedidos()">✕ Limpar filtros</button>':''}`;
+  const resto=noQuadro?0:achados.length-_fPedLimite;
   document.getElementById('ped-lista-mais').innerHTML=resto>0?`<button class="btn btn-outline" onclick="_fPedLimite+=50;atualizarListaPedidos()">Mostrar mais (${resto} restantes)</button>`:'';
 }
 function filtrarPedidos(campo,valor){ _fPed[campo]=valor; _fPedLimite=50; atualizarListaPedidos(); }
@@ -3057,22 +3239,29 @@ SECTIONS.pedidos = () => {
   return `
   <div class="kpi-grid">
     <div class="kpi-card verde"><div class="kpi-label">Total Pedidos</div><div class="kpi-value">${lista.length}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Valor Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+(+p.total||0),0))}</div></div>
-    <div class="kpi-card laranja"><div class="kpi-label">Custo Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+custoPedidoEstimado(p),0))}</div></div>
-    <div class="kpi-card roxo"><div class="kpi-label">🔬 Lucro Total</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+lucroPedidoEstimado(p),0))}</div></div>
-    <div class="kpi-card amarelo kpi-click" role="button" tabindex="0" onclick="abrirPedidosFiltrados({pgto:'aberto'})" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Saldo a Receber</div><div class="kpi-value">${R$(lista.reduce((s,p)=>{const pago=(p.entradas||[]).reduce((ss,e)=>ss+(+e.valor||0),0);return s+Math.max(0,(+p.total||0)-pago);},0))}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Valor Total</div><div class="kpi-value">${R$(lista.filter(p=>p.status!=='Cancelado').reduce((s,p)=>s+(+p.total||0),0))}</div><div class="kpi-sub">Inclui orçamentos, sem cancelados</div></div>
+    <div class="kpi-card laranja"><div class="kpi-label">Custo Total</div><div class="kpi-value">${R$(lista.filter(pedidoEhVendaReal).reduce((s,p)=>s+custoPedidoEstimado(p),0))}</div><div class="kpi-sub">Só pedidos confirmados</div></div>
+    <div class="kpi-card roxo"><div class="kpi-label">🔬 Lucro Total</div><div class="kpi-value">${R$(lista.filter(pedidoEhVendaReal).reduce((s,p)=>s+lucroPedidoEstimado(p),0))}</div><div class="kpi-sub">Só pedidos confirmados</div></div>
+    <div class="kpi-card amarelo kpi-click" role="button" tabindex="0" onclick="abrirPedidosFiltrados({pgto:'receber'})" onkeydown="if(event.key==='Enter')this.click()"><div class="kpi-label">Saldo a Receber</div><div class="kpi-value">${R$(lista.reduce((s,p)=>s+saldoPedidoAReceber(p),0))}</div><div class="kpi-sub">Só pedidos confirmados</div></div>
   </div>
   <div class="panel">
     <div class="panel-header"><span class="panel-title">📋 Pedidos & Orçamentos</span>
-      <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="visao-ped" role="group" aria-label="Forma de ver os pedidos">
+          <button id="ped-v-lista" aria-pressed="${_pedVisao==='lista'}" onclick="definirVisaoPedidos('lista')">☰ Lista</button>
+          <button id="ped-v-quadro" aria-pressed="${_pedVisao==='quadro'}" onclick="definirVisaoPedidos('quadro')">▦ Quadro</button>
+        </div>
+        <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button>
+      </div></div>
     <div class="filtros-lista">
       <input class="search-input" id="ped-busca" type="search" placeholder="🔍 Nº, cliente, telefone ou produto..." aria-label="Buscar pedidos" value="${String(_fPed.q).replace(/"/g,'&quot;')}" oninput="filtrarPedidos('q',this.value)">
       <select class="form-select" aria-label="Filtrar por etapa" onchange="filtrarPedidos('etapa',this.value)">${opcoesFiltro([['','Etapa'],['andamento','Em andamento'],...['Em aberto','Confirmado','Em produção','Pronto','Entregue','Cancelado'].map(s=>[s,s])],_fPed.etapa)}</select>
-      <select class="form-select" aria-label="Filtrar por pagamento" onchange="filtrarPedidos('pgto',this.value)">${opcoesFiltro([['','Pagamento'],['aberto','Com saldo a receber'],['pendente','Nada pago'],['parcial','Pago em parte'],['pago','Pago']],_fPed.pgto)}</select>
+      <select class="form-select" aria-label="Filtrar por pagamento" onchange="filtrarPedidos('pgto',this.value)">${opcoesFiltro([['','Pagamento'],['receber','A receber (confirmados)'],['pendente','Nada pago'],['parcial','Pago em parte'],['pago','Pago']],_fPed.pgto)}</select>
       <select class="form-select" aria-label="Filtrar por entrega" onchange="filtrarPedidos('entrega',this.value)">${opcoesFiltro([['','Entrega'],['atrasada','Atrasada'],['hoje','Entrega hoje'],['7d','Próximos 7 dias'],['sem','Sem data']],_fPed.entrega)}</select>
     </div>
     <div class="filtros-resumo" id="ped-lista-resumo" aria-live="polite"></div>
-    <div class="tbl-wrap"><table class="tbl-cards">
+    <div class="kanban" id="ped-kanban" style="display:none"></div>
+    <div class="tbl-wrap" id="ped-lista-tabela"><table class="tbl-cards">
       <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Custo</th><th>Lucro</th><th>Pagamento</th><th>Status</th><th>Estoque</th><th>Ações</th></tr></thead>
       <tbody id="ped-lista-corpo"></tbody>
     </table></div>
