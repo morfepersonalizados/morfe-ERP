@@ -848,6 +848,20 @@ function entrarComGoogle(response){
 }
 
 // Lógica compartilhada depois de qualquer método de login dar certo
+window.addEventListener('beforeunload',e=>{ if(caixaPendente()){ e.preventDefault(); e.returnValue=''; } });
+function marcarSaidaCaixa(){
+  try{ if(caixaPendente()) localStorage.setItem('morfe_caixa_sem_confirmar',hojeLocalStr()); else localStorage.removeItem('morfe_caixa_sem_confirmar'); }catch(e){}
+}
+window.addEventListener('pagehide',marcarSaidaCaixa);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') marcarSaidaCaixa(); });
+function lembrarCaixaAoAbrir(){
+  try{
+    const dia=localStorage.getItem('morfe_caixa_sem_confirmar');
+    if(!dia||dia>=hojeLocalStr()) return;
+    localStorage.removeItem('morfe_caixa_sem_confirmar');
+    if(caixaPendente()&&!document.getElementById('modal-overlay').classList.contains('open')) conferirCaixa(null,'retorno');
+  }catch(e){}
+}
 let _carregandoInicial=false;
 function telaCarregandoHtml(){
   const b=(a,e='')=>`<div class="sk" style="height:${a}px;${e}"></div>`;
@@ -866,7 +880,7 @@ function finalizarLogin(){
   render('dashboard');
   setTimeout(async () => {
     try { await sincronizarSheets(); }
-    finally { if(_carregandoInicial){ _carregandoInicial=false; render(currentSection); } }
+    finally { if(_carregandoInicial){ _carregandoInicial=false; render(currentSection); } lembrarCaixaAoAbrir(); }
   }, 500);
 }
 
@@ -913,7 +927,13 @@ function inicializarLoginGoogle(tentativa){
 }
 window.addEventListener('load', ()=>inicializarLoginGoogle());
 
+// O navegador não deixa abrir tela própria ao fechar a aba. Por isso a confirmação do caixa
+// acontece no botão Sair, com o aviso padrão do navegador ao fechar, e na próxima abertura do dia.
 function sair() {
+  if(caixaPendente()){ conferirCaixa(sairDeVez,'sair'); return; }
+  sairDeVez();
+}
+function sairDeVez() {
   _isLoggedIn = false;
   _googleIdToken = null;
   document.getElementById('app').style.display = 'none';
@@ -2520,7 +2540,7 @@ SECTIONS.caixa = () => {
   const faltas=confs.filter(c=>c.diferenca<0).reduce((s,c)=>s+c.diferenca,0), sobras=confs.filter(c=>c.diferenca>0).reduce((s,c)=>s+c.diferenca,0);
   const ult=confs[confs.length-1];
   return '<div class="panel"><div class="panel-header"><span class="panel-title">🏦 Caixa agora: <span id="caixa-agora" style="color:'+(fm.caixaDisponivel>=0?'inherit':'var(--txt-vermelho)')+'">'+R$(fm.caixaDisponivel)+'</span></span><button class="btn btn-primary" onclick="conferirCaixa()">🧮 Conferir com o valor real</button></div>'+
-    '<div style="padding:10px 18px;font-size:12.5px;color:var(--cinza-med)">'+(ult?'Última conferência: '+formatarDataBR(ult.data)+' · '+(Math.abs(ult.diferenca)<0.005?'bateu certinho':ult.diferenca<0?'faltaram '+R$(-ult.diferenca):'sobraram '+R$(ult.diferenca)):'Ainda sem conferência. Compare o valor do sistema com o que você tem de verdade.')+'</div></div>'+
+    '<div style="padding:10px 18px;font-size:12.5px;color:var(--cinza-med)">'+(caixaPendente()&&ult?'⚠️ O saldo mudou desde a última conferência. ':'')+(ult?'Última conferência: '+formatarDataBR(ult.data)+' · '+(Math.abs(ult.diferenca)<0.005?'bateu certinho':ult.diferenca<0?'faltaram '+R$(-ult.diferenca):'sobraram '+R$(ult.diferenca)):'Ainda sem conferência. Compare o valor do sistema com o que você tem de verdade.')+'</div></div>'+
     renderSeletorPeriodo('caixa',_caixaPeriodo,_caixaCustomIni,_caixaCustomFim)+
     '<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Saldo inicial</div><div class="kpi-value">'+R$(r.inicial)+'</div><div class="kpi-sub">Em '+formatarDataBR(per.inicio)+'</div></div>'+
     '<div class="kpi-card verde"><div class="kpi-label">⬆ Entradas</div><div class="kpi-value text-verde">'+R$(r.entradas)+'</div></div>'+
@@ -2616,14 +2636,36 @@ function salvarConfigCaixa(){
   const obj={...DB.config,id:1};
   return enviarParaSheets('upsert','config',obj).catch(e=>{ _pendingQueue.push({acao:'upsert',tabela:'config',dados:obj,ultimoErro:e?.message||String(e),tentadoEm:new Date().toISOString()}); salvarLocal(); });
 }
-function conferirCaixa(){
+// Precisa de confirmação quando nunca houve conferência ou o saldo mudou desde a última.
+function caixaPendente(){
+  if(!_isLoggedIn||_carregandoInicial) return false;
+  const conf=conferenciasCaixa().at(-1);
+  if(!conf) return movimentosCaixa().length>0||Math.abs(+(DB.config?.ajuste_caixa||0))>0.004;
+  return Math.abs(metricasFinanceiras().caixaDisponivel-(+conf.contado||0))>0.005;
+}
+function caixaEstaCerto(){
+  const i=document.getElementById('ajc-valor');
+  i.value=(+i.dataset.sistema).toFixed(2);
+  conferirCaixaPrevia(+i.dataset.sistema);
+  modalSave();
+}
+function sairSemConfirmar(){ const f=_depoisConferir; closeModal(); _depoisConferir=null; if(f) f(); }
+let _depoisConferir=null;
+function conferirCaixa(depois,motivo){
   const sistema=metricasFinanceiras().caixaDisponivel;
-  openModal('🧮 Conferir caixa',
-    '<div style="background:var(--azul-tint);border-radius:9px;padding:12px;margin-bottom:12px"><div style="font-size:11.5px;color:var(--cinza-med)">O sistema calcula que você tem</div><div style="font-size:22px;font-weight:900">'+R$(sistema)+'</div></div>'+
-    '<div class="form-group"><label class="form-label" for="ajc-valor">Quanto você tem DE VERDADE agora?</label><input class="form-input" id="ajc-valor" type="number" inputmode="decimal" step="0.01" placeholder="0,00" oninput="conferirCaixaPrevia('+sistema+')"></div>'+
+  _depoisConferir=typeof depois==='function'?depois:null;
+  const ult=conferenciasCaixa().at(-1);
+  const aviso=motivo==='sair'?'Antes de sair, confirme se este é o valor do seu caixa.':motivo==='retorno'?'Da última vez você saiu sem confirmar o caixa. Confira agora.':'';
+  openModal(motivo?'🔒 Confirmar o caixa':'🧮 Conferir caixa',
+    (aviso?'<p style="font-size:13px;margin:0 0 10px">'+aviso+'</p>':'')+
+    '<div style="background:var(--azul-tint);border-radius:9px;padding:12px;margin-bottom:12px"><div style="font-size:11.5px;color:var(--cinza-med)">O sistema calcula que você tem</div><div style="font-size:22px;font-weight:900">'+R$(sistema)+'</div>'+(ult?'<div style="font-size:11.5px;color:var(--cinza-med);margin-top:2px">Última conferência em '+formatarDataBR(ult.data)+': '+R$(ult.contado)+'</div>':'')+'</div>'+
+    '<button type="button" id="ajc-certo" class="btn btn-success" style="width:100%;justify-content:center;min-height:46px;font-size:14px;margin-bottom:14px" onclick="caixaEstaCerto()">✅ Está certo, é esse valor</button>'+
+    '<div style="font-size:12px;color:var(--cinza-med);margin-bottom:6px">Se não for, digite o valor real:</div>'+
+    '<div class="form-group"><label class="form-label" for="ajc-valor">Quanto você tem DE VERDADE agora?</label><input class="form-input" id="ajc-valor" data-sistema="'+sistema+'" type="number" inputmode="decimal" step="0.01" placeholder="0,00" oninput="conferirCaixaPrevia('+sistema+')"></div>'+
     '<div class="caixa-dif" id="ajc-dif" aria-live="polite" style="background:var(--azul-tint);color:var(--cinza-med)">Digite o valor para ver a diferença.</div>'+
     '<div id="ajc-motivo-bloco" style="display:none;margin-top:12px"><div class="form-group"><label class="form-label" for="ajc-motivo">O que explica a diferença?</label><select class="form-select" id="ajc-motivo">'+['Ainda não sei','Venda ou pagamento não lançado','Compra ou despesa não lançada','Retirada pessoal','Troco ou arredondamento','Erro de lançamento','Outro'].map(x=>'<option>'+x+'</option>').join('')+'</select></div><div class="form-group" style="margin-top:8px"><label class="form-label" for="ajc-obs">Observação (opcional)</label><input class="form-input" id="ajc-obs"></div></div>'+
-    '<p style="font-size:11.5px;color:var(--cinza-med);margin-top:10px">Ao salvar, o caixa passa a mostrar o valor real e a diferença fica guardada no histórico como falta ou sobra. Suas vendas e despesas não mudam.</p>',
+    '<p style="font-size:11.5px;color:var(--cinza-med);margin-top:10px">Ao salvar, o caixa passa a mostrar o valor real e a diferença fica guardada no histórico como falta ou sobra. Suas vendas e despesas não mudam.</p>'+
+    (motivo==='sair'?'<button type="button" class="btn btn-outline" style="width:100%;justify-content:center;margin-top:10px" onclick="sairSemConfirmar()">Sair sem confirmar</button>':''),
     async()=>{
       const contado=parseFloat(document.getElementById('ajc-valor').value);
       if(isNaN(contado)){ toast('Digite o valor real','error'); return; }
@@ -2634,9 +2676,11 @@ function conferirCaixa(){
       DB.config.conferencias_caixa=[...conferenciasCaixa(),reg].slice(-200);
       DB.config.ajuste_caixa=parseFloat((ant.ajuste+dif).toFixed(2));
       await salvarConfigCaixa();
+      const depoisDeConferir=_depoisConferir; _depoisConferir=null;
       closeModal(); render(currentSection);
       toastDesfazer(bateu?'Caixa conferido: bateu certinho!':dif<0?'Conferido: faltaram '+R$(-dif):'Conferido: sobraram '+R$(dif),async()=>{ DB.config.conferencias_caixa=conferenciasCaixa().filter(c=>c.id!==reg.id); DB.config.ajuste_caixa=ant.ajuste; await salvarConfigCaixa(); toast('Conferência desfeita'); render(currentSection); },bateu||dif>0?'success':'error');
-    },'💾 Registrar conferência');
+      if(depoisDeConferir) depoisDeConferir();
+    },'💾 Registrar outro valor');
 }
 function conferirCaixaPrevia(sistema){
   const v=parseFloat(document.getElementById('ajc-valor').value), el=document.getElementById('ajc-dif'), bl=document.getElementById('ajc-motivo-bloco');
@@ -2671,6 +2715,7 @@ function painelHojeHtml(criticosMP){
     [cobrancas.length,R$(cobrancas.reduce((s,d)=>s+d.saldo,0)),cobrancas.length===1?'1 cobrança atrasada':`${cobrancas.length} cobranças atrasadas`,"_faixaDivida='atrasadas';goTo('areceber')",true],
     [contasVenc.length,R$(contasVenc.reduce((s,x)=>s+saldoAP(x),0)),contasVenc.length===1?'1 conta vencida':contasVenc.length+' contas vencidas',"abrirAPFiltrado('vencidas')",true],
     [criticosMP,criticosMP,criticosMP===1?'insumo em estoque baixo':'insumos em estoque baixo',"goTo('materias')",true],
+    [caixaPendente()?1:0,R$(metricasFinanceiras().caixaDisponivel),'confirmar o caixa',"conferirCaixa()",false],
     [n.hoje,n.hoje,n.hoje===1?'entrega hoje':'entregas hoje',"abrirPedidosFiltrados({entrega:'hoje'})",false],
     [n.arte,n.arte,n.arte===1?'arte a resolver':'artes a resolver',"abrirPedidosFiltrados({arte:'pendente'})",false],
     [n.produzir,n.produzir,n.produzir===1?'pedido para produzir':'pedidos para produzir',"_pedVisao='quadro';abrirPedidosFiltrados({})",false],
