@@ -288,6 +288,14 @@ body.tema-escuro .visao-ped button[aria-pressed=true]{background:var(--dourado-e
 .etapa-passos button:hover:not([aria-current]){border-color:var(--azul-claro)}
 .pc-avancar{white-space:nowrap}
 .pc-avancar .txt-longo{display:none}
+.mp-bloco{background:var(--azul-tint);border-radius:8px;padding:12px;margin-bottom:12px}
+.mp-cob{background:var(--bg-input);border:1px solid var(--cinza-claro);border-radius:8px;padding:12px;margin-top:10px}
+.mp-item{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--cinza-claro);border-radius:10px;padding:12px;margin-bottom:8px;background:var(--bg-input)}
+.mp-item.urgente{border-color:var(--vermelho-claro);background:var(--vermelho-claro)}
+.mp-acoes{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 min(100%,320px);min-width:0;justify-content:flex-end}
+.mp-acoes .form-select{flex:1 1 220px;width:auto;min-width:0}
+.mp-acoes .btn{min-height:42px;justify-content:center}
+@media(max-width:600px){.mp-acoes .btn{flex:1 1 100%}}
 @media(max-width:1180px){
   .kanban{display:flex;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
   .kanban-col{flex:0 0 260px;scroll-snap-align:start}
@@ -1160,7 +1168,9 @@ async function sincronizarSheets() {
         registrarLogSync('fim', 'sucesso');
       }
       _sessaoExpirada = false;
+      if (Array.isArray(data.dados.mp_pagamentos)) guardarPagsMP(data.dados.mp_pagamentos);
       render(currentSection);
+      aplicarPagamentosMP();
     } else {
       const erro = data.erro || 'Resposta inválida';
       // Distingue "token do Google vencido" de erro de rede/servidor de
@@ -1900,6 +1910,7 @@ function metricasFinanceiras(){
   const recebidoConsignados=DB.consignados.reduce((s,c)=>s+(c.visitas||[]).reduce((ss,v)=>ss+(+v.valor_recebido||0),0),0);
   const pagoCompras=DB.compras.filter(c=>c.status==='Pago').reduce((s,c)=>s+(+c.qtd||0)*(+c.custo||0),0);
   const pagoAP=DB.apagar.reduce((s,x)=>s+(+x.pago||0),0);
+  const taxasMP=DB.pedidos.reduce((s,p)=>s+(p.entradas||[]).reduce((ss,e)=>ss+(+e.taxa||0),0),0);
   // ajusteCaixa é uma correção manual (ver "Ajustar Saldo de Caixa") pra
   // quando o valor calculado pelos lançamentos não bate com o que tem de
   // verdade na conta — sem isso não tinha como "corrigir" o número
@@ -1908,7 +1919,7 @@ function metricasFinanceiras(){
   // "A Pagar" (gerarContasFixasDoMes) e entra em pagoAP quando é pago de
   // verdade. Descontar custoFixoMes de novo aqui contava a mesma conta
   // fixa duas vezes (uma via pagoAP, outra aqui) — via custoFixoMes.
-  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR+recebidoConsignados)-(pagoCompras+pagoAP)+ajusteCaixa;
+  const caixaDisponivel=(recebidoVendas+recebidoPedidos+recebidoAR+recebidoConsignados)-(pagoCompras+pagoAP+taxasMP)+ajusteCaixa;
 
   // Valor parado — dinheiro "preso" em cada frente, ainda não virou caixa
   const valorEstoqueInsumos=DB.materias.reduce((s,m)=>s+Math.max(0,(+m.estoque||0))*(+m.custo||0),0);
@@ -2225,6 +2236,7 @@ function movimentosCaixa(){
   const l=[], dt=v=>v?normalizarData(v):'';
   DB.vendas.filter(v=>v.status==='Pago').forEach(v=>l.push({data:dt(v.data),tipo:'entrada',origem:'Venda',desc:(v.produto?nomeProd(v.produto):'Venda')+' · '+nomeVenda(v),valor:(+v.qtd||0)*(+v.preco||0),abrir:"editarVenda('"+v.id+"')"}));
   DB.pedidos.forEach(p=>(p.entradas||[]).forEach(e=>l.push({data:dt(e.data||p.data),tipo:'entrada',origem:'Pedido',desc:p.id+' · '+nomeVenda(p)+(e.forma?' · '+e.forma:''),valor:+e.valor||0,abrir:"abrirResumoPedido('"+p.id+"')"})));
+  DB.pedidos.forEach(p=>(p.entradas||[]).filter(e=>(+e.taxa||0)>0).forEach(e=>l.push({data:dt(e.data||p.data),tipo:'saida',despesa:true,origem:'Taxa',desc:'Taxa Mercado Pago · '+p.id,valor:+e.taxa||0,abrir:"abrirResumoPedido('"+p.id+"')"})));
   DB.areceber.filter(x=>(+x.recebido||0)!==0).forEach(x=>l.push({data:dt(x.recebido_em||x.venc||x.data),aprox:!x.recebido_em,tipo:'entrada',origem:'A Receber',desc:(x.descricao||x.id)+(x.cliente?' · '+nomeCli(x.cliente):''),valor:+x.recebido||0,abrir:"editarAR('"+x.id+"')"}));
   DB.consignados.forEach(c=>(c.visitas||[]).filter(v=>(+v.valor_recebido||0)!==0).forEach(v=>l.push({data:dt(v.data),tipo:'entrada',origem:'Consignado',desc:c.nome||c.parceiro||c.loja||c.id,valor:+v.valor_recebido||0,abrir:"verHistoricoVisitas('"+c.id+"')"})));
   DB.compras.filter(c=>c.status==='Pago').forEach(c=>l.push({data:dt(c.data),tipo:'saida',despesa:c.tipo==='despesa'||(!c.tipo&&!c.materia_prima_id),origem:'Compra',desc:c.produto||c.id,valor:(+c.qtd||0)*(+c.custo||0),abrir:"editarCompra('"+c.id+"')"}));
@@ -2737,7 +2749,9 @@ function painelHojeHtml(criticosMP){
     [cobrancas.length,R$(cobrancas.reduce((s,d)=>s+d.saldo,0)),cobrancas.length===1?'1 cobrança atrasada':`${cobrancas.length} cobranças atrasadas`,"_faixaDivida='atrasadas';goTo('areceber')",true],
     [contasVenc.length,R$(contasVenc.reduce((s,x)=>s+saldoAP(x),0)),contasVenc.length===1?'1 conta vencida':contasVenc.length+' contas vencidas',"abrirAPFiltrado('vencidas')",true],
     [criticosMP,criticosMP,criticosMP===1?'insumo em estoque baixo':'insumos em estoque baixo',"goTo('materias')",true],
+    [mpEstornados().length,mpEstornados().length,'pagamento devolvido pelo Mercado Pago',"abrirPagamentosMP()",true],
     [caixaPendente()?1:0,R$(metricasFinanceiras().caixaDisponivel),'confirmar o caixa',"conferirCaixa()",false],
+    [mpParaConferir().length,R$(mpParaConferir().reduce((s,p)=>s+p.valor,0)),mpParaConferir().length===1?'pagamento do Mercado Pago para conferir':mpParaConferir().length+' pagamentos do Mercado Pago para conferir',"abrirPagamentosMP()",false],
     [n.hoje,n.hoje,n.hoje===1?'entrega hoje':'entregas hoje',"abrirPedidosFiltrados({entrega:'hoje'})",false],
     [n.arte,n.arte,n.arte===1?'arte a resolver':'artes a resolver',"abrirPedidosFiltrados({arte:'pendente'})",false],
     [n.produzir,n.produzir,n.produzir===1?'pedido para produzir':'pedidos para produzir',"_pedVisao='quadro';abrirPedidosFiltrados({})",false],
@@ -4028,6 +4042,7 @@ SECTIONS.pedidos = () => {
           <button id="ped-v-lista" aria-pressed="${_pedVisao==='lista'}" onclick="definirVisaoPedidos('lista')">☰ Lista</button>
           <button id="ped-v-quadro" aria-pressed="${_pedVisao==='quadro'}" onclick="definirVisaoPedidos('quadro')">▦ Quadro</button>
         </div>
+        ${mpBotaoPedidos()}
         <button class="btn btn-success" onclick="novoPedidoOrc()">+ Novo Pedido</button>
       </div></div>
     <div class="filtros-lista">
@@ -4351,6 +4366,209 @@ function remItemPed(i){
   if(tb)tb.innerHTML=window._pedTemp.itens.map((it,idx)=>pedItemRow(it,idx)).join('');
   calcTotalPed();
 }
+// ── MERCADO PAGO ─────────────────────────────────────────────
+// Os pagamentos vêm da aba mp_pagamentos, que só o Apps Script grava (busca a cada 5 min).
+// A chave do Mercado Pago nunca passa por aqui. Pagamento com o nº do pedido entra
+// sozinho; os outros ficam em "para conferir" até alguém escolher o pedido.
+let _mpPags=(()=>{ try{ const a=JSON.parse(localStorage.getItem('morfe_mp_pags')||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } })();
+let _mpAplicando=false;
+function guardarPagsMP(lista){
+  _mpPags=(Array.isArray(lista)?lista:[]).map(p=>({...p,id:String(p.id),valor:+p.valor||0,taxa:+p.taxa||0,liquido:+p.liquido||0,referencia:String(p.referencia||''),data:normalizarData(p.data)||''}));
+  try{ localStorage.setItem('morfe_mp_pags',JSON.stringify(_mpPags)); }catch(e){}
+}
+async function chamarBackend(acao,dados){
+  const res=await fetch(SHEETS_API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({acao,dados,...credenciaisAuth()})});
+  const data=await res.json();
+  if(!data.ok) throw new Error(data.erro||'O servidor não respondeu');
+  return data.dados;
+}
+function formaMP(p){ return p.metodo==='pix'?'PIX':p.tipo==='credit_card'?'Crédito':p.tipo==='debit_card'?'Débito':'Mercado Pago'; }
+function mpIdsLancados(){ const s=new Set(); DB.pedidos.forEach(p=>(p.entradas||[]).forEach(e=>{ if(e.mp_id) s.add(String(e.mp_id)); })); return s; }
+function mpIgnorados(){ const a=DB.config?.mp_ignorados; return Array.isArray(a)?a.map(String):[]; }
+function mpParaConferir(){
+  const lanc=mpIdsLancados(), ign=new Set(mpIgnorados()), ini=DB.config?.mp_inicio||'';
+  return _mpPags.filter(p=>p.status==='approved'&&p.data>=ini&&!lanc.has(p.id)&&!ign.has(p.id)&&!(p.referencia&&getItem(DB.pedidos,p.referencia)))
+    .sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
+}
+// Pagamento já lançado que o Mercado Pago devolveu ao cliente: precisa sair do pedido à mão.
+function mpEstornados(){
+  const porId={}; _mpPags.forEach(p=>porId[p.id]=p);
+  const l=[];
+  DB.pedidos.forEach(pd=>(pd.entradas||[]).forEach(e=>{ const p=e.mp_id&&porId[String(e.mp_id)]; if(p&&['refunded','charged_back','cancelled'].includes(p.status)) l.push({pd,p}); }));
+  return l;
+}
+function atualizarStatusPgto(pd){
+  const pago=(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0);
+  pd.status_pgto=pago>=(+pd.total||0)?'Pago integral':pago>0?'Parcial':'Pendente';
+  return pago;
+}
+// Mesmo efeito de "Confirmar Recebimento": situação do pagamento, confirmação com 50% e estoque.
+async function registrarEntradaPedido(pd,entrada,origem){
+  if(!pd.entradas) pd.entradas=[];
+  const anteriorEst={status:pd.status,estoque_baixado:pd.estoque_baixado,consumo_insumos:pd.consumo_insumos};
+  pd.entradas.push(entrada);
+  registrarHistoricoPedido(pd,'Pagamento registrado',`${R$(entrada.valor)} · ${entrada.forma}${origem?' · '+origem:''}`);
+  const pago=atualizarStatusPgto(pd);
+  let confirmouAgora=false;
+  if(pd.status==='Em aberto' && (+pd.total||0)>0 && pago>=(+pd.total||0)*0.5){
+    pd.status='Confirmado';
+    confirmouAgora=true;
+    registrarHistoricoPedido(pd,'Etapa alterada','Em aberto → Confirmado (50% pago)');
+  }
+  const resEst=await sincronizarEstoquePedido(pd,anteriorEst,false);
+  registrarEstoqueNoHistorico(pd,resEst);
+  await salvarItem('pedidos',pd);
+  return {confirmouAgora,resEst};
+}
+// Se o mesmo valor já foi lançado à mão perto dessa data, só liga ao Mercado Pago (não duplica).
+async function lancarPagamentoMP(pd,p){
+  const manual=(pd.entradas||[]).find(e=>!e.mp_id&&Math.abs((+e.valor||0)-p.valor)<0.005&&e.data&&p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1);
+  if(manual){
+    manual.mp_id=p.id; manual.taxa=p.taxa;
+    registrarHistoricoPedido(pd,'Pagamento ligado ao Mercado Pago',`${R$(p.valor)} já estava lançado`);
+    await salvarItem('pedidos',pd);
+    return {ligou:true};
+  }
+  return registrarEntradaPedido(pd,{valor:p.valor,forma:formaMP(p),data:p.data,mp_id:p.id,taxa:p.taxa},'Mercado Pago');
+}
+async function aplicarPagamentosMP(){
+  if(_mpAplicando||!_isLoggedIn) return;
+  _mpAplicando=true;
+  try{
+    if(!DB.config.mp_inicio&&_mpPags.length){ DB.config.mp_inicio=hojeLocalStr(); salvarConfigCaixa(); }
+    // Dois aparelhos abertos podem lançar o mesmo pagamento: fica só um.
+    for(const pd of DB.pedidos){
+      const vistos=new Set(), antes=(pd.entradas||[]).length;
+      const limpas=(pd.entradas||[]).filter(e=>{ if(!e.mp_id) return true; const k=String(e.mp_id); if(vistos.has(k)) return false; vistos.add(k); return true; });
+      if(limpas.length!==antes){ pd.entradas=limpas; atualizarStatusPgto(pd); registrarHistoricoPedido(pd,'Pagamento repetido removido','Mercado Pago'); await salvarItem('pedidos',pd); }
+    }
+    const lanc=mpIdsLancados(), feitos=[];
+    for(const p of _mpPags){
+      if(p.status!=='approved'||!p.referencia||lanc.has(p.id)) continue;
+      const pd=getItem(DB.pedidos,p.referencia); if(!pd) continue;
+      const r=await lancarPagamentoMP(pd,p);
+      lanc.add(p.id);
+      feitos.push(`${pd.id} ${R$(p.valor)}`+(r.confirmouAgora?' (confirmado)':''));
+    }
+    if(feitos.length){ toast('💰 Mercado Pago: '+feitos.join(', ')); render(currentSection); }
+  } finally { _mpAplicando=false; }
+}
+function mpBotaoPedidos(){
+  const n=mpParaConferir().length+mpEstornados().length;
+  return `<button class="btn btn-outline" onclick="abrirPagamentosMP()">💰 Mercado Pago${n?` <span class="badge badge-warn">${n}</span>`:''}</button>`;
+}
+function mpVence(iso){ const d=new Date(iso); return isNaN(d)?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+function mpCobrancaAtiva(pd){ const c=pd.mp_cobranca; return c&&c.vence&&new Date(c.vence)>new Date()?c:null; }
+async function mpGerarCobranca(id,tipo,btn){
+  const pd=getItem(DB.pedidos,id); if(!pd) return;
+  const dig=parseFloat(document.getElementById('ent-val')?.value)||0;
+  const valor=+(dig>0?dig:saldoPedido(pd)).toFixed(2);
+  if(valor<=0){ toast('Este pedido já está pago','error'); return; }
+  const txt=btn.textContent; btn.disabled=true; btn.textContent='Gerando...';
+  try{
+    const cli=getCli(pd.cliente);
+    const r=await chamarBackend(tipo==='pix'?'mp_gerar_pix':'mp_gerar_link',{pedido_id:pd.id,valor,descricao:`Pedido ${pd.id} · ${DB.config?.empresa||'Morfê Personalizados'}`,email:/^\S+@\S+\.\S+$/.test(cli?.email||'')?cli.email:''});
+    pd.mp_cobranca={tipo,valor:r.valor,id:r.id,codigo:r.qr_code||'',link:tipo==='pix'?(r.ticket_url||''):r.link,vence:r.vence,criado:new Date().toISOString()};
+    registrarHistoricoPedido(pd,'Cobrança Mercado Pago',`${tipo==='pix'?'PIX':'Link'} de ${R$(r.valor)}`);
+    await salvarItem('pedidos',pd);
+    desenharCobrancaMP(pd,r.qr_code_base64);
+  }catch(e){
+    toast('Mercado Pago: '+(e.message||e),'error');
+  }finally{ btn.disabled=false; btn.textContent=txt; }
+}
+function desenharCobrancaMP(pd,qrBase64){
+  const el=document.getElementById('mp-cobranca'); if(!el) return;
+  const c=mpCobrancaAtiva(pd);
+  if(!c){ el.innerHTML=''; return; }
+  const pix=c.tipo==='pix';
+  el.innerHTML=`<div class="mp-cob">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>${pix?'⚡ PIX':'🔗 Link de pagamento'} de ${R$(c.valor)}</strong><span style="font-size:11.5px;color:var(--cinza-med)">Vale até ${mpVence(c.vence)}</span></div>
+    ${pix&&/^[A-Za-z0-9+/=]+$/.test(qrBase64||'')?`<img alt="QR Code do PIX" src="data:image/png;base64,${qrBase64}" style="display:block;width:180px;height:180px;margin:10px auto">`:''}
+    <input class="form-input" readonly id="mp-cob-texto" value="${escHtml(pix?c.codigo:c.link)}" aria-label="${pix?'PIX copia e cola':'Link de pagamento'}" onclick="this.select()" style="margin-top:8px;font-size:13px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <button type="button" class="btn btn-outline" style="justify-content:center;min-height:42px" onclick="copiarTexto(document.getElementById('mp-cob-texto').value)">📋 Copiar</button>
+      <button type="button" class="btn btn-success" style="justify-content:center;min-height:42px" onclick="mpEnviarWhatsApp('${pd.id}')">💬 Enviar</button>
+    </div>
+    <p style="font-size:11.5px;color:var(--cinza-med);margin:8px 0 0">Quando o cliente pagar, o pagamento entra sozinho neste pedido (em até uns 5 minutos).</p>
+  </div>`;
+}
+function copiarTexto(t){
+  const ok=()=>toast('Copiado!');
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(t).then(ok,()=>copiarTextoAntigo(t,ok));
+  else copiarTextoAntigo(t,ok);
+}
+function copiarTextoAntigo(t,ok){ const a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); try{ document.execCommand('copy'); ok(); }catch(e){} a.remove(); }
+function mpEnviarWhatsApp(id){
+  const pd=getItem(DB.pedidos,id); const c=pd&&mpCobrancaAtiva(pd); if(!c) return;
+  const cli=getCli(pd.cliente);
+  const topo=`Olá ${cli?.nome||pd.cliente_nome||''}! 😊\n\nAqui é a *Morfê Personalizados*!\n\n📋 *Pedido Nº:* ${pd.id}\n💰 *Valor:* ${R$(c.valor)}\n\n`;
+  // O código copia e cola precisa ir sozinho: se vier junto com texto, o cliente copia tudo e o banco recusa.
+  const msg=c.tipo!=='pix'?topo+`Você pode pagar por este link (PIX ou cartão):\n${c.link}\n\nObrigado! 🙏`
+    :c.link?topo+`Para pagar com PIX, abra este link (tem o QR Code e o botão de copiar o código):\n${c.link}\n\nVale até ${mpVence(c.vence)}. Obrigado! 🙏`
+    :topo+`Vou te mandar o *PIX copia e cola* na próxima mensagem. Vale até ${mpVence(c.vence)}. Obrigado! 🙏`;
+  abrirWPP(cli?.whatsapp||pd.telefone||'',msg);
+}
+function mpOpcoesPedidos(p){
+  const abertos=DB.pedidos.filter(x=>x.status!=='Cancelado'&&saldoPedido(x)>0.004)
+    .map(x=>({x,d:Math.min(Math.abs(saldoPedido(x)-p.valor),Math.abs((+x.total||0)-p.valor))}))
+    .sort((a,b)=>a.d-b.d);
+  const sugerido=abertos[0]&&abertos[0].d<0.005?abertos[0].x.id:'';
+  return '<option value="">Escolha o pedido...</option>'+abertos.map(({x})=>`<option value="${x.id}" ${x.id===sugerido?'selected':''}>${x.id} · ${escHtml(nomeVenda(x))} · falta ${R$(saldoPedido(x))}</option>`).join('');
+}
+function abrirPagamentosMP(){
+  openModal('💰 Mercado Pago','<div id="mp-painel"></div>',()=>closeModal(),'Fechar');
+  document.getElementById('modal-save-btn').style.display='none';
+  desenharPagamentosMP();
+}
+function desenharPagamentosMP(){
+  const el=document.getElementById('mp-painel'); if(!el) return;
+  const conferir=mpParaConferir(), estornos=mpEstornados();
+  const lanc={}; DB.pedidos.forEach(pd=>(pd.entradas||[]).forEach(e=>{ if(e.mp_id) lanc[String(e.mp_id)]=pd.id; }));
+  const ign=new Set(mpIgnorados());
+  const recentes=_mpPags.filter(p=>p.status==='approved').sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora)).slice(0,15);
+  const linhaInfo=p=>`<div style="font-size:12px;color:var(--cinza-med)">${p.data?formatarDataBR(p.data):''} ${p.hora||''} · ${formaMP(p)}${p.pagador?' · '+escHtml(p.pagador):''}${p.taxa>0?' · taxa '+R$(p.taxa):''}</div>`;
+  el.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <span style="font-size:12.5px;color:var(--cinza-med)">O sistema busca os pagamentos sozinho a cada 5 minutos.</span>
+      <button type="button" class="btn btn-outline btn-sm" id="mp-buscar" onclick="mpBuscarAgora(this)">🔄 Buscar agora</button>
+    </div>
+    ${estornos.length?`<div class="drawer-rotulo" style="color:var(--txt-vermelho)">⚠️ Devolvidos ao cliente</div>${estornos.map(({pd,p})=>`<div class="mp-item urgente"><div><strong>${R$(p.valor)}</strong> no pedido ${pd.id} foi devolvido pelo Mercado Pago${linhaInfo(p)}</div><button type="button" class="btn btn-outline btn-sm" onclick="closeModal();abrirPagamentos('${pd.id}')">Remover do pedido</button></div>`).join('')}`:''}
+    <div class="drawer-rotulo">Para conferir (${conferir.length})</div>
+    ${conferir.length?conferir.map(p=>`<div class="mp-item">
+      <div style="min-width:0"><strong style="font-size:15px">${R$(p.valor)}</strong>${linhaInfo(p)}</div>
+      <div class="mp-acoes">
+        <select class="form-select" id="mp-ped-${p.id}" aria-label="Pedido deste pagamento">${mpOpcoesPedidos(p)}</select>
+        <button type="button" class="btn btn-success" onclick="mpLancarEscolhido('${p.id}',this)">Lançar no pedido</button>
+        <button type="button" class="btn btn-outline" onclick="mpIgnorar('${p.id}')">Já lancei / não é pedido</button>
+      </div></div>`).join(''):`<p style="font-size:13px;color:var(--cinza-med);margin:0 0 12px">${_mpPags.length?'✅ Nada para conferir.':'Nenhum pagamento recebido ainda. Depois de configurar o Mercado Pago no Apps Script, eles aparecem aqui em até 5 minutos.'}</p>`}
+    ${recentes.length?`<div class="drawer-rotulo" style="margin-top:14px">Recebidos recentemente</div>${recentes.map(p=>`<div class="drawer-linha" style="border-top:1px solid var(--cinza-claro);padding:7px 0"><span>${R$(p.valor)}${linhaInfo(p)}</span><span style="font-size:12px;text-align:right">${lanc[p.id]?`<a href="#" onclick="event.preventDefault();closeModal();abrirResumoPedido('${lanc[p.id]}')">${lanc[p.id]}</a>`:ign.has(p.id)?'<span style="color:var(--cinza-med)">conferido</span>':p.data<(DB.config?.mp_inicio||'')?'<span style="color:var(--cinza-med)">antes da integração</span>':'<span class="badge badge-warn">conferir</span>'}</span></div>`).join('')}`:''}`;
+}
+async function mpBuscarAgora(btn){
+  btn.disabled=true; btn.textContent='Buscando...';
+  try{
+    guardarPagsMP(await chamarBackend('mp_sincronizar',{}));
+    await aplicarPagamentosMP();
+    toast('Pagamentos atualizados');
+  }catch(e){ toast('Mercado Pago: '+(e.message||e),'error'); }
+  desenharPagamentosMP();
+}
+async function mpLancarEscolhido(pid,btn){
+  const p=_mpPags.find(x=>x.id===pid), pedId=document.getElementById('mp-ped-'+pid)?.value;
+  if(!p) return;
+  if(!pedId){ toast('Escolha o pedido','error'); return; }
+  const pd=getItem(DB.pedidos,pedId); if(!pd) return;
+  btn.disabled=true;
+  const r=await lancarPagamentoMP(pd,p);
+  toast(r.ligou?`${pd.id}: pagamento ligado ao Mercado Pago`:`${R$(p.valor)} lançado no ${pd.id}`+(r.confirmouAgora?' 🎉 Pedido confirmado (50% pago)':''));
+  render(currentSection);
+  desenharPagamentosMP();
+}
+async function mpIgnorar(pid){
+  DB.config.mp_ignorados=[...mpIgnorados(),pid].slice(-400);
+  await salvarConfigCaixa();
+  desenharPagamentosMP(); render(currentSection);
+  toastDesfazer('Pagamento marcado como conferido',async()=>{ DB.config.mp_ignorados=mpIgnorados().filter(x=>x!==pid); await salvarConfigCaixa(); desenharPagamentosMP(); render(currentSection); });
+}
 // ── ETAPAS DO PEDIDO ─────────────────────────────────────────
 const ARTE_STATUS=[['','Sem arte para aprovar'],['Pendente','Arte pendente'],['Ajustar','Arte: ajustar'],['Aprovada','Arte aprovada']];
 function arteBadge(p){
@@ -4623,6 +4841,15 @@ function abrirPagamentos(pedidoId){
         </div>
         <button onclick="confirmarEntrada('${pedidoId}')" style="width:100%;margin-top:10px;background:var(--verde-med);color:white;border:none;border-radius:6px;padding:10px;font-size:14px;font-weight:700;cursor:pointer">✅ Confirmar Recebimento</button>
       </div>
+      ${saldo>0.004?`<div class="mp-bloco">
+        <div style="font-size:13px;font-weight:700;margin-bottom:2px">Cobrar pelo Mercado Pago</div>
+        <div style="font-size:11.5px;color:var(--cinza-med);margin-bottom:8px">Usa o valor digitado em "Valor Recebido" ou, se estiver vazio, o que falta (${R$(saldo)}). O pagamento entra sozinho neste pedido.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button type="button" class="btn btn-primary" style="justify-content:center;min-height:42px" onclick="mpGerarCobranca('${pedidoId}','pix',this)">⚡ Gerar PIX</button>
+          <button type="button" class="btn btn-outline" style="justify-content:center;min-height:42px" onclick="mpGerarCobranca('${pedidoId}','link',this)">🔗 Gerar link</button>
+        </div>
+        <div id="mp-cobranca"></div>
+      </div>`:''}
       <div style="border:1px solid var(--cinza-claro);border-radius:8px;overflow:hidden">
         ${entradas.length===0?`<div style="padding:16px;text-align:center;color:var(--cinza-med);font-size:13px">Nenhum pagamento registrado.</div>`
         :`<table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -4630,7 +4857,7 @@ function abrirPagamentos(pedidoId){
           <tbody>
             ${entradas.map((e,i)=>`<tr style="border-top:1px solid var(--cinza-claro);background:${i%2===0?'white':'#E3F3FF'}">
               <td style="padding:8px 10px">${e.data||'—'}</td>
-              <td style="padding:8px 10px"><span class="badge badge-info">${e.forma}</span></td>
+              <td style="padding:8px 10px"><span class="badge badge-info">${e.forma}</span>${e.mp_id?' <span class="badge badge-ok" title="Recebido pelo Mercado Pago">MP</span>':''}</td>
               <td style="padding:8px 10px;text-align:right;font-weight:700;color:var(--verde-med)">${R$(e.valor)}</td>
               <td style="padding:8px 10px"><button onclick="remEntrada('${pedidoId}',${i})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer">×</button></td>
             </tr>`).join('')}
@@ -4646,6 +4873,7 @@ function abrirPagamentos(pedidoId){
     </div>`,
     ()=>closeModal(),'Fechar');
   document.getElementById('modal-save-btn').style.display='none';
+  desenharCobrancaMP(pd);
 }
 
 async function confirmarEntrada(pedidoId){
@@ -4654,25 +4882,11 @@ async function confirmarEntrada(pedidoId){
   const data=document.getElementById('ent-data')?.value||new Date().toISOString().slice(0,10);
   if(valor<=0){toast('Informe um valor','error');return;}
   const pd=getItem(DB.pedidos,pedidoId);if(!pd)return;
-  if(!pd.entradas)pd.entradas=[];
-  const anteriorEst={status:pd.status,estoque_baixado:pd.estoque_baixado,consumo_insumos:pd.consumo_insumos};
-  pd.entradas.push({valor,forma,data});
-  registrarHistoricoPedido(pd,'Pagamento registrado',`${R$(valor)} · ${forma}`);
-  const pago=pd.entradas.reduce((s,e)=>s+(+e.valor||0),0);
-  pd.status_pgto=pago>=(+pd.total||0)?'Pago integral':pago>0?'Parcial':'Pendente';
   // Confirma o pedido sozinho assim que bate 50% pago — só sobe de "Em
   // aberto" pra "Confirmado". Nunca mexe se o status já estiver mais
   // avançado (Em produção, Pronto, Entregue) ou Cancelado, que foram
   // escolhas manuais e não devem ser sobrescritas automaticamente.
-  let confirmouAgora=false;
-  if(pd.status==='Em aberto' && (+pd.total||0)>0 && pago>=(+pd.total||0)*0.5){
-    pd.status='Confirmado';
-    confirmouAgora=true;
-    registrarHistoricoPedido(pd,'Etapa alterada','Em aberto → Confirmado (50% pago)');
-  }
-  const resEst=await sincronizarEstoquePedido(pd,anteriorEst,false);
-  registrarEstoqueNoHistorico(pd,resEst);
-  await salvarItem('pedidos',pd);
+  const {confirmouAgora,resEst}=await registrarEntradaPedido(pd,{valor,forma,data});
   toast(`${R$(valor)} registrado!`+(confirmouAgora?' 🎉 Pedido confirmado automaticamente (50% pago)!'+(resEst.baixou?' 📦 Insumos baixados.':''):'')+(resEst.avisoFalta.length?` ⚠️ Estoque insuficiente: ${resEst.avisoFalta.join(', ')}`:''),resEst.avisoFalta.length?'error':'success');
   closeModal();
   setTimeout(()=>abrirPagamentos(pedidoId),100);

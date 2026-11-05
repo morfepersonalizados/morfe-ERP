@@ -93,6 +93,8 @@ function doGet(e) {
       for (var i = 0; i < TABELAS.length; i++) {
         dados[TABELAS[i]] = lerTabela(ss, TABELAS[i]);
       }
+      // Fica fora de TABELAS: so o Apps Script grava nela, o 'salvar_tudo' do app nunca a sobrescreve.
+      dados.mp_pagamentos = lerTabela(ss, MP_ABA);
       return jsonResponse({ ok: true, dados: dados });
     }
 
@@ -184,6 +186,13 @@ function doPost(e) {
       if (!dados || !dados.itens) return jsonResponse({ ok: false, erro: 'Dados incompletos' });
       var resultado = ajustarEstoqueLote(ss, dados.itens);
       return jsonResponse({ ok: true, msg: 'Estoque ajustado', resultado: resultado });
+    }
+
+    if (acao === 'mp_gerar_pix') return jsonResponse({ ok: true, dados: mpGerarPix(dados || {}) });
+    if (acao === 'mp_gerar_link') return jsonResponse({ ok: true, dados: mpGerarLink(dados || {}) });
+    if (acao === 'mp_sincronizar') {
+      mpBuscarPagamentos(ss, 3);
+      return jsonResponse({ ok: true, dados: lerTabela(ss, MP_ABA) });
     }
 
     return jsonResponse({ ok: false, erro: 'Acao nao reconhecida' });
@@ -365,4 +374,150 @@ function criarEstrutura() {
   }
 
   Logger.log('Estrutura criada com sucesso!');
+}
+
+// ============================================================
+// MERCADO PAGO
+// A chave fica SO aqui, nas Propriedades do script:
+//   MP_ACCESS_TOKEN    = Access Token de producao (APP_USR-...)
+//   MP_EMAIL_PAGADOR   = um email seu, DIFERENTE do email da conta
+//                        Mercado Pago (o PIX exige um email de pagador;
+//                        usado so quando o cliente nao tem email)
+// Este codigo so LE pagamentos e CRIA cobrancas. Nao devolve dinheiro,
+// nao transfere e nao saca.
+// ============================================================
+var MP_API = 'https://api.mercadopago.com';
+var MP_ABA = 'mp_pagamentos';
+var MP_MAX_LINHAS = 600;
+
+function mpToken() {
+  var t = PropertiesService.getScriptProperties().getProperty('MP_ACCESS_TOKEN');
+  if (!t) throw new Error('Mercado Pago ainda nao configurado (falta MP_ACCESS_TOKEN nas Propriedades do script)');
+  return t;
+}
+
+function mpChamar(metodo, caminho, corpo, chaveIdem) {
+  var opcoes = {
+    method: metodo,
+    muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + mpToken() }
+  };
+  if (corpo) { opcoes.contentType = 'application/json'; opcoes.payload = JSON.stringify(corpo); }
+  if (chaveIdem) opcoes.headers['X-Idempotency-Key'] = chaveIdem;
+  var r = UrlFetchApp.fetch(MP_API + caminho, opcoes);
+  var codigo = r.getResponseCode();
+  var dados = {};
+  try { dados = JSON.parse(r.getContentText()); } catch (e) {}
+  if (codigo < 200 || codigo >= 300) {
+    throw new Error('Mercado Pago respondeu ' + codigo + ': ' + (dados.message || dados.error || r.getContentText().slice(0, 200)));
+  }
+  return dados;
+}
+
+function mpDataIso(d) {
+  return Utilities.formatDate(d, 'America/Manaus', "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+}
+
+// Cobranca PIX com o numero do pedido: quando o cliente paga, o ERP sabe de qual pedido e.
+function mpGerarPix(d) {
+  var valor = Math.round(Number(d.valor) * 100) / 100;
+  if (!(valor > 0)) throw new Error('Valor invalido');
+  if (!d.pedido_id) throw new Error('Pedido nao informado');
+  var email = d.email || PropertiesService.getScriptProperties().getProperty('MP_EMAIL_PAGADOR');
+  if (!email) throw new Error('Falta MP_EMAIL_PAGADOR nas Propriedades do script');
+  var vence = new Date(Date.now() + 3 * 24 * 3600 * 1000);
+  var p = mpChamar('post', '/v1/payments', {
+    transaction_amount: valor,
+    description: String(d.descricao || ('Pedido ' + d.pedido_id)).slice(0, 200),
+    payment_method_id: 'pix',
+    external_reference: String(d.pedido_id),
+    date_of_expiration: mpDataIso(vence),
+    payer: { email: email }
+  }, Utilities.getUuid());
+  var t = (p.point_of_interaction && p.point_of_interaction.transaction_data) || {};
+  return { id: String(p.id), valor: valor, qr_code: t.qr_code, qr_code_base64: t.qr_code_base64, ticket_url: t.ticket_url, vence: mpDataIso(vence) };
+}
+
+// Link de pagamento (Checkout Pro): o cliente escolhe PIX, cartao etc.
+function mpGerarLink(d) {
+  var valor = Math.round(Number(d.valor) * 100) / 100;
+  if (!(valor > 0)) throw new Error('Valor invalido');
+  if (!d.pedido_id) throw new Error('Pedido nao informado');
+  var vence = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+  var pref = mpChamar('post', '/checkout/preferences', {
+    items: [{ title: String(d.descricao || ('Pedido ' + d.pedido_id)).slice(0, 200), quantity: 1, unit_price: valor, currency_id: 'BRL' }],
+    external_reference: String(d.pedido_id),
+    expires: true,
+    expiration_date_to: mpDataIso(vence)
+  }, Utilities.getUuid());
+  return { id: String(pref.id), valor: valor, link: pref.init_point, vence: mpDataIso(vence) };
+}
+
+function mpLinhaPagamento(p) {
+  var taxa = 0;
+  (p.fee_details || []).forEach(function (f) { taxa += Number(f.amount) || 0; });
+  var quando = p.date_approved || p.date_created || '';
+  var pagador = p.payer || {};
+  var nome = [pagador.first_name, pagador.last_name].filter(function (x) { return x; }).join(' ');
+  return {
+    id: String(p.id),
+    data: String(quando).slice(0, 10),
+    hora: String(quando).slice(11, 16),
+    status: p.status || '',
+    valor: Number(p.transaction_amount) || 0,
+    liquido: Number(p.transaction_details && p.transaction_details.net_received_amount) || 0,
+    taxa: Math.round(taxa * 100) / 100,
+    metodo: p.payment_method_id || '',
+    tipo: p.payment_type_id || '',
+    operacao: p.operation_type || '',
+    referencia: p.external_reference || '',
+    descricao: p.description || '',
+    pagador: nome || pagador.email || '',
+    atualizado: p.date_last_updated || ''
+  };
+}
+
+// Busca no Mercado Pago o que mudou nos ultimos dias e guarda na aba mp_pagamentos.
+function mpBuscarPagamentos(ss, dias) {
+  var novos = [];
+  for (var offset = 0; offset < 500; offset += 50) {
+    var r = mpChamar('get', '/v1/payments/search?sort=date_last_updated&criteria=desc&range=date_last_updated' +
+      '&begin_date=NOW-' + (dias || 3) + 'DAYS&end_date=NOW&limit=50&offset=' + offset);
+    var lista = r.results || [];
+    for (var i = 0; i < lista.length; i++) novos.push(mpLinhaPagamento(lista[i]));
+    if (lista.length < 50) break;
+  }
+  var atuais = lerTabela(ss, MP_ABA);
+  var porId = {};
+  atuais.forEach(function (x) { porId[String(x.id)] = x; });
+  novos.forEach(function (x) { porId[x.id] = x; });
+  var todos = Object.keys(porId).map(function (k) { return porId[k]; });
+  todos.sort(function (a, b) { return String(b.atualizado).localeCompare(String(a.atualizado)); });
+  salvarTabela(ss, MP_ABA, todos.slice(0, MP_MAX_LINHAS));
+  return novos.length;
+}
+
+// Rodada pelo gatilho de tempo (a cada 5 minutos).
+function mpSincronizar() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return;
+  try {
+    mpBuscarPagamentos(SpreadsheetApp.getActiveSpreadsheet(), 3);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// RODE ESTA FUNCAO UMA VEZ depois de colar a chave nas Propriedades do script.
+// Ela confere a chave, busca os ultimos 30 dias e liga a busca a cada 5 minutos.
+function instalarMercadoPago() {
+  var eu = mpChamar('get', '/users/me');
+  Logger.log('Conta Mercado Pago conectada: ' + (eu.nickname || eu.email || eu.id));
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'mpSincronizar') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('mpSincronizar').timeBased().everyMinutes(5).create();
+  var n = mpBuscarPagamentos(SpreadsheetApp.getActiveSpreadsheet(), 30);
+  Logger.log('Pagamentos encontrados nos ultimos 30 dias: ' + n);
+  Logger.log('Pronto! A busca automatica roda a cada 5 minutos.');
 }
