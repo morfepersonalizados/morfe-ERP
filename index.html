@@ -276,6 +276,18 @@ body.tema-escuro .visao-ped button[aria-pressed=true]{background:var(--dourado-e
 .kanban-card.arrastando{opacity:.45}
 .kanban-avancar{width:100%;margin-top:8px;min-height:36px;background:none;border:1.5px solid var(--azul-claro);border-radius:7px;color:var(--txt-azul);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
 .kanban-avancar:hover{background:var(--azul-tint)}
+.etapa-wrap{position:relative;display:inline-block}
+.etapa-wrap::after{content:'▾';position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10px;pointer-events:none;color:inherit}
+.etapa-sel{-webkit-appearance:none;appearance:none;border:none;padding:6px 24px 6px 10px;min-height:30px;font-family:inherit;cursor:pointer;line-height:1.2}
+.etapa-sel:focus-visible{outline:2px solid var(--azul-claro);outline-offset:1px}
+.etapa-sel option{background:var(--bg-input);color:var(--cinza-escuro);text-transform:none;font-size:13px}
+.etapa-passos{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-bottom:10px}
+.etapa-passos button{min-height:44px;padding:4px 2px;border:1.5px solid var(--cinza-claro);border-radius:8px;background:var(--bg-input);color:var(--cinza-med);font:inherit;font-size:10.5px;font-weight:700;line-height:1.15;cursor:pointer}
+.etapa-passos button.feito{border-color:var(--verde-claro);background:var(--verde-claro);color:var(--txt-verde)}
+.etapa-passos button[aria-current=step]{border-color:var(--azul-claro);background:var(--azul);color:#fff}
+.etapa-passos button:hover:not([aria-current]){border-color:var(--azul-claro)}
+.pc-avancar{white-space:nowrap}
+.pc-avancar .txt-longo{display:none}
 @media(max-width:1180px){
   .kanban{display:flex;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
   .kanban-col{flex:0 0 260px;scroll-snap-align:start}
@@ -435,6 +447,13 @@ details.panel[open]>summary .panel-title::before{content:'▾ '}
   .tbl-cards .pc-pgto{order:8}.tbl-cards .pc-data{order:9}.tbl-cards .pc-est{order:10;text-align:left!important}
   .tbl-cards .td-actions{grid-column:1/-1;order:11;display:flex;gap:6px;border-top:1px solid var(--cinza-claro);padding-top:10px}
   .tbl-cards .td-actions .btn{flex:1;min-height:40px;min-width:0;font-size:14px;padding:4px 0;justify-content:center}
+  .tbl-cards .td-actions{flex-wrap:wrap}
+  .tbl-cards .td-actions .pc-avancar{flex:1 1 100%;min-height:44px;font-size:14px;font-weight:700}
+  .pc-avancar .txt-curto{display:none}.pc-avancar .txt-longo{display:inline}
+  .tbl-cards .etapa-sel{min-height:38px;text-transform:none;letter-spacing:0;max-width:100%}
+  .tbl-cards .etapa-wrap{max-width:100%}
+  #ped-lista-corpo .pc-id{grid-column:span 1}
+  #ped-lista-corpo .pc-status{grid-column:span 2}
 }
 /* FORMULÁRIO DO PEDIDO — no celular cada item vira um bloco, sem rolagem lateral */
 @media(max-width:640px){
@@ -1496,11 +1515,14 @@ function toastDesfazer(msg,desfazer,tipo='success'){
 }
 
 function statusBadge(s) {
+  return `<span class="badge badge-${classeStatus(s)}">${s||'—'}</span>`;
+}
+function classeStatus(s) {
   const m = { 'Ativo':'ok','Pago':'ok','Entregue':'ok','Pago integral':'ok','Confirmado':'ok',
     'Em aberto':'info','Em produção':'info','Pronto':'roxo',
     'Aguardando arte':'warn','Aguardando pagamento':'warn','Parcial':'warn',
     'Atrasado':'danger','Cancelado':'danger','Inativo':'gray','Pendente':'danger' };
-  return `<span class="badge badge-${m[s]||'gray'}">${s||'—'}</span>`;
+  return m[s]||'gray';
 }
 
 function statusPgto(p) {
@@ -2118,12 +2140,12 @@ function abrirDetalheDia(dataStr){
         <div style="font-size:12px;font-weight:700;color:var(--txt-laranja);margin-bottom:6px">🚚 Entregas agendadas pra esse dia</div>
         <div class="tbl-wrap"><table>
           <thead><tr><th>Pedido</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Etapa</th><th>Pagamento</th></tr></thead>
-          <tbody>${entregasDia.map(p=>`<tr style="cursor:pointer" onclick="closeModal();verPedidoOrc('${p.id}')">
+          <tbody>${entregasDia.map(p=>`<tr style="cursor:pointer" onclick="closeModal();abrirResumoPedido('${p.id}')">
             <td class="fw-bold text-azul">${p.id}</td>
             <td>${nomeVenda(p)}</td>
             <td style="font-size:12px">${resumoItensPedido(p)}</td>
             <td class="fw-bold">${R$(p.total)}</td>
-            <td>${statusBadge(p.status)}</td>
+            <td>${seletorEtapaHtml(p)}</td>
             <td>${statusPagamentoPedido(p)}</td>
           </tr>`).join('')}</tbody>
         </table></div>
@@ -3779,6 +3801,25 @@ function pedidoPassaFiltro(p,f){
   return true;
 }
 const PROXIMA_ETAPA={'Em aberto':['Confirmado','Confirmar pedido'],'Confirmado':['Em produção','Iniciar produção'],'Em produção':['Pronto','Marcar como pronto'],'Pronto':['Entregue','Marcar como entregue']};
+const ETAPA_CURTA={'Confirmado':'Confirmar','Em produção':'Produzir','Pronto':'Pronto','Entregue':'Entregue'};
+// Etapa trocada direto na lista, sem abrir o pedido. Se a mudança for recusada, o seletor volta.
+function seletorEtapaHtml(p){
+  return `<span class="etapa-wrap badge badge-${classeStatus(p.status)}" style="padding:0"><select class="etapa-sel badge badge-${classeStatus(p.status)}" aria-label="Etapa do pedido ${p.id}" data-atual="${p.status}" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()" onchange="trocarEtapaRapida(this,'${p.id}')">${opcoesFiltro([...ETAPAS_PEDIDO,'Cancelado'].map(s=>[s,s]),p.status)}</select></span>`;
+}
+async function trocarEtapaRapida(sel,id){
+  const para=sel.value;
+  sel.value=sel.dataset.atual;
+  if(!(await mudarEtapaPedido(id,para))||!document.contains(sel)) return;
+  // Telas que não se redesenham sozinhas (ex.: dia do calendário) mostram a etapa nova aqui.
+  sel.value=para; sel.dataset.atual=para;
+  const c='badge-'+classeStatus(para);
+  [sel,sel.parentElement].forEach(el=>el.className=el.className.replace(/badge-\w+/,c));
+}
+function etapaPassosHtml(pd){
+  const i=ETAPAS_PEDIDO.indexOf(pd.status);
+  return '<div class="etapa-passos" role="group" aria-label="Etapa do pedido">'+ETAPAS_PEDIDO.map((e,k)=>
+    `<button type="button" ${k===i?'aria-current="step"':''} class="${i>=0&&k<i?'feito':''}" onclick="mudarEtapaPedido('${pd.id}','${e}')">${i>=0&&k<i?'✓ ':''}${e==='Em aberto'?'Orçamento':e==='Em produção'?'Produção':e}</button>`).join('')+'</div>';
+}
 function escHtml(v){ return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 let _pedVisao=(()=>{ try{ return localStorage.getItem('morfe_ped_visao')==='quadro'?'quadro':'lista'; }catch(e){ return 'lista'; } })();
 function definirVisaoPedidos(v){
@@ -3899,6 +3940,7 @@ function desenharResumoPedido(){
     <div class="drawer-corpo">
       <div class="drawer-bloco" style="padding-top:0">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">${statusBadge(pd.status)}${urg?`<span class="badge" style="background:${urg.bg};color:${urg.cor}">🚚 ${urg.label}</span>`:pd.entrega?`<span style="font-size:12px;color:var(--cinza-med)">Entrega: ${formatarDataBR(normalizarData(pd.entrega))}</span>`:ativo?'<span style="font-size:12px;color:var(--cinza-med)">Sem data de entrega</span>':''}</div>
+        ${pd.status!=='Cancelado'?etapaPassosHtml(pd):''}
         ${prox?`<button class="btn btn-primary" id="drawer-proxima" style="width:100%;justify-content:center;min-height:46px;font-size:14px" onclick="mudarEtapaPedido('${pd.id}','${prox[0]}')">${prox[1]} →</button>`:''}
         ${pd.status==='Cancelado'?`<button class="btn btn-outline" style="width:100%;justify-content:center;min-height:44px" onclick="mudarEtapaPedido('${pd.id}','Em aberto')">Reabrir como orçamento</button>`:''}
       </div>
@@ -3935,9 +3977,10 @@ function pedidoLinhaHtml(p){
         <td class="text-vermelho pc-custo" data-label="Custo">${R$(custoP)}</td>
         <td class="fw-bold pc-lucro" data-label="Lucro" style="color:${lucroP>=0?'var(--txt-roxo)':'var(--txt-vermelho)'}">${R$(lucroP)}</td>
         <td class="pc-pgto" data-label="Pagamento">${statusPgto(p)}</td>
-        <td class="pc-status" data-label="Status">${statusBadge(p.status)}${p.arte_status?'<div style="margin-top:3px">'+arteBadge(p)+'</div>':''}</td>
+        <td class="pc-status" data-label="Status">${seletorEtapaHtml(p)}${p.arte_status?'<div style="margin-top:3px">'+arteBadge(p)+'</div>':''}</td>
         <td class="text-center pc-est" data-label="Estoque">${p.estoque_baixado?`<span class="badge badge-ok" style="cursor:pointer" onclick="event.stopPropagation();modalVerConsumo('${p.id}')" title="Ver insumos consumidos">📦 Baixado</span>`:'<span class="badge badge-gray">—</span>'}</td>
         <td class="td-actions" onclick="event.stopPropagation()">
+          ${PROXIMA_ETAPA[p.status]?`<button class="btn btn-success btn-xs pc-avancar" onclick="mudarEtapaPedido('${p.id}','${PROXIMA_ETAPA[p.status][0]}')" title="${PROXIMA_ETAPA[p.status][1]}"><span class="txt-curto">→ ${ETAPA_CURTA[PROXIMA_ETAPA[p.status][0]]}</span><span class="txt-longo">${PROXIMA_ETAPA[p.status][1]} →</span></button>`:''}
           <button class="btn btn-primary btn-xs" onclick="verPedidoOrc('${p.id}')" title="Editar">✏️</button>
           <button class="btn btn-outline btn-xs" onclick="abrirPreviewOrcamento('${p.id}')" title="Gerar Orçamento p/ enviar">🧾</button>
           <button class="btn btn-warning btn-xs" onclick="abrirPagamentos('${p.id}')" title="Pagamentos">💳</button>
