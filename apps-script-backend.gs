@@ -462,7 +462,9 @@ function mpConferirCobrancas(ss) {
     var st = MP_STATUS_ORDER[o.status];
     if (!st) continue;
     var pg = (o.transactions && o.transactions.payments && o.transactions.payments[0]) || {};
-    var quando = o.last_updated_date || o.created_date || mpDataIso(new Date());
+    var bruto = o.last_updated_date || o.created_date, dt = new Date(bruto);
+    // A order pode vir em UTC; a busca de pagamentos vem no horario de Manaus. Usa sempre Manaus.
+    var quando = mpDataIso(bruto && !isNaN(dt.getTime()) ? dt : new Date());
     linhas.push({
       id: String(pg.reference_id || pg.id || o.id),
       data: String(quando).slice(0, 10),

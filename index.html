@@ -4456,6 +4456,31 @@ async function lancarPagamentoMP(pd,p){
   }
   return registrarEntradaPedido(pd,{valor:v.valor,forma:formaMP(p),data:p.data,mp_id:p.id,mp_fonte:p.fonte||'busca',taxa:v.taxa,...(v.acrescimo?{acrescimo:v.acrescimo}:{})},v.acrescimo?`Mercado Pago · cliente pagou ${R$(p.valor)} com a taxa do cartão`:'Mercado Pago');
 }
+// O PIX automático chega pela cobrança e pela busca de pagamentos, às vezes com números e fusos diferentes.
+function mesmoPixOutraFonte(e,p){
+  return !!e.mp_id&&e.mp_id!==p.id&&(e.mp_fonte||'busca')!==(p.fonte||'busca')
+    &&Math.abs((+e.valor||0)-valoresPagamentoMP(p).valor)<0.005
+    &&!!e.data&&!!p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1;
+}
+// Se os dois já entraram no pedido, fica o da busca (que traz a taxa) e sai o da cobrança.
+function removerPixRepetido(pd){
+  const ent=pd.entradas||[], fora=new Set();
+  ent.forEach((b,i)=>{
+    if(!b.mp_id||(b.mp_fonte||'busca')!=='busca') return;
+    const j=ent.findIndex((o,k)=>!fora.has(k)&&o.mp_fonte==='order'&&o.mp_id!==b.mp_id&&Math.abs((+o.valor||0)-(+b.valor||0))<0.005&&o.data&&b.data&&Math.abs(diasEntre(normalizarData(o.data),normalizarData(b.data)))<=1);
+    if(j>=0) fora.add(j);
+  });
+  if(!fora.size) return false;
+  pd.entradas=ent.filter((_,k)=>!fora.has(k));
+  return true;
+}
+// Pagamento do Mercado Pago removido à mão de um pedido não volta sozinho na próxima busca
+// (nem o mesmo PIX que chegou pelo outro caminho).
+function esquecerPagamentoMP(pedidoId,e){
+  const ids=_mpPags.filter(p=>p.id===String(e.mp_id)||(refPedido(p)===pedidoId&&Math.abs(valoresPagamentoMP(p).valor-(+e.valor||0))<0.005&&e.data&&p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1)).map(p=>p.id);
+  DB.config.mp_ignorados=[...new Set([...mpIgnorados(),String(e.mp_id),...ids])].slice(-400);
+  salvarConfigCaixa();
+}
 async function aplicarPagamentosMP(){
   if(_mpAplicando||!_isLoggedIn) return;
   _mpAplicando=true;
@@ -4465,14 +4490,16 @@ async function aplicarPagamentosMP(){
     for(const pd of DB.pedidos){
       const vistos=new Set(), antes=(pd.entradas||[]).length;
       const limpas=(pd.entradas||[]).filter(e=>{ if(!e.mp_id) return true; const k=String(e.mp_id); if(vistos.has(k)) return false; vistos.add(k); return true; });
-      if(limpas.length!==antes){ pd.entradas=limpas; atualizarStatusPgto(pd); registrarHistoricoPedido(pd,'Pagamento repetido removido','Mercado Pago'); await salvarItem('pedidos',pd); }
+      if(limpas.length!==antes) pd.entradas=limpas;
+      const repetiuPix=removerPixRepetido(pd);
+      if(limpas.length!==antes||repetiuPix){ atualizarStatusPgto(pd); registrarHistoricoPedido(pd,'Pagamento repetido removido','Mercado Pago'); await salvarItem('pedidos',pd); }
     }
-    const lanc=mpIdsLancados(), feitos=[];
+    const lanc=mpIdsLancados(), ign=new Set(mpIgnorados()), feitos=[];
     for(const p of _mpPags){
-      if(p.status!=='approved'||!refPedido(p)||lanc.has(p.id)) continue;
+      if(p.status!=='approved'||!refPedido(p)||lanc.has(p.id)||ign.has(p.id)) continue;
       const pd=getItem(DB.pedidos,refPedido(p)); if(!pd) continue;
       // O mesmo PIX pode chegar pela cobrança e pela busca com números diferentes: fica um só.
-      if((pd.entradas||[]).some(e=>e.mp_id&&e.mp_id!==p.id&&(e.mp_fonte||'busca')!==(p.fonte||'busca')&&Math.abs((+e.valor||0)-valoresPagamentoMP(p).valor)<0.005&&normalizarData(e.data)===p.data)){ lanc.add(p.id); continue; }
+      if((pd.entradas||[]).some(e=>mesmoPixOutraFonte(e,p))){ lanc.add(p.id); continue; }
       const r=await lancarPagamentoMP(pd,p);
       lanc.add(p.id);
       feitos.push(`${pd.id} ${R$(p.valor)}`+(r.confirmouAgora?' (confirmado)':''));
@@ -4569,7 +4596,7 @@ function desenharPagamentosMP(){
         <button type="button" class="btn btn-success" onclick="mpLancarEscolhido('${p.id}',this)">Lançar no pedido</button>
         <button type="button" class="btn btn-outline" onclick="mpIgnorar('${p.id}')">Já lancei / não é pedido</button>
       </div></div>`).join(''):`<p style="font-size:13px;color:var(--cinza-med);margin:0 0 12px">${_mpPags.length?'✅ Nada para conferir.':'Nenhum pagamento recebido ainda. Depois de configurar o Mercado Pago no Apps Script, eles aparecem aqui em até 5 minutos.'}</p>`}
-    ${recentes.length?`<div class="drawer-rotulo" style="margin-top:14px">Recebidos recentemente</div>${recentes.map(p=>`<div class="drawer-linha" style="border-top:1px solid var(--cinza-claro);padding:7px 0"><span>${R$(p.valor)}${linhaInfo(p)}</span><span style="font-size:12px;text-align:right">${lanc[p.id]?`<a href="#" onclick="event.preventDefault();closeModal();abrirResumoPedido('${lanc[p.id]}')">${lanc[p.id]}</a>`:ign.has(p.id)?'<span style="color:var(--cinza-med)">conferido</span>':p.data<(DB.config?.mp_inicio||'')?'<span style="color:var(--cinza-med)">antes da integração</span>':'<span class="badge badge-warn">conferir</span>'}</span></div>`).join('')}`:''}`;
+    ${recentes.length?`<div class="drawer-rotulo" style="margin-top:14px">Recebidos recentemente</div>${recentes.map(p=>`<div class="drawer-linha" style="border-top:1px solid var(--cinza-claro);padding:7px 0"><span>${R$(p.valor)}${linhaInfo(p)}</span><span style="font-size:12px;text-align:right">${ign.has(p.id)&&!lanc[p.id]?'<span style="color:var(--cinza-med)">conferido</span>':(lanc[p.id]||(refPedido(p)&&getItem(DB.pedidos,refPedido(p))?refPedido(p):''))?`<a href="#" onclick="event.preventDefault();closeModal();abrirResumoPedido('${lanc[p.id]||refPedido(p)}')">${lanc[p.id]||refPedido(p)}</a>`:p.data<(DB.config?.mp_inicio||'')?'<span style="color:var(--cinza-med)">antes da integração</span>':'<span class="badge badge-warn">conferir</span>'}</span></div>`).join('')}`:''}`;
 }
 async function mpBuscarAgora(btn){
   btn.disabled=true; btn.textContent='Buscando...';
@@ -5024,6 +5051,7 @@ async function remEntrada(pedidoId,idx){
   const anteriorEst={status:pd.status,estoque_baixado:pd.estoque_baixado,consumo_insumos:pd.consumo_insumos};
   const removida=pd.entradas[idx];
   pd.entradas.splice(idx,1);
+  if(removida?.mp_id) esquecerPagamentoMP(pedidoId,removida);
   registrarHistoricoPedido(pd,'Pagamento removido',`${R$(removida?.valor)} · ${removida?.forma||''}`);
   const pago=pd.entradas.reduce((s,e)=>s+(+e.valor||0),0);
   pd.status_pgto=pago>=(+pd.total||0)?'Pago integral':pago>0?'Parcial':'Pendente';
