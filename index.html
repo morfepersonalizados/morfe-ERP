@@ -872,12 +872,20 @@ let _pendingQueue = [];
 let _isSyncing = false;
 let _isLoggedIn = false;
 
+// A planilha guarda tudo como texto, então true/false voltam como "true"/"false".
+// Sem converter, "false" conta como verdadeiro (ex.: pedido parecia já ter baixado o estoque).
+function normalizarBooleanos(v){
+  if(Array.isArray(v)) return v.map(normalizarBooleanos);
+  if(!v||typeof v!=='object') return v;
+  for(const k of Object.keys(v)){ if(v[k]==='true') v[k]=true; else if(v[k]==='false') v[k]=false; }
+  return v;
+}
 function carregarLocal() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const saved = JSON.parse(raw);
-      if (saved.db) Object.assign(DB, saved.db);
+      if (saved.db) { Object.keys(saved.db).forEach(k => normalizarBooleanos(saved.db[k])); Object.assign(DB, saved.db); }
       if (saved.queue) _pendingQueue = saved.queue;
     }
   } catch(e) { console.error('Erro ao carregar local:', e); }
@@ -1120,7 +1128,7 @@ async function sincronizarSheets() {
         if (_tabelasComSyncPendente.has(tabela)) return;
         if (tabelasComPendenciaNaFila.has(tabela)) return;
         if (DB[tabela] === undefined) return;
-        let registros = data.dados[tabela] || [];
+        let registros = normalizarBooleanos(data.dados[tabela] || []);
         // PROTEÇÃO: uma fonte vazia nunca pode sobrescrever uma fonte com dados.
         // Se o Google respondeu uma tabela vazia mas localmente já existem
         // registros, isso é suspeito (pode ser erro transitório do Apps Script,
@@ -1671,7 +1679,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026110604;
+const VERSAO_APP=2026110605;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -2795,6 +2803,7 @@ function painelHojeHtml(criticosMP){
     [contasVenc.length,R$(contasVenc.reduce((s,x)=>s+saldoAP(x),0)),contasVenc.length===1?'1 conta vencida':contasVenc.length+' contas vencidas',"abrirAPFiltrado('vencidas')",true],
     [criticosMP,criticosMP,criticosMP===1?'insumo em estoque baixo':'insumos em estoque baixo',"goTo('materias')",true],
     [mpEstornados().length,mpEstornados().length,'pagamento devolvido pelo Mercado Pago',"abrirPagamentosMP()",true],
+    [pedidosSemBaixa().length,pedidosSemBaixa().length,pedidosSemBaixa().length===1?'pedido sem baixa de estoque':'pedidos sem baixa de estoque',"abrirPedidosSemBaixa()",true],
     [caixaPendente()?1:0,R$(metricasFinanceiras().caixaDisponivel),'confirmar o caixa',"conferirCaixa()",false],
     [mpParaConferir().length,R$(mpParaConferir().reduce((s,p)=>s+p.valor,0)),mpParaConferir().length===1?'pagamento do Mercado Pago para conferir':mpParaConferir().length+' pagamentos do Mercado Pago para conferir',"abrirPagamentosMP()",false],
     [n.hoje,n.hoje,n.hoje===1?'entrega hoje':'entregas hoje',"abrirPedidosFiltrados({entrega:'hoje'})",false],
@@ -4014,7 +4023,7 @@ function desenharResumoPedido(){
       <div class="drawer-bloco"><div class="drawer-rotulo">Arte</div>
         <select class="form-select" aria-label="Situação da arte" onchange="mudarArtePedido('${pd.id}',this.value)">${opcoesFiltro(ARTE_STATUS,pd.arte_status||'')}</select>
       </div>
-      <div class="drawer-bloco"><div class="drawer-rotulo">Estoque</div>${pd.estoque_baixado?'📦 Insumos já baixados':pd.status==='Em aberto'?'Baixa ao confirmar o pedido':'Sem baixa de insumos'}</div>
+      <div class="drawer-bloco"><div class="drawer-rotulo">Estoque</div>${pedidoSemBaixa(pd)?`<span style="color:var(--txt-vermelho)">⚠️ Os insumos não saíram do estoque</span> <button type="button" class="btn btn-sm btn-outline" style="margin-top:6px" onclick="baixarEstoqueAtrasado('${pd.id}',this)">📦 Baixar estoque agora</button>`:pd.estoque_baixado?'📦 Insumos já baixados':pd.status==='Em aberto'?'Baixa ao confirmar o pedido':'Sem baixa de insumos'}</div>
       ${pd.obs?`<div class="drawer-bloco"><div class="drawer-rotulo">Observações</div><div style="white-space:pre-wrap;overflow-wrap:anywhere">${escHtml(pd.obs)}</div></div>`:''}
       <div class="drawer-bloco"><div class="drawer-acoes">
         <button class="btn btn-outline" onclick="acaoResumoPedido(verPedidoOrc,'${pd.id}')">✏️ Editar</button>
@@ -4856,7 +4865,7 @@ function avisosMudancaStatus(pd,anterior){
 // baixaram continuam como estão até mudarem de item ou serem cancelados, e
 // pedidos antigos sem baixa (ex: histórico importado) não baixam só por salvar.
 async function sincronizarEstoquePedido(pd,anterior,itensMudaram){
-  const jaBaixou=!!anterior?.estoque_baixado;
+  const jaBaixou=anterior?.estoque_baixado===true&&Object.keys(anterior?.consumo_insumos||{}).length>0;
   const consumoAnterior=jaBaixou?(anterior.consumo_insumos||{}):{};
   const consome=statusBaixaEstoque(pd.status);
   const consumiaAntes=anterior?statusBaixaEstoque(anterior.status):false;
@@ -4880,6 +4889,40 @@ async function sincronizarEstoquePedido(pd,anterior,itensMudaram){
   pd.consumo_insumos=consumo;
   pd.estoque_baixado=baixado;
   return {dif,avisoFalta,baixou:baixado&&!jaBaixou,devolveu:jaBaixou&&!baixado};
+}
+// Pedido em produção/entregue que deveria ter baixado insumos e não baixou.
+function pedidoSemBaixa(pd){
+  if(!statusBaixaEstoque(pd.status)||pd.status==='Cancelado') return false;
+  if(Object.keys(pd.consumo_insumos||{}).length>0) return false;
+  return Object.keys(calcularConsumoInsumos(pd)).length>0;
+}
+function pedidosSemBaixa(){ return DB.pedidos.filter(pedidoSemBaixa); }
+function listaConsumoHtml(consumo){
+  return Object.entries(consumo).map(([id,q])=>{ const m=getItem(DB.materias,id); return `<li>${escHtml(m?.nome||id)}: <strong>${(+q).toLocaleString('pt-BR',{maximumFractionDigits:3})} ${escHtml(m?.unidade||'')}</strong> <span style="color:var(--cinza-med)">(tem ${(+(m?.estoque)||0).toLocaleString('pt-BR',{maximumFractionDigits:3})})</span></li>`; }).join('');
+}
+function abrirPedidosSemBaixa(){
+  const l=pedidosSemBaixa();
+  openModal('📦 Pedidos sem baixa de estoque', l.length?`<p style="font-size:13px;line-height:1.5;margin:0 0 10px">Estes pedidos já passaram de "Em aberto", mas os insumos não saíram do estoque (erro do sistema, já corrigido). Confira e toque em <strong>Baixar estoque agora</strong>.</p>${l.map(pd=>`<div style="border:1px solid var(--cinza-claro);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>${pd.id} · ${escHtml(pd.cliente_nome||nomeCli(pd.cliente)||'')}</strong><span class="badge">${escHtml(pd.status)}</span></div>
+      <div style="font-size:12.5px;margin:4px 0">${(pd.itens||[]).map(it=>escHtml(it.desc||nomeProd(it.prod))).join(', ')}</div>
+      <ul style="font-size:12.5px;margin:6px 0 8px 18px;padding:0">${listaConsumoHtml(calcularConsumoInsumos(pd))}</ul>
+      <button type="button" class="btn btn-primary" style="width:100%;justify-content:center;min-height:42px" onclick="baixarEstoqueAtrasado('${pd.id}',this)">📦 Baixar estoque agora</button>
+    </div>`).join('')}`:'<p style="font-size:13px">✅ Nenhum pedido pendente de baixa.</p>', null);
+  const b=document.getElementById('modal-save-btn'); if(b) b.style.display='none';
+}
+async function baixarEstoqueAtrasado(id,btn){
+  const pd=getItem(DB.pedidos,id); if(!pd||!pedidoSemBaixa(pd)) return;
+  if(btn){ btn.disabled=true; btn.textContent='Baixando...'; }
+  const consumo=calcularConsumoInsumos(pd);
+  const falta=verificarEstoqueInsuficiente(consumo);
+  await aplicarBaixaEstoque(consumo);
+  pd.consumo_insumos=consumo; pd.estoque_baixado=true;
+  registrarHistoricoPedido(pd,'Estoque baixado','Correção: não tinha baixado ao confirmar');
+  await salvarItem('pedidos',pd);
+  toast(falta.length?`⚠️ ${pd.id}: estoque baixado, mas ficou faltando: ${falta.join(', ')}`:`📦 ${pd.id}: estoque baixado`, falta.length?'error':'success');
+  if(pedidosSemBaixa().length) abrirPedidosSemBaixa(); else closeModal();
+  render(currentSection);
+  if(_resumoPedidoId===id) desenharResumoPedido();
 }
 function registrarEstoqueNoHistorico(pd,res){
   if(res.baixou) registrarHistoricoPedido(pd,'Estoque baixado');
