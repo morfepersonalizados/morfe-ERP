@@ -1186,7 +1186,7 @@ async function sincronizarSheets() {
       _sessaoExpirada = false;
       if (Array.isArray(data.dados.mp_pagamentos)) guardarPagsMP(data.dados.mp_pagamentos);
       render(currentSection);
-      aplicarPagamentosMP();
+      if (!conferirVersaoApp()) aplicarPagamentosMP();
     } else {
       const erro = data.erro || 'Resposta inválida';
       // Distingue "token do Google vencido" de erro de rede/servidor de
@@ -1657,6 +1657,22 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
   if(window.matchMedia('(pointer:fine)').matches) setTimeout(() => { document.querySelector('#modal-body input, #modal-body select')?.focus(); }, 150);
 }
 
+// Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
+// (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
+const VERSAO_APP=2026110602;
+function conferirVersaoApp(){
+  if(!DB.config) return false;
+  const v=+DB.config.versao_app||0;
+  if(v>VERSAO_APP){
+    if(document.getElementById('modal-overlay')?.classList.contains('open')){ toast('Tem versão nova do sistema: feche esta janela e abra o app de novo','error'); return true; }
+    try{ if(sessionStorage.getItem('morfe_recarregou')===String(v)) return true; sessionStorage.setItem('morfe_recarregou',String(v)); }catch(e){ return true; }
+    toast('Atualizando o sistema para a versão nova...');
+    setTimeout(()=>location.reload(),900);
+    return true;
+  }
+  if(v<VERSAO_APP){ DB.config.versao_app=VERSAO_APP; salvarConfigCaixa(); }
+  return false;
+}
 function closeModal() {
   document.getElementById('modal-cancel-btn').textContent='Cancelar';
   document.getElementById('modal-overlay').classList.remove('open');
@@ -4080,7 +4096,7 @@ SECTIONS.pedidos = () => {
 };
 
 function novoPedidoOrc(){
-  window._pedTemp={id:nextId(DB.pedidos,'ORC'),data:new Date().toISOString().slice(0,10),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:'produto'}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,acrescimos:[],total:0};
+  window._pedTemp={id:proximoIdPedido(),data:new Date().toISOString().slice(0,10),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:'produto'}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,acrescimos:[],total:0};
   abrirFormPedido(null);
 }
 function verPedidoOrc(id){const p=getItem(DB.pedidos,id);if(!p)return;window._pedTemp=JSON.parse(JSON.stringify(p));abrirFormPedido(id);}
@@ -4402,9 +4418,28 @@ async function chamarBackend(acao,dados){
 function formaMP(p){ return p.metodo==='pix'?'PIX':p.tipo==='credit_card'?'Crédito':p.tipo==='debit_card'?'Débito':'Mercado Pago'; }
 function mpIdsLancados(){ const s=new Set(); DB.pedidos.forEach(p=>(p.entradas||[]).forEach(e=>{ if(e.mp_id) s.add(String(e.mp_id)); })); return s; }
 function mpIgnorados(){ const a=DB.config?.mp_ignorados; return Array.isArray(a)?a.map(String):[]; }
+function numeroPedido(id){ const m=/^ORC-(\d+)$/.exec(String(id||'')); return m?+m[1]:0; }
+// Pedido excluído não pode "emprestar" o número para um novo: um pagamento antigo cairia no pedido errado.
+function proximoIdPedido(){
+  const usados=[...DB.pedidos.map(p=>numeroPedido(p.id)),..._mpPags.map(p=>numeroPedido(refPedido(p))),+DB.config?.ultimo_pedido_num||0];
+  return 'ORC-'+String(Math.max(0,...usados)+1).padStart(3,'0');
+}
+function momentoPagamentoMP(p){
+  const t=p.fonte==='order'&&/^\d{4}-\d\d-\d\dT/.test(p.atualizado||'')?Date.parse(p.atualizado):NaN;
+  return !isNaN(t)?t:Date.parse(`${p.data}T${p.hora||'00:00'}:00-04:00`);
+}
+// Pedido do pagamento, só se o pagamento é posterior à criação do pedido (senão é de outro pedido que tinha esse número).
+function pedidoDoPagamentoMP(p){
+  const pd=refPedido(p)&&getItem(DB.pedidos,refPedido(p)); if(!pd) return null;
+  const quando=momentoPagamentoMP(p); if(isNaN(quando)) return pd;
+  const criado=Date.parse(pd.criado_em||'');
+  if(!isNaN(criado)) return quando>=criado-10*60000?pd:null;
+  const dia=Date.parse(`${normalizarData(pd.data)}T00:00:00-04:00`);
+  return isNaN(dia)||quando>=dia-86400000?pd:null;
+}
 function mpParaConferir(){
   const lanc=mpIdsLancados(), ign=new Set(mpIgnorados()), ini=DB.config?.mp_inicio||'';
-  return _mpPags.filter(p=>p.status==='approved'&&p.data>=ini&&!lanc.has(p.id)&&!ign.has(p.id)&&!(refPedido(p)&&getItem(DB.pedidos,refPedido(p))))
+  return _mpPags.filter(p=>p.status==='approved'&&p.data>=ini&&!lanc.has(p.id)&&!ign.has(p.id)&&!pedidoDoPagamentoMP(p))
     .sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
 }
 // Pagamento já lançado que o Mercado Pago devolveu ao cliente: precisa sair do pedido à mão.
@@ -4459,16 +4494,29 @@ async function lancarPagamentoMP(pd,p){
 }
 // O PIX automático chega pela cobrança e pela busca de pagamentos, às vezes com números e fusos diferentes.
 function mesmoPixOutraFonte(e,p){
-  return !!e.mp_id&&e.mp_id!==p.id&&(e.mp_fonte||'busca')!==(p.fonte||'busca')
+  return !!e.mp_id&&e.mp_id!==p.id&&fonteMP(e)!==(p.fonte||'busca')
     &&Math.abs((+e.valor||0)-valoresPagamentoMP(p).valor)<0.005
     &&!!e.data&&!!p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1;
 }
+// Pagamento do Mercado Pago que entrou num pedido criado depois dele (número reaproveitado): sai do pedido.
+function removerPagamentosDeOutroPedido(pd){
+  if(isNaN(Date.parse(pd.criado_em||''))) return false;
+  const porId={}; _mpPags.forEach(p=>porId[p.id]=p);
+  const errados=(pd.entradas||[]).filter(e=>{ const p=e.mp_id&&porId[String(e.mp_id)]; return p&&refPedido(p)===String(pd.id)&&!pedidoDoPagamentoMP(p); });
+  if(!errados.length) return false;
+  pd.entradas=pd.entradas.filter(e=>!errados.includes(e));
+  DB.config.mp_ignorados=[...new Set([...mpIgnorados(),...errados.map(e=>String(e.mp_id))])].slice(-400);
+  salvarConfigCaixa();
+  errados.forEach(e=>registrarHistoricoPedido(pd,'Pagamento de outro pedido removido',`${R$(e.valor)} · era de um pedido excluído que tinha o mesmo número`));
+  return true;
+}
+function fonteMP(e){ if(e.mp_fonte) return e.mp_fonte; const p=_mpPags.find(x=>x.id===String(e.mp_id)); return p?.fonte||'busca'; }
 // Se os dois já entraram no pedido, fica o da busca (que traz a taxa) e sai o da cobrança.
 function removerPixRepetido(pd){
   const ent=pd.entradas||[], fora=new Set();
   ent.forEach((b,i)=>{
-    if(!b.mp_id||(b.mp_fonte||'busca')!=='busca') return;
-    const j=ent.findIndex((o,k)=>!fora.has(k)&&o.mp_fonte==='order'&&o.mp_id!==b.mp_id&&Math.abs((+o.valor||0)-(+b.valor||0))<0.005&&o.data&&b.data&&Math.abs(diasEntre(normalizarData(o.data),normalizarData(b.data)))<=1);
+    if(!b.mp_id||fonteMP(b)!=='busca') return;
+    const j=ent.findIndex((o,k)=>!fora.has(k)&&o.mp_id&&fonteMP(o)==='order'&&o.mp_id!==b.mp_id&&Math.abs((+o.valor||0)-(+b.valor||0))<0.005&&o.data&&b.data&&Math.abs(diasEntre(normalizarData(o.data),normalizarData(b.data)))<=1);
     if(j>=0) fora.add(j);
   });
   if(!fora.size) return false;
@@ -4499,13 +4547,14 @@ async function aplicarPagamentosMP(){
       const vistos=new Set(), antes=(pd.entradas||[]).length;
       const limpas=(pd.entradas||[]).filter(e=>{ if(!e.mp_id) return true; const k=String(e.mp_id); if(vistos.has(k)) return false; vistos.add(k); return true; });
       if(limpas.length!==antes) pd.entradas=limpas;
+      const deOutro=removerPagamentosDeOutroPedido(pd);
       const repetiuPix=removerPixRepetido(pd);
-      if(limpas.length!==antes||repetiuPix){ atualizarStatusPgto(pd); registrarHistoricoPedido(pd,'Pagamento repetido removido','Mercado Pago'); await salvarItem('pedidos',pd); }
+      if(limpas.length!==antes||repetiuPix||deOutro){ atualizarStatusPgto(pd); if(limpas.length!==antes||repetiuPix) registrarHistoricoPedido(pd,'Pagamento repetido removido','Mercado Pago'); await salvarItem('pedidos',pd); }
     }
     const lanc=mpIdsLancados(), ign=new Set(mpIgnorados()), feitos=[];
     for(const p of _mpPags){
       if(p.status!=='approved'||!refPedido(p)||lanc.has(p.id)||ign.has(p.id)) continue;
-      const pd=getItem(DB.pedidos,refPedido(p)); if(!pd) continue;
+      const pd=pedidoDoPagamentoMP(p); if(!pd) continue;
       // O mesmo PIX pode chegar pela cobrança e pela busca com números diferentes: fica um só.
       if((pd.entradas||[]).some(e=>mesmoPixOutraFonte(e,p))){ lanc.add(p.id); continue; }
       const r=await lancarPagamentoMP(pd,p);
@@ -4604,7 +4653,7 @@ function desenharPagamentosMP(){
         <button type="button" class="btn btn-success" onclick="mpLancarEscolhido('${p.id}',this)">Lançar no pedido</button>
         <button type="button" class="btn btn-outline" onclick="mpIgnorar('${p.id}')">Já lancei / não é pedido</button>
       </div></div>`).join(''):`<p style="font-size:13px;color:var(--cinza-med);margin:0 0 12px">${_mpPags.length?'✅ Nada para conferir.':'Nenhum pagamento recebido ainda. Depois de configurar o Mercado Pago no Apps Script, eles aparecem aqui em até 5 minutos.'}</p>`}
-    ${recentes.length?`<div class="drawer-rotulo" style="margin-top:14px">Recebidos recentemente</div>${recentes.map(p=>`<div class="drawer-linha" style="border-top:1px solid var(--cinza-claro);padding:7px 0"><span>${R$(p.valor)}${linhaInfo(p)}</span><span style="font-size:12px;text-align:right">${ign.has(p.id)&&!lanc[p.id]?'<span style="color:var(--cinza-med)">conferido</span>':(lanc[p.id]||(refPedido(p)&&getItem(DB.pedidos,refPedido(p))?refPedido(p):''))?`<a href="#" onclick="event.preventDefault();closeModal();abrirResumoPedido('${lanc[p.id]||refPedido(p)}')">${lanc[p.id]||refPedido(p)}</a>`:p.data<(DB.config?.mp_inicio||'')?'<span style="color:var(--cinza-med)">antes da integração</span>':'<span class="badge badge-warn">conferir</span>'}</span></div>`).join('')}`:''}`;
+    ${recentes.length?`<div class="drawer-rotulo" style="margin-top:14px">Recebidos recentemente</div>${recentes.map(p=>`<div class="drawer-linha" style="border-top:1px solid var(--cinza-claro);padding:7px 0"><span>${R$(p.valor)}${linhaInfo(p)}</span><span style="font-size:12px;text-align:right">${ign.has(p.id)&&!lanc[p.id]?'<span style="color:var(--cinza-med)">conferido</span>':(lanc[p.id]||(pedidoDoPagamentoMP(p)?refPedido(p):''))?`<a href="#" onclick="event.preventDefault();closeModal();abrirResumoPedido('${lanc[p.id]||refPedido(p)}')">${lanc[p.id]||refPedido(p)}</a>`:p.data<(DB.config?.mp_inicio||'')?'<span style="color:var(--cinza-med)">antes da integração</span>':'<span class="badge badge-warn">conferir</span>'}</span></div>`).join('')}`:''}`;
 }
 async function mpBuscarAgora(btn){
   btn.disabled=true; btn.textContent='Buscando...';
@@ -4888,6 +4937,7 @@ async function salvarPedidoOrc(editId){
   });
   pd.entradas=pd.entradas||[];
   pd.criado_em=editId?getItem(DB.pedidos,editId)?.criado_em:new Date().toISOString();
+  if(!editId){ const n=numeroPedido(pd.id); if(n>(+DB.config.ultimo_pedido_num||0)){ DB.config.ultimo_pedido_num=n; salvarConfigCaixa(); } }
   if(!pd.cliente_nome&&!pd.cliente){toast('Informe o cliente','error');return;}
 
   // Avisar se algum item tem variante disponível mas não foi escolhida
