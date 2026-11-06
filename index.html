@@ -288,6 +288,17 @@ body.tema-escuro .visao-ped button[aria-pressed=true]{background:var(--dourado-e
 .etapa-passos button:hover:not([aria-current]){border-color:var(--azul-claro)}
 .pc-avancar{white-space:nowrap}
 .pc-avancar .txt-longo{display:none}
+.orc-envio{width:100%;background:var(--bg-input);color:var(--cinza-escuro);border-radius:10px;padding:14px;text-align:left}
+.orc-envio-rot{display:block;font-size:12px;font-weight:700;color:var(--cinza-med);margin:12px 0 6px}
+.orc-envio-opcoes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.orc-envio-op{display:flex;gap:8px;align-items:flex-start;border:1.5px solid var(--cinza-claro);border-radius:9px;padding:10px;cursor:pointer;font-size:13px}
+.orc-envio-op:has(input:checked){border-color:var(--azul-claro);background:var(--azul-tint)}
+.orc-envio-op input{margin-top:3px;flex:none}
+.orc-envio-op small{display:block;font-size:11px;color:var(--cinza-med);margin-top:2px}
+.orc-envio-conta{font-size:12.5px;margin:8px 0 0;padding:8px 10px;background:var(--azul-tint);border-radius:8px}
+.orc-envio-ok{font-size:13px;margin:12px 0 8px}
+#orc-envio-msg{font-size:14px;line-height:1.4}
+@media(max-width:600px){.orc-envio-opcoes{grid-template-columns:1fr}}
 .mp-bloco{background:var(--azul-tint);border-radius:8px;padding:12px;margin-bottom:12px}
 .mp-cob{background:var(--bg-input);border:1px solid var(--cinza-claro);border-radius:8px;padding:12px;margin-top:10px}
 .mp-item{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--cinza-claro);border-radius:10px;padding:12px;margin-bottom:8px;background:var(--bg-input)}
@@ -553,6 +564,11 @@ details.panel[open]>summary .panel-title::before{content:'▾ '}
 .orc-total-final .orc-total-valores{text-align:right}
 .orc-total-final .orc-total-de{display:block;font-size:11.5px;font-weight:600;color:#7DA0CA;text-decoration:line-through;margin-bottom:1px}
 .orc-total-final b{font-size:22px;font-weight:800;color:#C1E8FF}
+.orc-pagar{margin:0 28px 16px;border:1.5px solid #5483B3;border-radius:10px;padding:12px 14px;font-size:12px;color:#021024;background:#F4FAFF}
+.orc-pagar-titulo{display:block;font-size:13px;margin-bottom:6px}
+.orc-pagar-linha{display:flex;justify-content:space-between;gap:12px;padding:3px 0}
+.orc-pagar-linha b{white-space:nowrap}
+.orc-pagar-chave{margin-top:8px;background:#052659;color:#FFFFFF;border-radius:8px;padding:8px 12px;font-weight:800;text-align:center;font-size:13px}
 .orc-info-cards{margin:0 28px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .orc-info-card{background:#C1E8FF;border-radius:10px;padding:10px 14px;font-size:11.5px;color:#021024}
 .orc-info-card b{color:#052659;display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
@@ -2236,7 +2252,7 @@ function movimentosCaixa(){
   const l=[], dt=v=>v?normalizarData(v):'';
   DB.vendas.filter(v=>v.status==='Pago').forEach(v=>l.push({data:dt(v.data),tipo:'entrada',origem:'Venda',desc:(v.produto?nomeProd(v.produto):'Venda')+' · '+nomeVenda(v),valor:(+v.qtd||0)*(+v.preco||0),abrir:"editarVenda('"+v.id+"')"}));
   DB.pedidos.forEach(p=>(p.entradas||[]).forEach(e=>l.push({data:dt(e.data||p.data),tipo:'entrada',origem:'Pedido',desc:p.id+' · '+nomeVenda(p)+(e.forma?' · '+e.forma:''),valor:+e.valor||0,abrir:"abrirResumoPedido('"+p.id+"')"})));
-  DB.pedidos.forEach(p=>(p.entradas||[]).filter(e=>(+e.taxa||0)>0).forEach(e=>l.push({data:dt(e.data||p.data),tipo:'saida',despesa:true,origem:'Taxa',desc:'Taxa Mercado Pago · '+p.id,valor:+e.taxa||0,abrir:"abrirResumoPedido('"+p.id+"')"})));
+  DB.pedidos.forEach(p=>(p.entradas||[]).filter(e=>Math.abs(+e.taxa||0)>0.004).forEach(e=>l.push(e.taxa>0?{data:dt(e.data||p.data),tipo:'saida',despesa:true,origem:'Taxa',desc:'Taxa Mercado Pago · '+p.id,valor:+e.taxa,abrir:"abrirResumoPedido('"+p.id+"')"}:{data:dt(e.data||p.data),tipo:'entrada',origem:'Taxa',desc:'Sobra da taxa do cartão · '+p.id,valor:-e.taxa,abrir:"abrirResumoPedido('"+p.id+"')"})));
   DB.areceber.filter(x=>(+x.recebido||0)!==0).forEach(x=>l.push({data:dt(x.recebido_em||x.venc||x.data),aprox:!x.recebido_em,tipo:'entrada',origem:'A Receber',desc:(x.descricao||x.id)+(x.cliente?' · '+nomeCli(x.cliente):''),valor:+x.recebido||0,abrir:"editarAR('"+x.id+"')"}));
   DB.consignados.forEach(c=>(c.visitas||[]).filter(v=>(+v.valor_recebido||0)!==0).forEach(v=>l.push({data:dt(v.data),tipo:'entrada',origem:'Consignado',desc:c.nome||c.parceiro||c.loja||c.id,valor:+v.valor_recebido||0,abrir:"verHistoricoVisitas('"+c.id+"')"})));
   DB.compras.filter(c=>c.status==='Pago').forEach(c=>l.push({data:dt(c.data),tipo:'saida',despesa:c.tipo==='despesa'||(!c.tipo&&!c.materia_prima_id),origem:'Compra',desc:c.produto||c.id,valor:(+c.qtd||0)*(+c.custo||0),abrir:"editarCompra('"+c.id+"')"}));
@@ -4387,7 +4403,7 @@ function mpIdsLancados(){ const s=new Set(); DB.pedidos.forEach(p=>(p.entradas||
 function mpIgnorados(){ const a=DB.config?.mp_ignorados; return Array.isArray(a)?a.map(String):[]; }
 function mpParaConferir(){
   const lanc=mpIdsLancados(), ign=new Set(mpIgnorados()), ini=DB.config?.mp_inicio||'';
-  return _mpPags.filter(p=>p.status==='approved'&&p.data>=ini&&!lanc.has(p.id)&&!ign.has(p.id)&&!(p.referencia&&getItem(DB.pedidos,p.referencia)))
+  return _mpPags.filter(p=>p.status==='approved'&&p.data>=ini&&!lanc.has(p.id)&&!ign.has(p.id)&&!(refPedido(p)&&getItem(DB.pedidos,refPedido(p))))
     .sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
 }
 // Pagamento já lançado que o Mercado Pago devolveu ao cliente: precisa sair do pedido à mão.
@@ -4421,15 +4437,24 @@ async function registrarEntradaPedido(pd,entrada,origem){
   return {confirmouAgora,resEst};
 }
 // Se o mesmo valor já foi lançado à mão perto dessa data, só liga ao Mercado Pago (não duplica).
+// Com acréscimo do cartão, o pedido recebe só o valor dele; o acréscimo cobre a taxa.
+// O que sobrar ou faltar entre acréscimo e taxa real vai para o caixa (taxa negativa = sobra).
+function valoresPagamentoMP(p){
+  const base=baseRef(p);
+  if(!base||p.valor<=base) return {valor:p.valor,taxa:p.taxa,acrescimo:0};
+  const acrescimo=+(p.valor-base).toFixed(2);
+  return {valor:base,taxa:+(p.taxa-acrescimo).toFixed(2),acrescimo};
+}
 async function lancarPagamentoMP(pd,p){
-  const manual=(pd.entradas||[]).find(e=>!e.mp_id&&Math.abs((+e.valor||0)-p.valor)<0.005&&e.data&&p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1);
+  const v=valoresPagamentoMP(p);
+  const manual=(pd.entradas||[]).find(e=>!e.mp_id&&Math.abs((+e.valor||0)-v.valor)<0.005&&e.data&&p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1);
   if(manual){
-    manual.mp_id=p.id; manual.taxa=p.taxa;
-    registrarHistoricoPedido(pd,'Pagamento ligado ao Mercado Pago',`${R$(p.valor)} já estava lançado`);
+    manual.mp_id=p.id; manual.taxa=v.taxa;
+    registrarHistoricoPedido(pd,'Pagamento ligado ao Mercado Pago',`${R$(v.valor)} já estava lançado`);
     await salvarItem('pedidos',pd);
     return {ligou:true};
   }
-  return registrarEntradaPedido(pd,{valor:p.valor,forma:formaMP(p),data:p.data,mp_id:p.id,taxa:p.taxa},'Mercado Pago');
+  return registrarEntradaPedido(pd,{valor:v.valor,forma:formaMP(p),data:p.data,mp_id:p.id,taxa:v.taxa,...(v.acrescimo?{acrescimo:v.acrescimo}:{})},v.acrescimo?`Mercado Pago · cliente pagou ${R$(p.valor)} com a taxa do cartão`:'Mercado Pago');
 }
 async function aplicarPagamentosMP(){
   if(_mpAplicando||!_isLoggedIn) return;
@@ -4444,8 +4469,8 @@ async function aplicarPagamentosMP(){
     }
     const lanc=mpIdsLancados(), feitos=[];
     for(const p of _mpPags){
-      if(p.status!=='approved'||!p.referencia||lanc.has(p.id)) continue;
-      const pd=getItem(DB.pedidos,p.referencia); if(!pd) continue;
+      if(p.status!=='approved'||!refPedido(p)||lanc.has(p.id)) continue;
+      const pd=getItem(DB.pedidos,refPedido(p)); if(!pd) continue;
       const r=await lancarPagamentoMP(pd,p);
       lanc.add(p.id);
       feitos.push(`${pd.id} ${R$(p.valor)}`+(r.confirmouAgora?' (confirmado)':''));
@@ -4467,8 +4492,9 @@ async function mpGerarCobranca(id,tipo,btn){
   const txt=btn.textContent; btn.disabled=true; btn.textContent='Gerando...';
   try{
     const cli=getCli(pd.cliente);
-    const r=await chamarBackend(tipo==='pix'?'mp_gerar_pix':'mp_gerar_link',{pedido_id:pd.id,valor,descricao:`Pedido ${pd.id} · ${DB.config?.empresa||'Morfê Personalizados'}`,email:/^\S+@\S+\.\S+$/.test(cli?.email||'')?cli.email:''});
-    pd.mp_cobranca={tipo,valor:r.valor,id:r.id,codigo:r.qr_code||'',link:tipo==='pix'?(r.ticket_url||''):r.link,vence:r.vence,criado:new Date().toISOString()};
+    const link=tipo!=='pix';
+    const r=await chamarBackend(link?'mp_gerar_link':'mp_gerar_pix',{pedido_id:pd.id,valor:link?comTaxaCartao(valor):valor,referencia:link?refComBase(pd.id,valor):pd.id,so_cartao:link,descricao:`Pedido ${pd.id} · ${DB.config?.empresa||'Morfê Personalizados'}`,email:/^\S+@\S+\.\S+$/.test(cli?.email||'')?cli.email:''});
+    pd.mp_cobranca={tipo,valor:r.valor,base:valor,id:r.id,codigo:r.qr_code||'',link:tipo==='pix'?(r.ticket_url||''):r.link,vence:r.vence,criado:new Date().toISOString()};
     registrarHistoricoPedido(pd,'Cobrança Mercado Pago',`${tipo==='pix'?'PIX':'Link'} de ${R$(r.valor)}`);
     await salvarItem('pedidos',pd);
     desenharCobrancaMP(pd,r.qr_code_base64);
@@ -4482,7 +4508,7 @@ function desenharCobrancaMP(pd,qrBase64){
   if(!c){ el.innerHTML=''; return; }
   const pix=c.tipo==='pix';
   el.innerHTML=`<div class="mp-cob">
-    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>${pix?'⚡ PIX':'🔗 Link de pagamento'} de ${R$(c.valor)}</strong><span style="font-size:11.5px;color:var(--cinza-med)">Vale até ${mpVence(c.vence)}</span></div>
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>${pix?'⚡ PIX':'💳 Link do cartão'} de ${R$(c.valor)}</strong>${!pix&&c.base&&c.valor>c.base?`<span style="font-size:11.5px;color:var(--cinza-med)">pedido ${R$(c.base)} + taxa ${R$(c.valor-c.base)}</span>`:''}<span style="font-size:11.5px;color:var(--cinza-med)">Vale até ${mpVence(c.vence)}</span></div>
     ${pix&&/^[A-Za-z0-9+/=]+$/.test(qrBase64||'')?`<img alt="QR Code do PIX" src="data:image/png;base64,${qrBase64}" style="display:block;width:180px;height:180px;margin:10px auto">`:''}
     <input class="form-input" readonly id="mp-cob-texto" value="${escHtml(pix?c.codigo:c.link)}" aria-label="${pix?'PIX copia e cola':'Link de pagamento'}" onclick="this.select()" style="margin-top:8px;font-size:13px">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
@@ -4503,7 +4529,7 @@ function mpEnviarWhatsApp(id){
   const cli=getCli(pd.cliente);
   const topo=`Olá ${cli?.nome||pd.cliente_nome||''}! 😊\n\nAqui é a *Morfê Personalizados*!\n\n📋 *Pedido Nº:* ${pd.id}\n💰 *Valor:* ${R$(c.valor)}\n\n`;
   // O código copia e cola precisa ir sozinho: se vier junto com texto, o cliente copia tudo e o banco recusa.
-  const msg=c.tipo!=='pix'?topo+`Você pode pagar por este link (PIX ou cartão):\n${c.link}\n\nObrigado! 🙏`
+  const msg=c.tipo!=='pix'?topo+`💳 *No cartão de crédito:* ${R$(c.valor)}${c.base&&c.valor>c.base?` (${R$(c.base)} + ${R$(c.valor-c.base)} da taxa do cartão)`:''}. Pague por este link:\n${c.link}\n\n💚 *No PIX não tem acréscimo:* chave ${chavePix()}\n\nObrigado! 🙏`
     :c.link?topo+`Para pagar com PIX, abra este link (tem o QR Code e o botão de copiar o código):\n${c.link}\n\nVale até ${mpVence(c.vence)}. Obrigado! 🙏`
     :topo+`Vou te mandar o *PIX copia e cola* na próxima mensagem. Vale até ${mpVence(c.vence)}. Obrigado! 🙏`;
   abrirWPP(cli?.whatsapp||pd.telefone||'',msg);
@@ -4568,6 +4594,105 @@ async function mpIgnorar(pid){
   await salvarConfigCaixa();
   desenharPagamentosMP(); render(currentSection);
   toastDesfazer('Pagamento marcado como conferido',async()=>{ DB.config.mp_ignorados=mpIgnorados().filter(x=>x!==pid); await salvarConfigCaixa(); desenharPagamentosMP(); render(currentSection); });
+}
+// ── ENVIO DO ORÇAMENTO ──────────────────────────────────────
+// No cartão, o cliente paga a taxa: cobra o valor que, depois da taxa, deixa o valor do pedido limpo.
+// A lei 13.455/2017 permite preço diferente por forma de pagamento, desde que o cliente seja avisado antes.
+function taxaLinkCartao(){ const t=+DB.config?.taxa_link_cartao; return t>0&&t<50?t:4.98; }
+function comTaxaCartao(base){ return Math.ceil(+base/(1-taxaLinkCartao()/100)*100-1e-6)/100; }
+// Referência enviada ao Mercado Pago: "nº do pedido|valor do pedido" quando há acréscimo do cartão.
+function refComBase(id,base){ return id+'|'+(+base).toFixed(2); }
+function refPedido(p){ return String(p.referencia||'').split('|')[0]; }
+function baseRef(p){ const b=parseFloat(String(p.referencia||'').split('|')[1]); return b>0?b:null; }
+// Sinal mínimo de 50% para iniciar a produção; o cliente pode pagar tudo se quiser.
+function infoPagamentoPedido(pd){
+  const total=+pd.total||0, pago=(pd.entradas||[]).reduce((s,e)=>s+(+e.valor||0),0);
+  const falta=Math.max(0,total-pago), sinal=Math.max(0,+(total*0.5-pago).toFixed(2));
+  return {total,pago,falta,sinal};
+}
+const ENVIO_FORMAS=[
+  ['gratis','💚 PIX na sua chave','Sem taxa · você confirma o recebimento'],
+  ['auto','⚡ PIX automático','Taxa de 0,99% · entra sozinho no pedido'],
+  ['cartao','💳 Cartão de crédito','Link do Mercado Pago · a taxa do cartão é somada ao valor do cliente'],
+  ['nada','📄 Só o orçamento','Sem dados de pagamento'],
+];
+const MARCA_LINK='🔗 [o link é criado quando você tocar em Enviar]';
+let _envio={forma:(()=>{ try{ return localStorage.getItem('morfe_envio_forma')||'gratis'; }catch(e){ return 'gratis'; } })(),valor:'sinal'};
+function msgOrcamento(pd,forma,valor){
+  const {total,pago,falta,sinal}=infoPagamentoPedido(pd);
+  const cli=getCli(pd.cliente), nome=cli?.nome||pd.cliente_nome||'';
+  let m=`Olá${nome?' '+nome:''}! 😊\n\nSegue o orçamento do seu pedido *Nº ${pd.id}*.\n\n💰 *Total:* ${R$(total)}`;
+  if(pago>0.004) m+=`\n✅ *Já pago:* ${R$(pago)}\n⏳ *Falta:* ${R$(falta)}`;
+  if(forma==='nada'||falta<=0.004) return m+`\n\nQualquer dúvida, é só me chamar! 🙏`;
+  if(sinal>0.004) m+=`\n\n📌 Para iniciar a produção, peço um *sinal mínimo de 50% (${R$(sinal)})*. Se preferir, pode pagar o valor total.`;
+  if(forma==='gratis') return m+`\n\n💚 *Chave PIX:* ${chavePix()}\n\nDepois de pagar, me envie o comprovante por aqui, por favor. 🙏`;
+  if(forma==='auto') return m+`\n\n⚡ *Pague com PIX por este link (${R$(valor)}):*\n${MARCA_LINK}\n\nO pagamento é confirmado automaticamente. 🙏`;
+  const cob=comTaxaCartao(valor);
+  return m+`\n\n💳 *No cartão de crédito:* ${R$(cob)} (${R$(valor)} + ${R$(cob-valor)} da taxa do cartão). Pague por este link:\n${MARCA_LINK}\nDá para parcelar; os juros das parcelas aparecem no Mercado Pago antes de pagar.\n\n💚 *No PIX não tem acréscimo:* chave ${chavePix()}\n\nObrigado! 🙏`;
+}
+function valorEnvio(pd){ const {falta,sinal}=infoPagamentoPedido(pd); return _envio.valor==='sinal'&&sinal>0.004?sinal:falta; }
+function abrirEnvioOrcamento(id){
+  const pd=getItem(DB.pedidos,id); if(!pd) return;
+  const actions=document.getElementById('orc-preview-actions');
+  actions.innerHTML=`<div class="orc-envio" role="region" aria-label="Enviar orçamento">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><strong style="font-size:15px">📤 Enviar orçamento</strong><button type="button" class="btn btn-outline btn-sm" onclick="abrirPreviewOrcamento('${id}')">‹ Voltar</button></div>
+    <div class="orc-envio-rot" id="orc-envio-rot-forma">Como o cliente vai pagar?</div>
+    <div class="orc-envio-opcoes" role="radiogroup" aria-labelledby="orc-envio-rot-forma">${ENVIO_FORMAS.map(([v,t,d])=>`<label class="orc-envio-op"><input type="radio" name="orc-envio-forma" value="${v}" ${_envio.forma===v?'checked':''} onchange="_envio.forma=this.value;atualizarEnvioOrcamento('${id}')"><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>
+    <div id="orc-envio-valor"></div>
+    <label class="orc-envio-rot" for="orc-envio-msg">Mensagem (pode editar)</label>
+    <textarea class="form-textarea" id="orc-envio-msg" rows="10"></textarea>
+    <button type="button" class="btn btn-success" id="orc-envio-btn" style="width:100%;justify-content:center;min-height:48px;font-size:15px;margin-top:10px" onclick="enviarOrcamento('${id}',this)">📤 Enviar imagem e mensagem</button>
+    <div id="orc-envio-depois"></div>
+  </div>`;
+  atualizarEnvioOrcamento(id);
+}
+function atualizarEnvioOrcamento(id){
+  const pd=getItem(DB.pedidos,id); if(!pd) return;
+  try{ localStorage.setItem('morfe_envio_forma',_envio.forma); }catch(e){}
+  const {falta,sinal}=infoPagamentoPedido(pd);
+  const comLink=(_envio.forma==='auto'||_envio.forma==='cartao')&&falta>0.004;
+  document.getElementById('orc-envio-valor').innerHTML=comLink?`<div class="orc-envio-rot">Valor do link</div><div class="exp-linha">${sinal>0.004?`<button type="button" class="chip" aria-pressed="${_envio.valor==='sinal'}" onclick="_envio.valor='sinal';atualizarEnvioOrcamento('${id}')">Sinal 50% · ${R$(sinal)}</button>`:''}<button type="button" class="chip" aria-pressed="${_envio.valor!=='sinal'||sinal<=0.004}" onclick="_envio.valor='total';atualizarEnvioOrcamento('${id}')">${(+pd.total||0)-falta>0.004?'O que falta':'Total'} · ${R$(falta)}</button></div>${_envio.forma==='cartao'?`<p class="orc-envio-conta">Pedido ${R$(valorEnvio(pd))} + taxa do cartão ${R$(comTaxaCartao(valorEnvio(pd))-valorEnvio(pd))} = <b>cliente paga ${R$(comTaxaCartao(valorEnvio(pd)))}</b>. Você recebe ${R$(valorEnvio(pd))} limpo.</p>`:''}`:'';
+  document.getElementById('orc-envio-msg').value=msgOrcamento(pd,_envio.forma,valorEnvio(pd));
+  document.getElementById('orc-envio-depois').innerHTML='';
+}
+async function enviarOrcamento(id,btn){
+  const pd=getItem(DB.pedidos,id); if(!pd) return;
+  const forma=_envio.forma, valor=valorEnvio(pd), {falta}=infoPagamentoPedido(pd);
+  const tel=getCli(pd.cliente)?.whatsapp||pd.telefone||'';
+  let msg=document.getElementById('orc-envio-msg').value;
+  const txt=btn.textContent; btn.disabled=true;
+  try{
+    if((forma==='auto'||forma==='cartao')&&falta>0.004&&msg.includes(MARCA_LINK)){
+      btn.textContent='Criando o link...';
+      const cli=getCli(pd.cliente);
+      const cartao=forma==='cartao', cob=cartao?comTaxaCartao(valor):+valor.toFixed(2);
+      const r=await chamarBackend(cartao?'mp_gerar_link':'mp_gerar_pix',{pedido_id:pd.id,valor:cob,referencia:cartao?refComBase(pd.id,valor):pd.id,so_cartao:cartao,descricao:`Pedido ${pd.id} · ${DB.config?.empresa||'Morfê Personalizados'}`,email:/^\S+@\S+\.\S+$/.test(cli?.email||'')?cli.email:''});
+      const link=forma==='auto'?(r.ticket_url||''):r.link;
+      if(!link) throw new Error('O Mercado Pago não devolveu o link');
+      pd.mp_cobranca={tipo:forma==='auto'?'pix':'link',valor:r.valor,base:+valor.toFixed(2),id:r.id,codigo:r.qr_code||'',link,vence:r.vence,criado:new Date().toISOString()};
+      registrarHistoricoPedido(pd,'Cobrança Mercado Pago',`${forma==='auto'?'PIX':'Link'} de ${R$(r.valor)}`);
+      msg=msg.replace(MARCA_LINK,link);
+      document.getElementById('orc-envio-msg').value=msg;
+    }
+    btn.textContent='Gerando a imagem...';
+    const {arquivo,blob,nome}=await gerarImagemOrcamento();
+    registrarHistoricoPedido(pd,'Orçamento enviado',ENVIO_FORMAS.find(f=>f[0]===forma)[1].replace(/^\S+\s/,''));
+    salvarItem('pedidos',pd);
+    const depois=document.getElementById('orc-envio-depois');
+    if(arquivo&&navigator.canShare&&navigator.canShare({files:[arquivo],text:msg})){
+      try{ await navigator.share({files:[arquivo],text:msg,title:'Orçamento '+pd.id}); }
+      catch(e){ if(e&&e.name==='AbortError'){ toast('Envio cancelado'); return; } throw e; }
+      depois.innerHTML=`<p class="orc-envio-ok">✅ Enviado! Se no WhatsApp a mensagem não foi junto com a imagem:</p><button type="button" class="btn btn-outline" style="width:100%;justify-content:center;min-height:44px" onclick="abrirWPP('${tel}',document.getElementById('orc-envio-msg').value)">💬 Enviar só a mensagem</button>`;
+    } else {
+      // Sem a tela de compartilhar (alguns computadores): baixa a imagem e abre a conversa com a mensagem.
+      const url=URL.createObjectURL(blob), a=document.createElement('a');
+      a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),60000);
+      abrirWPP(tel,msg);
+      depois.innerHTML=`<p class="orc-envio-ok">✅ A imagem foi baixada e a conversa abriu com a mensagem. No WhatsApp, anexe a imagem (📎) antes de enviar.</p>`;
+    }
+  }catch(e){
+    toast((forma==='auto'||forma==='cartao'?'Mercado Pago: ':'')+(e.message||e),'error');
+  }finally{ btn.disabled=false; btn.textContent=txt; }
 }
 // ── ETAPAS DO PEDIDO ─────────────────────────────────────────
 const ARTE_STATUS=[['','Sem arte para aprovar'],['Pendente','Arte pendente'],['Ajustar','Arte: ajustar'],['Aprovada','Arte aprovada']];
@@ -4843,10 +4968,10 @@ function abrirPagamentos(pedidoId){
       </div>
       ${saldo>0.004?`<div class="mp-bloco">
         <div style="font-size:13px;font-weight:700;margin-bottom:2px">Cobrar pelo Mercado Pago</div>
-        <div style="font-size:11.5px;color:var(--cinza-med);margin-bottom:8px">Usa o valor digitado em "Valor Recebido" ou, se estiver vazio, o que falta (${R$(saldo)}). O pagamento entra sozinho neste pedido.</div>
+        <div style="font-size:11.5px;color:var(--cinza-med);margin-bottom:8px">Usa o valor digitado em "Valor Recebido" ou, se estiver vazio, o que falta (${R$(saldo)}). O pagamento entra sozinho neste pedido. PIX: taxa de 0,99%. Cartão: a taxa é somada ao valor do cliente.</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <button type="button" class="btn btn-primary" style="justify-content:center;min-height:42px" onclick="mpGerarCobranca('${pedidoId}','pix',this)">⚡ Gerar PIX</button>
-          <button type="button" class="btn btn-outline" style="justify-content:center;min-height:42px" onclick="mpGerarCobranca('${pedidoId}','link',this)">🔗 Gerar link</button>
+          <button type="button" class="btn btn-outline" style="justify-content:center;min-height:42px" onclick="mpGerarCobranca('${pedidoId}','link',this)">💳 Link cartão (+${String(taxaLinkCartao()).replace('.',',')}%)</button>
         </div>
         <div id="mp-cobranca"></div>
       </div>`:''}
@@ -5028,6 +5153,14 @@ function abrirPreviewOrcamento(pedidoId){
         <div class="orc-total-final"><span>Valor Total</span><div class="orc-total-valores">${economiaTotal>0.004?`<span class="orc-total-de">de ${R$(calc.subtotal)}</span>`:''}<b>${R$(calc.total)}</b></div></div>
       </div>
 
+      ${(()=>{ const ip=infoPagamentoPedido(pd); return ip.falta>0.004?`<div class="orc-pagar">
+        <b class="orc-pagar-titulo">💚 Como pagar</b>
+        ${ip.pago>0.004?`<div class="orc-pagar-linha"><span>Já pago</span><b>${R$(ip.pago)}</b></div>`:''}
+        ${ip.sinal>0.004?`<div class="orc-pagar-linha"><span>Sinal mínimo para iniciar a produção (50%)</span><b>${R$(ip.sinal)}</b></div>`:''}
+        <div class="orc-pagar-linha"><span>${ip.pago>0.004?'Para quitar':'Ou o valor total'}</span><b>${R$(ip.falta)}</b></div>
+        <div class="orc-pagar-chave">Chave PIX: ${escHtml(chavePix())}</div>
+      </div>`:''; })()}
+
       <div class="orc-info-cards">
         <div class="orc-info-card"><b>💳 Forma de Pagamento</b>${pd.forma||'A combinar'}</div>
         <div class="orc-info-card"><b>📝 Observações</b>${pd.obs||'—'}</div>
@@ -5045,7 +5178,8 @@ function abrirPreviewOrcamento(pedidoId){
   actions.innerHTML=`
     <button class="btn btn-success" onclick="baixarOrcamentoImagem()">🖼️ Baixar Imagem</button>
     <button class="btn btn-primary" onclick="baixarOrcamentoPDF()">📄 Baixar PDF</button>
-    <button class="btn btn-outline" style="background:white" onclick="wppPedido('${pedidoId}')">💬 Enviar WhatsApp</button>
+    <button class="btn btn-warning" onclick="abrirEnvioOrcamento('${pedidoId}')">📤 Enviar orçamento</button>
+    <button class="btn btn-outline" style="background:white" onclick="wppPedido('${pedidoId}')">💬 Só texto</button>
     <button class="btn btn-outline" style="background:white" onclick="fecharPreviewOrcamento()">✕ Fechar</button>`;
 
   document.getElementById('orc-preview-overlay').classList.add('open');
@@ -7850,6 +7984,7 @@ SECTIONS.config = () => {
         <div class="form-group"><label class="form-label">Taxa PIX (%)</label><input class="form-input" id="cfg-pix" type="number" step="0.1" value="${DB.config?.taxa_pix||0}"></div>
         <div class="form-group"><label class="form-label">Taxa Débito (%)</label><input class="form-input" id="cfg-deb" type="number" step="0.1" value="${DB.config?.taxa_debito||1.5}"></div>
         <div class="form-group"><label class="form-label">Taxa Crédito 1x (%)</label><input class="form-input" id="cfg-cr1" type="number" step="0.1" value="${DB.config?.taxa_credito1||2.5}"></div>
+        <div class="form-group"><label class="form-label">Taxa do cartão no link Mercado Pago (%)</label><input class="form-input" id="cfg-link-cartao" type="number" step="0.01" min="0" max="49" value="${taxaLinkCartao()}"><small style="font-size:11px;color:var(--cinza-med)">Somada ao valor do cliente que paga no cartão. Confira a sua em Mercado Pago → Seu negócio → Custos.</small></div>
         <div class="form-group"><label class="form-label">Margem Padrão (%)</label><input class="form-input" id="cfg-marg" type="number" value="${DB.config?.margem_padrao||40}"></div>
         <div class="form-group"><label class="form-label">Reserva (%)</label><input class="form-input" id="cfg-res" type="number" value="${DB.config?.reserva||10}"></div>
         <div class="form-group"><label class="form-label">🎨 Taxa de Criação de Arte (R$)</label><input class="form-input" id="cfg-arte" type="number" step="0.01" value="${DB.config?.taxa_arte??5}"></div>
@@ -8106,6 +8241,7 @@ async function salvarConfig(){
   DB.config.taxa_pix=parseFloat(document.getElementById('cfg-pix').value)||0;
   DB.config.taxa_debito=parseFloat(document.getElementById('cfg-deb').value)||1.5;
   DB.config.taxa_credito1=parseFloat(document.getElementById('cfg-cr1').value)||2.5;
+  DB.config.taxa_link_cartao=parseFloat(document.getElementById('cfg-link-cartao').value)||4.98;
   DB.config.margem_padrao=parseFloat(document.getElementById('cfg-marg').value)||40;
   DB.config.reserva=parseFloat(document.getElementById('cfg-res').value)||10;
   DB.config.taxa_arte=parseFloat(document.getElementById('cfg-arte').value)||0;
@@ -8374,6 +8510,25 @@ async function salvarCompra(id=null){const ex=id?getItem(DB.compras,id):null,tip
 
 <script>
 // Gera a imagem sempre no mesmo formato do notebook, mesmo no celular.
+async function gerarImagemOrcamento(){
+  const area=document.getElementById('orc-print-area');
+  if(typeof html2canvas==='undefined') throw new Error('Ferramenta de imagem ainda carregando, tente de novo em 2s');
+  let copia=null;
+  try{
+    await ((document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve());
+    copia=area.cloneNode(true);
+    copia.removeAttribute('id');
+    copia.style.cssText='position:fixed;left:-10000px;top:0;width:650px;min-width:650px;max-width:none;overflow:visible;background:#fff;z-index:-1';
+    document.body.appendChild(copia);
+    await new Promise(r=>requestAnimationFrame(r));
+    const largura=650,altura=Math.max(copia.scrollHeight,copia.offsetHeight,1);
+    const escala=Math.max(1,Math.min(2,Math.sqrt(14000000/(largura*altura))));
+    const canvas=await html2canvas(copia,{scale:escala,width:largura,windowWidth:largura,backgroundColor:'#ffffff',useCORS:true,logging:false});
+    const nome='orcamento_'+new Date().toISOString().slice(0,10)+'.png';
+    const blob=await new Promise((ok,erro)=>canvas.toBlob(b=>b?ok(b):erro(new Error('Imagem indisponível')),'image/png',1));
+    return {blob,nome,arquivo:typeof File!=='undefined'?new File([blob],nome,{type:'image/png'}):null};
+  } finally { if(copia) copia.remove(); }
+}
 async function baixarOrcamentoImagem(){
   const area=document.getElementById('orc-print-area');
   if(typeof html2canvas==='undefined'){toast('Carregando ferramenta de imagem, tenta de novo em 2s...','error');return;}

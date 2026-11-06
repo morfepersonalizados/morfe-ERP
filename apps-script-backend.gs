@@ -438,7 +438,8 @@ function mpGerarPix(d) {
   return { id: String(p.id), valor: valor, qr_code: t.qr_code, qr_code_base64: t.qr_code_base64, ticket_url: t.ticket_url, vence: mpDataIso(vence) };
 }
 
-// Link de pagamento (Checkout Pro): o cliente escolhe PIX, cartao etc.
+// Link de pagamento (Checkout Pro). Com so_cartao, aceita so cartao (o PIX gratis e pela chave).
+// referencia pode vir como "PEDIDO|valor do pedido" quando o cliente paga a taxa do cartao.
 function mpGerarLink(d) {
   var valor = Math.round(Number(d.valor) * 100) / 100;
   if (!(valor > 0)) throw new Error('Valor invalido');
@@ -446,7 +447,8 @@ function mpGerarLink(d) {
   var vence = new Date(Date.now() + 7 * 24 * 3600 * 1000);
   var pref = mpChamar('post', '/checkout/preferences', {
     items: [{ title: String(d.descricao || ('Pedido ' + d.pedido_id)).slice(0, 200), quantity: 1, unit_price: valor, currency_id: 'BRL' }],
-    external_reference: String(d.pedido_id),
+    external_reference: String(d.referencia || d.pedido_id),
+    payment_methods: d.so_cartao ? { excluded_payment_types: [{ id: 'ticket' }, { id: 'bank_transfer' }, { id: 'atm' }] } : undefined,
     expires: true,
     expiration_date_to: mpDataIso(vence)
   }, Utilities.getUuid());
@@ -455,7 +457,8 @@ function mpGerarLink(d) {
 
 function mpLinhaPagamento(p) {
   var taxa = 0;
-  (p.fee_details || []).forEach(function (f) { taxa += Number(f.amount) || 0; });
+  // So as taxas pagas por voce; juros de parcelamento pagos pelo cliente nao entram.
+  (p.fee_details || []).forEach(function (f) { if (f.fee_payer !== 'payer') taxa += Number(f.amount) || 0; });
   var quando = p.date_approved || p.date_created || '';
   var pagador = p.payer || {};
   var nome = [pagador.first_name, pagador.last_name].filter(function (x) { return x; }).join(' ');
