@@ -389,6 +389,7 @@ function criarEstrutura() {
 var MP_API = 'https://api.mercadopago.com';
 var MP_ABA = 'mp_pagamentos';
 var MP_MAX_LINHAS = 600;
+var MP_ABA_COBRANCAS = 'mp_cobrancas';
 
 function mpToken() {
   var t = PropertiesService.getScriptProperties().getProperty('MP_ACCESS_TOKEN');
@@ -418,7 +419,8 @@ function mpDataIso(d) {
   return Utilities.formatDate(d, 'America/Manaus', "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
 }
 
-// Cobranca PIX com o numero do pedido: quando o cliente paga, o ERP sabe de qual pedido e.
+// Cobranca PIX com o numero do pedido (API de Orders): quando o cliente paga, o ERP sabe de qual pedido e.
+// A cobranca fica anotada na aba mp_cobrancas para a busca conferir se foi paga.
 function mpGerarPix(d) {
   var valor = Math.round(Number(d.valor) * 100) / 100;
   if (!(valor > 0)) throw new Error('Valor invalido');
@@ -426,16 +428,61 @@ function mpGerarPix(d) {
   var email = d.email || PropertiesService.getScriptProperties().getProperty('MP_EMAIL_PAGADOR');
   if (!email) throw new Error('Falta MP_EMAIL_PAGADOR nas Propriedades do script');
   var vence = new Date(Date.now() + 3 * 24 * 3600 * 1000);
-  var p = mpChamar('post', '/v1/payments', {
-    transaction_amount: valor,
-    description: String(d.descricao || ('Pedido ' + d.pedido_id)).slice(0, 200),
-    payment_method_id: 'pix',
-    external_reference: String(d.pedido_id),
-    date_of_expiration: mpDataIso(vence),
+  var o = mpChamar('post', '/v1/orders', {
+    type: 'online',
+    processing_mode: 'automatic',
+    total_amount: valor.toFixed(2),
+    external_reference: String(d.pedido_id).slice(0, 64),
+    config: { location: { state_id: 'BR-AM' } },
+    transactions: { payments: [{ amount: valor.toFixed(2), payment_method: { id: 'pix', type: 'bank_transfer' }, expiration_time: 'P3D' }] },
     payer: { email: email }
   }, Utilities.getUuid());
-  var t = (p.point_of_interaction && p.point_of_interaction.transaction_data) || {};
-  return { id: String(p.id), valor: valor, qr_code: t.qr_code, qr_code_base64: t.qr_code_base64, ticket_url: t.ticket_url, vence: mpDataIso(vence) };
+  var pg = (o.transactions && o.transactions.payments && o.transactions.payments[0]) || {};
+  var pm = pg.payment_method || {};
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var cobs = lerTabela(ss, MP_ABA_COBRANCAS);
+  cobs.unshift({ id: String(o.id), pedido: String(d.pedido_id), valor: valor, criado: mpDataIso(new Date()), status: o.status || '' });
+  salvarTabela(ss, MP_ABA_COBRANCAS, cobs.slice(0, 300));
+  return { id: String(o.id), valor: valor, qr_code: pm.qr_code, qr_code_base64: pm.qr_code_base64, ticket_url: pm.ticket_url, vence: mpDataIso(vence) };
+}
+
+var MP_STATUS_ORDER = { processed: 'approved', refunded: 'refunded', charged_back: 'charged_back', canceled: 'cancelled', failed: 'cancelled' };
+
+// Confere as cobrancas PIX criadas nos ultimos 31 dias que ainda nao terminaram.
+function mpConferirCobrancas(ss) {
+  var cobs = lerTabela(ss, MP_ABA_COBRANCAS);
+  var linhas = [], limite = Date.now() - 31 * 24 * 3600 * 1000, mudou = false;
+  for (var i = 0; i < cobs.length; i++) {
+    var c = cobs[i];
+    if (['processed', 'canceled', 'failed', 'refunded'].indexOf(c.status) >= 0) continue;
+    if (new Date(c.criado).getTime() < limite) continue;
+    var o;
+    try { o = mpChamar('get', '/v1/orders/' + encodeURIComponent(c.id)); } catch (e) { continue; }
+    if (o.status !== c.status) { c.status = o.status; mudou = true; }
+    var st = MP_STATUS_ORDER[o.status];
+    if (!st) continue;
+    var pg = (o.transactions && o.transactions.payments && o.transactions.payments[0]) || {};
+    var quando = o.last_updated_date || o.created_date || mpDataIso(new Date());
+    linhas.push({
+      id: String(pg.reference_id || pg.id || o.id),
+      data: String(quando).slice(0, 10),
+      hora: String(quando).slice(11, 16),
+      status: st,
+      valor: Number(pg.amount || o.total_amount) || 0,
+      liquido: 0,
+      taxa: 0,
+      metodo: 'pix',
+      tipo: 'bank_transfer',
+      operacao: 'order',
+      referencia: o.external_reference || c.pedido,
+      descricao: 'PIX ' + c.pedido,
+      pagador: '',
+      atualizado: String(quando),
+      fonte: 'order'
+    });
+  }
+  if (mudou) salvarTabela(ss, MP_ABA_COBRANCAS, cobs);
+  return linhas;
 }
 
 // Link de pagamento (Checkout Pro). Com so_cartao, aceita so cartao (o PIX gratis e pela chave).
@@ -490,9 +537,13 @@ function mpBuscarPagamentos(ss, dias) {
     for (var i = 0; i < lista.length; i++) novos.push(mpLinhaPagamento(lista[i]));
     if (lista.length < 50) break;
   }
+  var cobrancas = mpConferirCobrancas(ss);
   var atuais = lerTabela(ss, MP_ABA);
   var porId = {};
   atuais.forEach(function (x) { porId[String(x.id)] = x; });
+  // A busca de pagamentos tem as taxas; se ela trouxer o mesmo pagamento com o mesmo numero, vale a dela.
+  // Se vier com numero diferente, o ERP percebe que e o mesmo PIX e lanca uma vez so.
+  cobrancas.forEach(function (x) { if (!porId[x.id] || porId[x.id].fonte === 'order') porId[x.id] = x; });
   novos.forEach(function (x) { porId[x.id] = x; });
   var todos = Object.keys(porId).map(function (k) { return porId[k]; });
   todos.sort(function (a, b) { return String(b.atualizado).localeCompare(String(a.atualizado)); });

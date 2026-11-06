@@ -4449,12 +4449,12 @@ async function lancarPagamentoMP(pd,p){
   const v=valoresPagamentoMP(p);
   const manual=(pd.entradas||[]).find(e=>!e.mp_id&&Math.abs((+e.valor||0)-v.valor)<0.005&&e.data&&p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1);
   if(manual){
-    manual.mp_id=p.id; manual.taxa=v.taxa;
+    manual.mp_id=p.id; manual.mp_fonte=p.fonte||'busca'; manual.taxa=v.taxa;
     registrarHistoricoPedido(pd,'Pagamento ligado ao Mercado Pago',`${R$(v.valor)} já estava lançado`);
     await salvarItem('pedidos',pd);
     return {ligou:true};
   }
-  return registrarEntradaPedido(pd,{valor:v.valor,forma:formaMP(p),data:p.data,mp_id:p.id,taxa:v.taxa,...(v.acrescimo?{acrescimo:v.acrescimo}:{})},v.acrescimo?`Mercado Pago · cliente pagou ${R$(p.valor)} com a taxa do cartão`:'Mercado Pago');
+  return registrarEntradaPedido(pd,{valor:v.valor,forma:formaMP(p),data:p.data,mp_id:p.id,mp_fonte:p.fonte||'busca',taxa:v.taxa,...(v.acrescimo?{acrescimo:v.acrescimo}:{})},v.acrescimo?`Mercado Pago · cliente pagou ${R$(p.valor)} com a taxa do cartão`:'Mercado Pago');
 }
 async function aplicarPagamentosMP(){
   if(_mpAplicando||!_isLoggedIn) return;
@@ -4471,6 +4471,8 @@ async function aplicarPagamentosMP(){
     for(const p of _mpPags){
       if(p.status!=='approved'||!refPedido(p)||lanc.has(p.id)) continue;
       const pd=getItem(DB.pedidos,refPedido(p)); if(!pd) continue;
+      // O mesmo PIX pode chegar pela cobrança e pela busca com números diferentes: fica um só.
+      if((pd.entradas||[]).some(e=>e.mp_id&&e.mp_id!==p.id&&(e.mp_fonte||'busca')!==(p.fonte||'busca')&&Math.abs((+e.valor||0)-valoresPagamentoMP(p).valor)<0.005&&normalizarData(e.data)===p.data)){ lanc.add(p.id); continue; }
       const r=await lancarPagamentoMP(pd,p);
       lanc.add(p.id);
       feitos.push(`${pd.id} ${R$(p.valor)}`+(r.confirmouAgora?' (confirmado)':''));
