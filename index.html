@@ -1845,6 +1845,7 @@ function excluirItem(tabela, id) {
     <span style="color:var(--cinza-med);font-size:12px">Esta ação não pode ser desfeita.</span></p>`,
     async () => {
       if(vaiRestaurarPedido){ await reverterBaixaEstoque(pdRef.consumo_insumos||{}); }
+      if(isPedido) esquecerPagamentosDoPedido(id,pdRef);
       if(vaiRestaurarCompra){ await reverterEntradaEstoque({[cpRef.estoque_aplicado.mpId]:cpRef.estoque_aplicado.qtd}); }
       if(custoDaConta){ custoDaConta.meses_pulados=[...(Array.isArray(custoDaConta.meses_pulados)?custoDaConta.meses_pulados:[]),apRef.mes_ref]; await salvarItem('custos_fixos',custoDaConta); }
       await excluirItem_db(tabela, id);
@@ -4476,6 +4477,13 @@ function removerPixRepetido(pd){
 }
 // Pagamento do Mercado Pago removido à mão de um pedido não volta sozinho na próxima busca
 // (nem o mesmo PIX que chegou pelo outro caminho).
+// Pedido excluído: os pagamentos do Mercado Pago dele não vão para 'Para conferir'.
+function esquecerPagamentosDoPedido(pedidoId,pd){
+  const ids=[..._mpPags.filter(p=>refPedido(p)===pedidoId).map(p=>p.id),...(pd?.entradas||[]).filter(e=>e.mp_id).map(e=>String(e.mp_id))];
+  if(!ids.length) return;
+  DB.config.mp_ignorados=[...new Set([...mpIgnorados(),...ids])].slice(-400);
+  salvarConfigCaixa();
+}
 function esquecerPagamentoMP(pedidoId,e){
   const ids=_mpPags.filter(p=>p.id===String(e.mp_id)||(refPedido(p)===pedidoId&&Math.abs(valoresPagamentoMP(p).valor-(+e.valor||0))<0.005&&e.data&&p.data&&Math.abs(diasEntre(normalizarData(e.data),p.data))<=1)).map(p=>p.id);
   DB.config.mp_ignorados=[...new Set([...mpIgnorados(),String(e.mp_id),...ids])].slice(-400);
