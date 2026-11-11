@@ -1206,7 +1206,7 @@ async function sincronizarSheets() {
       _sessaoExpirada = false;
       if (Array.isArray(data.dados.mp_pagamentos)) guardarPagsMP(data.dados.mp_pagamentos);
       render(currentSection);
-      if (!conferirVersaoApp()) aplicarPagamentosMP();
+      if (!conferirVersaoApp()) { aplicarPagamentosMP(); corrigirBaixasPendentes(); }
     } else {
       const erro = data.erro || 'Resposta inválida';
       // Distingue "token do Google vencido" de erro de rede/servidor de
@@ -1679,7 +1679,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026110605;
+const VERSAO_APP=2026111101;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -4893,6 +4893,8 @@ async function sincronizarEstoquePedido(pd,anterior,itensMudaram){
 // Pedido em produção/entregue que deveria ter baixado insumos e não baixou.
 function pedidoSemBaixa(pd){
   if(!statusBaixaEstoque(pd.status)||pd.status==='Cancelado') return false;
+  // Só a marca do erro: diz que baixou, mas não guardou nada. Pedido antigo sem baixa (feito antes das fichas) fica como está.
+  if(pd.estoque_baixado!==true) return false;
   if(Object.keys(pd.consumo_insumos||{}).length>0) return false;
   return Object.keys(calcularConsumoInsumos(pd)).length>0;
 }
@@ -4910,7 +4912,7 @@ function abrirPedidosSemBaixa(){
     </div>`).join('')}`:'<p style="font-size:13px">✅ Nenhum pedido pendente de baixa.</p>', null);
   const b=document.getElementById('modal-save-btn'); if(b) b.style.display='none';
 }
-async function baixarEstoqueAtrasado(id,btn){
+async function baixarEstoqueAtrasado(id,btn,silencioso){
   const pd=getItem(DB.pedidos,id); if(!pd||!pedidoSemBaixa(pd)) return;
   if(btn){ btn.disabled=true; btn.textContent='Baixando...'; }
   const consumo=calcularConsumoInsumos(pd);
@@ -4919,10 +4921,25 @@ async function baixarEstoqueAtrasado(id,btn){
   pd.consumo_insumos=consumo; pd.estoque_baixado=true;
   registrarHistoricoPedido(pd,'Estoque baixado','Correção: não tinha baixado ao confirmar');
   await salvarItem('pedidos',pd);
+  if(silencioso) return falta;
   toast(falta.length?`⚠️ ${pd.id}: estoque baixado, mas ficou faltando: ${falta.join(', ')}`:`📦 ${pd.id}: estoque baixado`, falta.length?'error':'success');
   if(pedidosSemBaixa().length) abrirPedidosSemBaixa(); else closeModal();
   render(currentSection);
   if(_resumoPedidoId===id) desenharResumoPedido();
+}
+// Depois de sincronizar, corrige sozinho os pedidos que ficaram sem baixa pelo erro antigo.
+let _corrigindoBaixas=false;
+async function corrigirBaixasPendentes(){
+  if(_corrigindoBaixas||!_isLoggedIn) return;
+  _corrigindoBaixas=true;
+  try{
+    const feitos=[];
+    for(const pd of pedidosSemBaixa()){
+      const falta=await baixarEstoqueAtrasado(pd.id,null,true);
+      feitos.push(pd.id+(falta&&falta.length?' (faltou '+falta.join(', ')+')':''));
+    }
+    if(feitos.length){ toast('📦 Estoque baixado automaticamente: '+feitos.join(', '),'success'); render(currentSection); }
+  } finally { _corrigindoBaixas=false; }
 }
 function registrarEstoqueNoHistorico(pd,res){
   if(res.baixou) registrarHistoricoPedido(pd,'Estoque baixado');
