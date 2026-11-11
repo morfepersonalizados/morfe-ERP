@@ -159,10 +159,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .text-verde{color:var(--verde-med)}.text-vermelho{color:var(--txt-vermelho)}.text-azul{color:var(--txt-azul)}.text-roxo{color:var(--txt-roxo)}.text-muted{color:var(--cinza-med)}.fw-bold{font-weight:700}.text-center{text-align:center}
 
 /* CALENDARIO */
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .cal-header{margin-bottom:6px}
 .cal-dia-semana{text-align:center;font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;padding:4px 0}
-.cal-dia{aspect-ratio:1;border:1px solid var(--cinza-claro);border-radius:10px;padding:4px;display:flex;flex-direction:column;cursor:pointer;transition:background .15s,transform .1s;min-height:64px}
+.cal-dia{aspect-ratio:1;border:1px solid var(--cinza-claro);border-radius:10px;padding:4px;display:flex;flex-direction:column;cursor:pointer;transition:background .15s,transform .1s;min-height:64px;min-width:0;overflow:hidden}
 .cal-dia:hover{background:var(--dourado-claro);transform:translateY(-1px)}
 .cal-vazio{border:none;cursor:default;background:none!important;transform:none!important}
 .cal-dia-num{font-size:12px;font-weight:600;color:var(--cinza-escuro)}
@@ -630,6 +630,8 @@ body.tema-escuro .saida-para button.ativo{background:var(--cinza-claro)}
 .pof-potes td:first-child{white-space:normal}
 @media(max-width:560px){.pof-potes td,.pof-potes th{padding:7px 6px;font-size:12px}}
 @media(max-width:560px){.pof{padding:10px 12px 14px}.pof-resumo strong{font-size:14px}}
+.fichas-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:768px){.fichas-layout{grid-template-columns:minmax(0,1fr)}}
 </style>
 <!-- Login com Google (Fase 2) — só é usado se GOOGLE_CLIENT_ID for configurado
      no bloco de JavaScript principal mais abaixo. Carregar essa biblioteca
@@ -1239,7 +1241,7 @@ async function sincronizarSheets() {
       _sessaoExpirada = false;
       if (Array.isArray(data.dados.mp_pagamentos)) guardarPagsMP(data.dados.mp_pagamentos);
       render(currentSection);
-      if (!conferirVersaoApp()) { aplicarPagamentosMP(); corrigirBaixasPendentes(); }
+      if (!conferirVersaoApp()) { aplicarPagamentosMP(); corrigirBaixasPendentes(); corrigirDadosAuditoria(); }
     } else {
       const erro = data.erro || 'Resposta inválida';
       // Distingue "token do Google vencido" de erro de rede/servidor de
@@ -1354,7 +1356,7 @@ let _ultimaEdicaoLocal = {}; // chave "tabela:id" -> timestamp em ms
 async function salvarItem(tabela, obj) {
   const arr = DB[tabela];
   const idx = arr.findIndex(x => x.id === obj.id);
-  if (idx >= 0) arr[idx] = obj; else arr.push(obj);
+  if (idx >= 0) arr[idx] = obj; else { arr.push(obj); registrarIdUsado(obj.id); }
   salvarLocal();
   setSyncStatus('ok', '✅ Salvo');
   _ultimaEdicaoLocal[`${tabela}:${obj.id}`] = Date.now();
@@ -1401,10 +1403,19 @@ window.addEventListener('online', () => { if (_isLoggedIn) setTimeout(sincroniza
 // UTILITÁRIOS
 // ═══════════════════════════════════════════════════════════════
 const R$ = v => 'R$ ' + (+v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+// Cadastros que outros registros apontam (pedido -> cliente, kit -> produto...): o número
+// de um excluído nunca é reaproveitado, senão o novo "herdaria" o que era do antigo.
+const PREFIXOS_SEM_REUSO=['PRD','CLI','FRN','MP','KIT'];
 const nextId = (arr, prefix) => {
   const nums = arr.map(x => parseInt((x.id||'').replace(prefix+'-',''))||0);
-  return prefix + '-' + String((Math.max(0,...nums)+1)).padStart(3,'0');
+  const usado = PREFIXOS_SEM_REUSO.includes(prefix) ? (+DB.config?.ultimos_ids?.[prefix]||0) : 0;
+  return prefix + '-' + String((Math.max(0,usado,...nums)+1)).padStart(3,'0');
 };
+function registrarIdUsado(id){
+  const m=/^(PRD|CLI|FRN|MP|KIT)-(\d+)$/.exec(String(id||'')); if(!m||!DB.config) return;
+  const ult=DB.config.ultimos_ids&&typeof DB.config.ultimos_ids==='object'?DB.config.ultimos_ids:{};
+  if(+m[2]>(+ult[m[1]]||0)){ DB.config.ultimos_ids={...ult,[m[1]]:+m[2]}; salvarConfigCaixa(); }
+}
 const getItem = (arr, id) => arr.find(x => String(x.id) === String(id));
 const getProd = id => getItem(DB.produtos, id);
 const getCli = id => getItem(DB.clientes, id);
@@ -1712,7 +1723,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026111102;
+const VERSAO_APP=2026111103;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -1777,7 +1788,15 @@ function goTo(sec) {
   render(sec);
 }
 
+// Telas antigas que o Pedidos substituiu: somem do menu enquanto estiverem vazias (nada é apagado).
+function atualizarMenuOpcional(){
+  [['vendas','vendas'],['producao','producao']].forEach(([sec,tab])=>{
+    const el=document.querySelector(`.nav-item[onclick="goTo('${sec}')"]`);
+    if(el) el.style.display=(DB[tab]||[]).length||currentSection===sec?'':'none';
+  });
+}
 function render(sec) {
+  atualizarMenuOpcional();
   document.getElementById('page-title').textContent = TITLES[sec] || sec;
   const fn = SECTIONS[sec];
   const el = document.getElementById('content');
@@ -1897,7 +1916,30 @@ function executarBuscaGlobal(q){
        ${total>30?`<p style="text-align:center;color:var(--cinza-med);font-size:11px;margin-top:6px">Mostrando 30 de ${total} resultados.</p>`:''}`;
 }
 
+// O que ainda aponta para esse cadastro
+function usoDoCadastro(tabela,id){
+  const abertos=p=>!['Entregue','Cancelado'].includes(p.status);
+  if(tabela==='produtos'){
+    const kits=DB.kits.filter(k=>(k.itens||[]).some(i=>i.prod===id||(i.opcoes||[]).includes(id)));
+    const kitsIds=new Set(kits.map(k=>'KIT:'+k.id));
+    const peds=DB.pedidos.filter(p=>abertos(p)&&(p.itens||[]).some(i=>i.prod===id||kitsIds.has(i.prod)||Object.values(i.kit_modelos||{}).includes(id)));
+    const fichas=DB.fichas.filter(f=>f.produto===id);
+    return {bloqueia:'',avisos:[kits.length?`está em ${kits.length===1?'1 kit':kits.length+' kits'}: ${kits.map(k=>escHtml(k.nome)).join(', ')}`:'',peds.length?`está em pedidos em andamento: ${peds.map(p=>p.id).join(', ')}`:''].filter(Boolean),leva:fichas.length?`As ${fichas.length} linhas da ficha técnica dele também serão apagadas.`:'',levaIds:fichas.map(f=>['fichas',f.id])};
+  }
+  if(tabela==='materias'){
+    const prods=[...new Set(DB.fichas.filter(f=>f.mp===id&&getProd(f.produto)).map(f=>f.produto))];
+    if(prods.length) return {bloqueia:`Esta matéria-prima está na ficha técnica de: ${prods.map(p=>escHtml(nomeProd(p))).join(', ')}. Tire ela dessas fichas antes de excluir, senão o custo desses produtos fica errado.`};
+    const orf=DB.fichas.filter(f=>f.mp===id);
+    return {bloqueia:'',avisos:[],levaIds:orf.map(f=>['fichas',f.id])};
+  }
+  if(tabela==='clientes'){ const n=DB.pedidos.filter(p=>p.cliente===id).length; return {bloqueia:'',avisos:n?[`tem ${n===1?'1 pedido':n+' pedidos'} (eles continuam com o nome do cliente)`]:[]}; }
+  if(tabela==='kits'){ const peds=DB.pedidos.filter(p=>abertos(p)&&(p.itens||[]).some(i=>i.prod==='KIT:'+id)); return {bloqueia:'',avisos:peds.length?[`está em pedidos em andamento: ${peds.map(p=>p.id).join(', ')}`]:[]}; }
+  if(tabela==='fornecedores'){ const n=DB.compras.filter(c=>c.fornecedor===id).length; return {bloqueia:'',avisos:n?[`tem ${n===1?'1 compra':n+' compras'} (elas ficam sem fornecedor)`]:[]}; }
+  return null;
+}
 function excluirItem(tabela, id) {
+  const uso = usoDoCadastro(tabela, id);
+  if (uso && uso.bloqueia) { openModal('⚠️ Não dá para excluir ainda', `<p style="font-size:14px;line-height:1.6">${uso.bloqueia}</p>`, null); document.getElementById('modal-save-btn').style.display='none'; return; }
   const isPedido = tabela === 'pedidos';
   const pdRef = isPedido ? getItem(DB.pedidos, id) : null;
   const vaiRestaurarPedido = isPedido && pdRef?.estoque_baixado;
@@ -1911,6 +1953,8 @@ function excluirItem(tabela, id) {
     ${vaiRestaurarPedido?'<span style="color:var(--verde-med);font-weight:600">📦 O estoque de insumos usado neste pedido será devolvido automaticamente.</span><br>':''}
     ${vaiRestaurarCompra?'<span style="color:var(--txt-vermelho);font-weight:600">📦 O estoque somado por essa compra será RETIRADO de volta automaticamente.</span><br>':''}
     ${custoDaConta?'<span style="font-weight:600">🔁 Essa cobrança não será criada de novo. As próximas continuam normalmente.</span><br>':''}
+    ${uso&&uso.avisos&&uso.avisos.length?`<span style="color:var(--txt-vermelho);font-weight:600">⚠️ Atenção: ${uso.avisos.join('; ')}.</span><br>`:''}
+    ${uso&&uso.leva?`<span style="font-weight:600">🧹 ${uso.leva}</span><br>`:''}
     <span style="color:var(--cinza-med);font-size:12px">Esta ação não pode ser desfeita.</span></p>`,
     async () => {
       if(vaiRestaurarPedido){ await reverterBaixaEstoque(pdRef.consumo_insumos||{}); }
@@ -1918,6 +1962,8 @@ function excluirItem(tabela, id) {
       if(vaiRestaurarCompra){ await reverterEntradaEstoque({[cpRef.estoque_aplicado.mpId]:cpRef.estoque_aplicado.qtd}); }
       if(cpRef?.conf_id){ ajustarConferenciaPorSaida(cpRef.conf_id,(+cpRef.custo||0)*(+cpRef.qtd||1),-1); salvarConfigCaixa(); }
       if(custoDaConta){ custoDaConta.meses_pulados=[...(Array.isArray(custoDaConta.meses_pulados)?custoDaConta.meses_pulados:[]),apRef.mes_ref]; await salvarItem('custos_fixos',custoDaConta); }
+      registrarIdUsado(id);
+      for (const [tb, idx] of (uso?.levaIds || [])) await excluirItem_db(tb, idx);
       await excluirItem_db(tabela, id);
       toast('Item excluído!'+(vaiRestaurarPedido?' Estoque devolvido.':vaiRestaurarCompra?' Estoque retirado de volta.':''));
       closeModal();
@@ -1938,7 +1984,7 @@ function exportarCSV(dados, nome) {
   const blob = new Blob(['\uFEFF' + rows], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = nome + '_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.download = nome + '_' + hojeLocalStr() + '.csv';
   a.click();
   URL.revokeObjectURL(a.href);
   toast('CSV exportado!');
@@ -1955,13 +2001,12 @@ function exportarCSV(dados, nome) {
 // vezes a conta real diverge (taxa de banco, saque não registrado, etc).
 // Isso guarda a DIFERENÇA necessária, então continua funcionando certo
 // conforme novos lançamentos forem entrando dali pra frente.
-function ajustarSaldoCaixa(){ conferirCaixa(); }
 function metricasFinanceiras(){
   const hoje=new Date();
   const mes=hoje.getMonth()+1, ano=hoje.getFullYear();
-  const hojeStr=hoje.toISOString().slice(0,10);
+  const hojeStr=isoLocal(hoje);
   const inicioSemana=new Date(hoje); inicioSemana.setDate(hoje.getDate()-hoje.getDay());
-  const inicioSemanaStr=inicioSemana.toISOString().slice(0,10);
+  const inicioSemanaStr=isoLocal(inicioSemana);
 
   const efetivas=todasVendasEfetivas();
   // +'T00:00:00' (sem 'Z') força o JS a interpretar como horário LOCAL, não
@@ -1988,7 +2033,8 @@ function metricasFinanceiras(){
   const pedidosParaMetaHoje=ticketMedio>0?Math.ceil(faltaHoje/ticketMedio):0;
 
   const custoFixoMes=custosFixosMensais();
-  const lucroLiquidoMes=mcMes-custoFixoMes;
+  const despVarMes=despesasVariaveisNoPeriodo(`${ano}-${String(mes).padStart(2,'0')}-01`,isoLocal(new Date(ano,mes,0))).total;
+  const lucroLiquidoMes=mcMes-custoFixoMes-despVarMes;
 
   // Caixa disponível — aproximado pelo que já entrou menos o que já saiu (baseado nos lançamentos do sistema)
   const recebidoVendas=DB.vendas.filter(v=>v.status==='Pago').reduce((s,v)=>s+(+v.qtd||0)*(+v.preco||0),0);
@@ -3048,11 +3094,11 @@ SECTIONS.dashboard = () => {
   const saldoPedidos = DB.pedidos.reduce((s,p)=>s+saldoPedidoAReceber(p),0);
   const aPagar = totalAPagar();
   const criticosMP = DB.materias.filter(m=>(+m.estoque||0)<=(+m.est_min||0)).length;
-  const hojeStrAR = new Date().toISOString().slice(0,10);
+  const hojeStrAR = hojeLocalStr();
   const arVencidas = DB.areceber.filter(x=>x.venc && x.status!=='Pago' && normalizarData(x.venc)<hojeStrAR).length;
   const janelaEntregaDias = +(DB.config?.aviso_entrega_dias || 7);
   const emJaneladias=new Date(); emJaneladias.setDate(emJaneladias.getDate()+janelaEntregaDias);
-  const emJanelaDiasStr=emJaneladias.toISOString().slice(0,10);
+  const emJanelaDiasStr=isoLocal(emJaneladias);
   const proximasEntregas=DB.pedidos.filter(p=>p.entrega && p.status!=='Entregue' && p.status!=='Cancelado'
     && normalizarData(p.entrega)>=hojeStrAR && normalizarData(p.entrega)<=emJanelaDiasStr)
     .sort((a,b)=>normalizarData(a.entrega).localeCompare(normalizarData(b.entrega)));
@@ -3062,7 +3108,7 @@ SECTIONS.dashboard = () => {
   // Pagar" se ainda não existir, e monta a lista de próximas a vencer
   gerarContasFixasDoMes();
   const janelaContasDias = +(DB.config?.aviso_contas_dias || 7);
-  const emJanelaContasStr=(()=>{const d=new Date(); d.setDate(d.getDate()+janelaContasDias); return d.toISOString().slice(0,10);})();
+  const emJanelaContasStr=(()=>{const d=new Date(); d.setDate(d.getDate()+janelaContasDias); return isoLocal(d);})();
   const proximasContas=DB.apagar.filter(x=>apagarAberta(x) && x.venc
     && normalizarData(x.venc)<=emJanelaContasStr)
     .sort((a,b)=>normalizarData(a.venc).localeCompare(normalizarData(b.venc)));
@@ -3452,7 +3498,7 @@ function formCli(c={}){return`<div class="form-grid">
   <div class="form-group"><label class="form-label">Telefone</label><input class="form-input" id="f-ctel" value="${c.telefone||''}"></div>
   <div class="form-group"><label class="form-label">WhatsApp (com DDD)</label><input class="form-input" id="f-cwpp" placeholder="92999990000" value="${c.whatsapp||''}"></div>
   <div class="form-group"><label class="form-label">Cidade</label><input class="form-input" id="f-ccidade" value="${c.cidade||'Manaus'}"></div>
-  <div class="form-group"><label class="form-label">Cadastro</label><input class="form-input" id="f-ccad" type="date" value="${c.cadastro||new Date().toISOString().slice(0,10)}"></div>
+  <div class="form-group"><label class="form-label">Cadastro</label><input class="form-input" id="f-ccad" type="date" value="${c.cadastro||hojeLocalStr()}"></div>
 </div>`;}
 async function salvarCli(id=null){
   const obj={id:id||nextId(DB.clientes,'CLI'),nome:document.getElementById('f-cnome').value.trim(),telefone:document.getElementById('f-ctel').value.trim(),whatsapp:document.getElementById('f-cwpp').value.trim(),cidade:document.getElementById('f-ccidade').value.trim(),cadastro:document.getElementById('f-ccad').value,criado_em:id?getCli(id)?.criado_em:new Date().toISOString()};
@@ -3503,9 +3549,9 @@ const UNIDADES_MP = ['un','cm','m','ml','l','g','kg','h','folha','par'];
 // pedidos dos últimos N dias (padrão 60) — ignora pedidos cancelados, que
 // nunca chegaram a consumir estoque de verdade.
 function consumoMedioDiario(mpId, dias=60){
-  const hoje=new Date().toISOString().slice(0,10);
+  const hoje=hojeLocalStr();
   const desde=new Date(); desde.setDate(desde.getDate()-dias);
-  const desdeStr=desde.toISOString().slice(0,10);
+  const desdeStr=isoLocal(desde);
   let total=0;
   DB.pedidos.forEach(p=>{
     if(p.status==='Cancelado') return;
@@ -3630,7 +3676,7 @@ function ajustarEstMP(id){
           </div>
           <div class="form-group"><label class="form-label" id="adj-valor-label">Valor por unidade (R$)</label><input class="form-input" id="adj-valor" type="number" step="0.01" value="${m.custo||''}" oninput="atualizarAdjValorRef()"></div>
           <div id="adj-valor-ref" style="font-size:11px;color:var(--cinza-med);margin-top:-6px"></div>
-          <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="adj-data" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="adj-data" type="date" value="${hojeLocalStr()}"></div>
           <div class="form-group"><label class="form-label">Fornecedor (opcional)</label><select class="form-select" id="adj-forn"><option value="">—</option>${fornOpts}</select></div>
         </div>
       </div>
@@ -3656,7 +3702,7 @@ function ajustarEstMP(id){
         await aplicarEntradaEstoque({[m.id]:qtd});
         const compra={
           id:nextId(DB.compras,'CMP'),
-          data:document.getElementById('adj-data').value||new Date().toISOString().slice(0,10),
+          data:document.getElementById('adj-data').value||hojeLocalStr(),
           fornecedor:document.getElementById('adj-forn').value,
           produto:m.nome,
           materia_prima_id:m.id,
@@ -3768,7 +3814,7 @@ function formVenda(v={}){
   const coArr=ordNome(DB.clientes).map(c=>({value:c.id,label:c.nome}));
   const poArr=ordNome(DB.produtos.filter(p=>p.status==='Ativo')).map(p=>({value:p.id,label:`${p.nome} — ${R$(p.preco)}`}));
   return`<div class="form-grid">
-    <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-vdata" type="date" value="${v.data||new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-vdata" type="date" value="${v.data||hojeLocalStr()}"></div>
     <div class="form-group"><label class="form-label">Cliente</label>${sselHTML('f-vcli', coArr, v.cliente||'', 'Buscar cliente...', '')}</div>
     <div class="form-group full"><label class="form-label">Produto</label>${sselHTML('f-vprod', poArr, v.produto||'', 'Buscar produto...', 'autoPrecoVenda(value)')}</div>
     <div class="form-group"><label class="form-label">Quantidade</label><input class="form-input" id="f-vqtd" type="number" min="1" value="${v.qtd||1}"></div>
@@ -4332,7 +4378,7 @@ SECTIONS.pedidos = () => {
 };
 
 function novoPedidoOrc(){
-  window._pedTemp={id:proximoIdPedido(),data:new Date().toISOString().slice(0,10),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:'produto'}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,acrescimos:[],total:0};
+  window._pedTemp={id:proximoIdPedido(),data:hojeLocalStr(),cliente:'',cliente_nome:'',telefone:'',obs:'',status:'Em aberto',forma:'PIX',itens:[{prod:'',desc:'',qtd:1,valor:0,desc_tipo:'nenhum',desc_valor:0,_tipoItem:'produto'}],entradas:[],desconto_geral_tipo:'nenhum',desconto_geral_valor:0,acrescimos:[],total:0};
   abrirFormPedido(null);
 }
 function verPedidoOrc(id){const p=getItem(DB.pedidos,id);if(!p)return;window._pedTemp=JSON.parse(JSON.stringify(p));abrirFormPedido(id);}
@@ -5142,6 +5188,39 @@ async function baixarEstoqueAtrasado(id,btn,silencioso){
   render(currentSection);
   if(_resumoPedidoId===id) desenharResumoPedido();
 }
+// Correções de dados combinadas com o dono na auditoria de 11/11/2026. Rodam uma vez só,
+// logo depois de sincronizar (dados frescos da planilha), e só se tudo bater com o esperado.
+let _corrigindoAuditoria=false;
+async function corrigirDadosAuditoria(){
+  const FLAG='auditoria-2026-11';
+  if(_corrigindoAuditoria||!_isLoggedIn||!DB.config) return;
+  const feitas=Array.isArray(DB.config.migracoes)?DB.config.migracoes:[];
+  if(feitas.includes(FLAG)) return;
+  if(_tabelasBloqueadasPorSeguranca.length||DB.produtos.length<10) return; // dados incompletos: tenta na próxima
+  _corrigindoAuditoria=true;
+  try{
+    const msgs=[];
+    // ORC-034: R$ 93 lançado junto com o pagamento certo de R$ 124 (confirmado pelo dono: só os R$ 124)
+    const pd=getItem(DB.pedidos,'ORC-034');
+    if(pd&&Math.abs((+pd.total||0)-124)<0.01){
+      const ent=pd.entradas||[], i=ent.findIndex(e=>Math.abs((+e.valor||0)-93)<0.01&&normalizarData(e.data)==='2026-10-08');
+      const soma=ent.reduce((s,e)=>s+(+e.valor||0),0);
+      if(i>=0&&Math.abs(soma-217)<0.01){
+        ent.splice(i,1); atualizarStatusPgto(pd);
+        registrarHistoricoPedido(pd,'Pagamento removido','R$ 93,00 · lançado em dobro (auditoria)');
+        await salvarItem('pedidos',pd); msgs.push('ORC-034 sem o pagamento repetido de R$ 93');
+      }
+    }
+    // Linhas de ficha técnica de produtos que já foram excluídos
+    const orfas=DB.fichas.filter(f=>f.produto&&!getProd(f.produto));
+    if(orfas.length&&orfas.length<=150){
+      for(const f of orfas) await excluirItem_db('fichas',f.id);
+      msgs.push(orfas.length+' linhas de ficha de produtos excluídos');
+    }
+    DB.config.migracoes=[...feitas,FLAG]; salvarConfigCaixa();
+    if(msgs.length){ toast('🧹 Correções da auditoria: '+msgs.join(' · ')); render(currentSection); }
+  } finally { _corrigindoAuditoria=false; }
+}
 // Depois de sincronizar, corrige sozinho os pedidos que ficaram sem baixa pelo erro antigo.
 let _corrigindoBaixas=false;
 async function corrigirBaixasPendentes(){
@@ -5308,7 +5387,7 @@ function abrirPagamentos(pedidoId){
     if(!entregaNorm){
       avisoSaldo=`<div style="margin-top:8px;font-size:11px;background:rgba(255,255,255,.18);border-radius:6px;padding:7px 9px">⚠️ Sem data de entrega definida — o restante vence no dia da entrega. Defina a entrega no pedido pra saber quando cobrar.</div>`;
     } else {
-      const hojeStr=new Date().toISOString().slice(0,10);
+      const hojeStr=hojeLocalStr();
       const atrasado=entregaNorm<hojeStr;
       avisoSaldo=`<div style="margin-top:8px;font-size:11px;background:${atrasado?'rgba(220,60,60,.35)':'rgba(255,255,255,.18)'};border-radius:6px;padding:7px 9px">${atrasado?'🔴 Restante vencido desde':'📅 Restante vence no dia da entrega:'} <strong>${formatarDataBR(entregaNorm)}</strong></div>`;
     }
@@ -5336,7 +5415,7 @@ function abrirPagamentos(pedidoId){
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end">
           <div><label class="form-label">Valor Recebido</label><input type="number" step="0.01" id="ent-val" placeholder="0,00" style="width:100%;padding:8px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:15px;margin-top:3px"></div>
           <div><label class="form-label">Forma</label><select id="ent-forma" style="width:100%;padding:8px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:14px;margin-top:3px">${['PIX','Dinheiro','Débito','Crédito 1x','Transferência'].map(f=>`<option>${f}</option>`).join('')}</select></div>
-          <div><label class="form-label">Data</label><input type="date" id="ent-data" value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:8px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:14px;margin-top:3px"></div>
+          <div><label class="form-label">Data</label><input type="date" id="ent-data" value="${hojeLocalStr()}" style="width:100%;padding:8px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:14px;margin-top:3px"></div>
         </div>
         <button onclick="confirmarEntrada('${pedidoId}')" style="width:100%;margin-top:10px;background:var(--verde-med);color:white;border:none;border-radius:6px;padding:10px;font-size:14px;font-weight:700;cursor:pointer">✅ Confirmar Recebimento</button>
       </div>
@@ -5378,9 +5457,11 @@ function abrirPagamentos(pedidoId){
 async function confirmarEntrada(pedidoId){
   const valor=parseFloat(document.getElementById('ent-val')?.value)||0;
   const forma=document.getElementById('ent-forma')?.value||'PIX';
-  const data=document.getElementById('ent-data')?.value||new Date().toISOString().slice(0,10);
+  const data=document.getElementById('ent-data')?.value||hojeLocalStr();
   if(valor<=0){toast('Informe um valor','error');return;}
   const pd=getItem(DB.pedidos,pedidoId);if(!pd)return;
+  const falta=saldoPedido(pd);
+  if(valor>falta+0.005&&!confirm(falta>0.005?`⚠️ Falta só ${R$(falta)} neste pedido e você está lançando ${R$(valor)}.\n\nLançar mesmo assim?`:`⚠️ Este pedido já está pago. Lançar mais ${R$(valor)} mesmo assim?`)) return;
   // Confirma o pedido sozinho assim que bate 50% pago — só sobe de "Em
   // aberto" pra "Confirmado". Nunca mexe se o status já estiver mais
   // avançado (Em produção, Pronto, Entregue) ou Cancelado, que foram
@@ -5562,23 +5643,6 @@ function abrirPreviewOrcamento(pedidoId){
 function fecharPreviewOrcamento(){
   document.getElementById('orc-preview-overlay').classList.remove('open');
 }
-function baixarOrcamentoImagem(){
-  const area=document.getElementById('orc-print-area');
-  if(typeof html2canvas==='undefined'){ toast('Carregando ferramenta de imagem, tenta de novo em 2s...','error'); return; }
-  toast('Gerando imagem...','success');
-  // Espera a fonte carregar de verdade antes de tirar o "print" — evita texto
-  // aparecer com fonte errada/quebrada na imagem gerada
-  const espFonte = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
-  espFonte.then(()=>new Promise(r=>setTimeout(r,120))).then(()=>{
-    return html2canvas(area,{scale:3,backgroundColor:'#ffffff',useCORS:true,logging:false});
-  }).then(canvas=>{
-    const a=document.createElement('a');
-    a.href=canvas.toDataURL('image/png',1.0);
-    a.download='orcamento_'+new Date().toISOString().slice(0,10)+'.png';
-    a.click();
-    toast('Imagem baixada!');
-  }).catch((e)=>{console.error(e);toast('Erro ao gerar imagem','error');});
-}
 function baixarOrcamentoPDF(){
   toast('Abrindo impressão... escolha "Salvar como PDF"','success');
   setTimeout(()=>window.print(), 300);
@@ -5611,82 +5675,6 @@ SECTIONS.compras = () => `
 
 function novaCompra(){openModal('➕ Nova Compra',formCompra(),()=>salvarCompra());}
 function editarCompra(id){if(getItem(DB.compras,id)?.saida){abrirSaida({id});return;}openModal('✏️ Editar',formCompra(getItem(DB.compras,id)),()=>salvarCompra(id));desenharCustoMedioCompra();}
-function formCompra(c={}){
-  const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');
-  const mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} (estoque atual: ${m.estoque||0} ${m.unidade||'un'})`}));
-  return`<div class="form-grid">
-  <div class="form-group full">
-    <label class="form-label">Matéria-Prima (escolhe se essa compra for repor estoque)</label>
-    ${sselHTML('c-mp', mpOpts, c.materia_prima_id||'', 'Buscar matéria-prima...', 'autoPreencherCompra(value)')}
-  </div>
-  <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-cdata" type="date" value="${c.data||new Date().toISOString().slice(0,10)}"></div>
-  <div class="form-group"><label class="form-label">Fornecedor</label><select class="form-select" id="f-cforn"><option value="">—</option>${fo}</select></div>
-  <div class="form-group full"><label class="form-label">Descrição</label><input class="form-input" id="f-cprod" value="${c.produto||''}"></div>
-  <div class="form-group"><label class="form-label">Quantidade</label><input class="form-input" id="f-cqtd" type="number" value="${c.qtd||1}"></div>
-  <div class="form-group"><label class="form-label">Custo Un. (R$)</label><input class="form-input" id="f-ccu" type="number" step="0.01" value="${c.custo||''}"></div>
-  <div class="form-group"><label class="form-label">Forma</label><select class="form-select" id="f-cforma">${['PIX','Débito','Crédito','Boleto','Dinheiro'].map(f=>`<option ${c.forma===f?'selected':''}>${f}</option>`).join('')}</select></div>
-  <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="f-cst">${['Pago','Em aberto','Atrasado'].map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
-  <div class="form-group full" id="compra-aviso-estoque" style="display:${c.materia_prima_id?'block':'none'};background:var(--verde-claro);color:var(--txt-verde);padding:9px 11px;border-radius:6px;font-size:11.5px">📦 Isso soma a quantidade comprada direto no estoque dessa matéria-prima quando salvar, e mexe no Caixa Disponível se marcar "Pago".</div>
-</div>`;}
-function autoPreencherCompra(mpId){
-  const m=getItem(DB.materias,mpId);
-  const elAviso=document.getElementById('compra-aviso-estoque');
-  const elProd=document.getElementById('f-cprod');
-  if(m){
-    if(elProd && !elProd.value.trim()) elProd.value=m.nome;
-    if(elAviso) elAviso.style.display='block';
-  } else if(elAviso) elAviso.style.display='none';
-}
-async function salvarCompra(id=null){
-  const existente=id?getItem(DB.compras,id):null;
-  const mpId=document.getElementById('c-mp_val')?.value||'';
-  const qtd=parseFloat(document.getElementById('f-cqtd').value)||1;
-  const obj={
-    id:id||nextId(DB.compras,'CMP'),
-    data:document.getElementById('f-cdata').value,
-    fornecedor:document.getElementById('f-cforn').value,
-    produto:document.getElementById('f-cprod').value.trim(),
-    materia_prima_id:mpId||undefined,
-    qtd,
-    custo:parseFloat(document.getElementById('f-ccu').value)||0,
-    forma:document.getElementById('f-cforma').value,
-    status:document.getElementById('f-cst').value,
-    criado_em:id?existente?.criado_em:new Date().toISOString()
-  };
-  if(!obj.produto){toast('Informe o produto','error');return;}
-
-  // Reconcilia o estoque: devolve o que essa compra já tinha somado antes
-  // (se estiver editando), e aplica de novo com os dados atuais
-  if(existente?.estoque_aplicado){
-    await reverterEntradaEstoque({[existente.estoque_aplicado.mpId]:existente.estoque_aplicado.qtd});
-  }
-  // Custo médio ponderado: roda em compra nova, OU quando essa é a PRIMEIRA
-  // vez que esse insumo é vinculado a essa compra (editou pra adicionar o
-  // vínculo que não existia antes). Não roda de novo se só está reeditando
-  // uma compra que já tinha esse MESMO insumo vinculado — senão a mesma
-  // compra entrava no cálculo do custo médio mais de uma vez, distorcendo.
-  // Precisa rodar ANTES do aplicarEntradaEstoque, pra pegar o estoque de
-  // ANTES dessa compra entrar no cálculo.
-  const eraNovoVinculo=!existente || !existente.estoque_aplicado || existente.estoque_aplicado.mpId!==mpId;
-  if(mpId && eraNovoVinculo && obj.custo>0){
-    const mp=getItem(DB.materias,mpId);
-    if(mp){
-      const estoqueAntes=Math.max(0,+mp.estoque||0);
-      const custoAntes=+mp.custo||0;
-      const novoCustoMedio=(estoqueAntes*custoAntes+qtd*obj.custo)/(estoqueAntes+qtd);
-      mp.custo=parseFloat(novoCustoMedio.toFixed(4));
-      await salvarItem('materias',mp);
-    }
-  }
-  if(mpId){
-    await aplicarEntradaEstoque({[mpId]:qtd});
-    obj.estoque_aplicado={mpId,qtd};
-  }
-
-  await salvarItem('compras',obj);
-  toast(id?'Atualizada!':mpId?'Compra registrada e estoque atualizado!':'Registrada!');closeModal();render('compras');
-}
-
 // ═══════════════════════════════════════════════════════════════
 // PRODUÇÃO
 // ═══════════════════════════════════════════════════════════════
@@ -5713,7 +5701,7 @@ SECTIONS.producao = () => `
 function novaProd(){openModal('➕ Nova Ordem',formProd(),()=>salvarProd());}
 function editarProd(id){openModal('✏️ Editar',formProd(getItem(DB.producao,id)),()=>salvarProd(id));}
 function formProd(p={}){const co=ordNome(DB.clientes).map(c=>`<option value="${c.id}" ${p.cliente===c.id?'selected':''}>${c.nome}</option>`).join('');const so=['Aguardando arte','Aguardando pagamento','Em produção','Pronto','Entregue','Cancelado'].map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('');return`<div class="form-grid">
-  <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-pdata" type="date" value="${p.data||new Date().toISOString().slice(0,10)}"></div>
+  <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-pdata" type="date" value="${p.data||hojeLocalStr()}"></div>
   <div class="form-group"><label class="form-label">Cliente</label><select class="form-select" id="f-pcli"><option value="">—</option>${co}</select></div>
   <div class="form-group full"><label class="form-label">Produto</label><input class="form-input" id="f-pprod" value="${p.produto||''}"></div>
   <div class="form-group"><label class="form-label">Quantidade</label><input class="form-input" id="f-pqtd" type="number" value="${p.qtd||1}"></div>
@@ -5871,7 +5859,7 @@ SECTIONS.areceber = () => { return `
 function novoAR(){openModal('➕ A Receber',formAR(),()=>salvarAR());}
 function editarAR(id){openModal('✏️ Editar',formAR(getItem(DB.areceber,id)),()=>salvarAR(id));}
 function formAR(x={}){const co=ordNome(DB.clientes).map(c=>`<option value="${c.id}" ${x.cliente===c.id?'selected':''}>${c.nome}</option>`).join('');return`<div class="form-grid">
-  <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-ard" type="date" value="${x.data||new Date().toISOString().slice(0,10)}"></div>
+  <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-ard" type="date" value="${x.data||hojeLocalStr()}"></div>
   <div class="form-group"><label class="form-label">Cliente</label><select class="form-select" id="f-arcli"><option value="">—</option>${co}</select></div>
   <div class="form-group full"><label class="form-label">Descrição</label><input class="form-input" id="f-ardesc" value="${x.descricao||''}"></div>
   <div class="form-group"><label class="form-label">Valor (R$)</label><input class="form-input" id="f-arval" type="number" step="0.01" value="${x.valor||''}"></div>
@@ -5956,7 +5944,7 @@ SECTIONS.apagar = () => {
 function novoAP(){openModal('➕ A Pagar',formAP(),()=>salvarAP());}
 function editarAP(id){openModal('✏️ Editar',formAP(getItem(DB.apagar,id)),()=>salvarAP(id));}
 function formAP(x={}){return`<div class="form-grid">
-  <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-apd" type="date" value="${x.data||new Date().toISOString().slice(0,10)}"></div>
+  <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-apd" type="date" value="${x.data||hojeLocalStr()}"></div>
   <div class="form-group"><label class="form-label">Credor</label><input class="form-input" id="f-apcred" value="${x.credor||''}"></div>
   <div class="form-group full"><label class="form-label">Descrição</label><input class="form-input" id="f-apdesc" value="${x.descricao||''}"></div>
   <div class="form-group"><label class="form-label">Valor (R$)</label><input class="form-input" id="f-apval" type="number" step="0.01" value="${x.valor||''}"></div>
@@ -6154,16 +6142,16 @@ function formatarDataBR(dataStr){
 }
 function primeiraDataRegistrada(){
   const datas=todasVendasEfetivas().map(v=>normalizarData(v.data)).filter(Boolean).sort();
-  return datas[0]||new Date().toISOString().slice(0,10);
+  return datas[0]||hojeLocalStr();
 }
 function periodoPreset(preset){
   const hoje=new Date();
-  const hojeStr=hoje.toISOString().slice(0,10);
+  const hojeStr=isoLocal(hoje);
   const pad=n=>String(n).padStart(2,'0');
   if(preset==='hoje') return {inicio:hojeStr, fim:hojeStr, label:'Hoje'};
   if(preset==='7dias'){
     const d=new Date(hoje); d.setDate(d.getDate()-6);
-    return {inicio:d.toISOString().slice(0,10), fim:hojeStr, label:'Últimos 7 dias'};
+    return {inicio:isoLocal(d), fim:hojeStr, label:'Últimos 7 dias'};
   }
   if(preset==='mes'){
     return {inicio:`${hoje.getFullYear()}-${pad(hoje.getMonth()+1)}-01`, fim:hojeStr, label:'Este Mês'};
@@ -6179,7 +6167,7 @@ function periodoPreset(preset){
 }
 function getPeriodoAtual(preset,customIni,customFim){
   if(preset==='custom'){
-    const hojeStr=new Date().toISOString().slice(0,10);
+    const hojeStr=hojeLocalStr();
     return {inicio:customIni||hojeStr, fim:customFim||hojeStr, label:'Personalizado'};
   }
   return periodoPreset(preset);
@@ -6510,9 +6498,9 @@ SECTIONS.divisaolucro = () => {
 function calcularLucroPorPeriodo(){
   const efetivas=todasVendasEfetivas();
   const hoje=new Date();
-  const hojeStr=hoje.toISOString().slice(0,10);
+  const hojeStr=isoLocal(hoje);
   const seteDiasAtras=new Date(hoje); seteDiasAtras.setDate(hoje.getDate()-6);
-  const seteDiasStr=seteDiasAtras.toISOString().slice(0,10);
+  const seteDiasStr=isoLocal(seteDiasAtras);
   const inicioMesStr=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-01`;
   const inicioAnoStr=`${hoje.getFullYear()}-01-01`;
 
@@ -6634,6 +6622,15 @@ function tabelaExtratoDivisao(){
 }
 
 
+// Despesas que não são custo do produto nem custo fixo cadastrado, mas saem do lucro.
+function despesasVariaveisNoPeriodo(ini,fim){
+  const dentro=d=>{ const x=d?normalizarData(d):''; return x&&x>=ini&&x<=fim; };
+  let taxas=0, avulsas=0, contas=0;
+  DB.pedidos.forEach(p=>(p.entradas||[]).forEach(e=>{ if(dentro(e.data||p.data)) taxas+=(+e.taxa||0); }));
+  DB.compras.filter(c=>c.status==='Pago'&&dentro(c.data)&&(c.tipo==='despesa'||(!c.tipo&&!c.materia_prima_id))).forEach(c=>avulsas+=(+c.qtd||0)*(+c.custo||0));
+  DB.apagar.filter(x=>!x.custo_fixo_id&&(+x.pago||0)>0&&dentro(x.pago_em||x.venc||x.data)).forEach(x=>contas+=(+x.pago||0));
+  return {taxas,avulsas,contas,total:taxas+avulsas+contas};
+}
 SECTIONS.dre = () => {
   const per=getPeriodoAtual(_drePeriodo,_dreCustomIni,_dreCustomFim);
   const vendas=vendasNoPeriodo(per.inicio,per.fim);
@@ -6641,7 +6638,8 @@ SECTIONS.dre = () => {
   const cpv=vendas.reduce((s,v)=>s+v.custoTotal,0);
   const mc=receita-cpv;
   const cfTotal=custosFixosNoPeriodo(per.inicio,per.fim);
-  const ll=mc-cfTotal;
+  const dv=despesasVariaveisNoPeriodo(per.inicio,per.fim);
+  const ll=mc-cfTotal-dv.total;
   const dias=diasNoPeriodo(per.inicio,per.fim);
   return`
   ${renderSeletorPeriodo('dre',_drePeriodo,_dreCustomIni,_dreCustomFim)}
@@ -6660,6 +6658,10 @@ SECTIONS.dre = () => {
       <div class="dre-row subtotal"><span>MARGEM DE CONTRIBUIÇÃO</span><span>${R$(mc)}</span></div>
       <div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Margem %</span><span>${receita?((mc/receita)*100).toFixed(1)+'%':'—'}</span></div>
       <div class="dre-row deducao"><span>(-) Custos Fixos (rateado p/ ${dias} dia${dias>1?'s':''})</span><span>${R$(cfTotal)}</span></div>
+      <div class="dre-row deducao"><span>(-) Despesas variáveis</span><span>${R$(dv.total)}</span></div>
+      ${dv.taxas?`<div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Taxas do Mercado Pago</span><span>${R$(dv.taxas)}</span></div>`:''}
+      ${dv.avulsas?`<div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Despesas avulsas (saídas da loja)</span><span>${R$(dv.avulsas)}</span></div>`:''}
+      ${dv.contas?`<div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Contas avulsas (A Pagar)</span><span>${R$(dv.contas)}</span></div>`:''}
       <div class="dre-row lucro"><span>💰 LUCRO LÍQUIDO</span><span>${R$(ll)}</span></div>
     </div>
   </div>`;
@@ -6779,7 +6781,7 @@ SECTIONS.fichas = () => `
     </table></div>
   </div>
 
-  <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start">
+  <div class="fichas-layout">
     <div class="panel">
       <div class="panel-header"><span class="panel-title">📦 Produtos</span></div>
       <div>${DB.produtos.length===0?`<div class="empty-state"><div class="empty-icon">📦</div>Cadastre produtos primeiro</div>`:
@@ -7703,7 +7705,7 @@ function addItemCSG(consigId){
       // 3 peças novas juntadas com 2 que já estavam lá há semanas faziam
       // as 5 parecerem igualmente "novas" (ou igualmente "velhas"), e não
       // dava pra saber o que estava parado de verdade.
-      c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco,jaProduzida,arte,consumo_insumos:consumoDelta,data_entrega:new Date().toISOString().slice(0,10)});
+      c.itens.push({prod,variante,qtd_inicial:qtd,qtd_atual:qtd,preco,jaProduzida,arte,consumo_insumos:consumoDelta,data_entrega:hojeLocalStr()});
       if(Object.keys(consumoDelta).length>0) await aplicarBaixaEstoque(consumoDelta);
       await salvarItem('consignados',c);
       if(avisoFalta.length>0) toast('⚠️ Produto adicionado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
@@ -7831,7 +7833,7 @@ async function ajustCSG(consigId,idx,delta){
   if(delta<0){
     if(!c.visitas)c.visitas=[];
     c.visitas.push({
-      data:new Date().toISOString().slice(0,10),
+      data:hojeLocalStr(),
       valor_vendido:+it.preco||0, valor_recebido:0, obs:'Ajuste rápido (−)',
       itens_vendidos:[{prod:it.prod, variante:it.variante||'', qtd:1, preco_repasse:+it.preco||0, custo_snapshot:custoItemPedidoAoVivo({prod:it.prod})}],
       tipo:'venda'
@@ -7848,7 +7850,7 @@ function regVendaRemota(consigId){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const itensComEstoque=(c.itens||[]).map((it,idx)=>({it,idx})).filter(x=>(+x.it.qtd_atual||0)>0);
   if(itensComEstoque.length===0){toast('Não tem nenhum produto com quantidade disponível nesse ponto','error');return;}
-  const hoje=new Date().toISOString().slice(0,10);
+  const hoje=hojeLocalStr();
   openModal('💸 Registrar Venda Remota',
     `<div style="background:var(--dourado-claro);color:var(--txt-dourado);padding:10px;border-radius:6px;font-size:12px;margin-bottom:12px">
       Use isso quando o parceiro vender algo <strong>sem você estar lá</strong> e te repassar o valor (ex: PIX). Registra a venda desse item específico — sem precisar revisar a quantidade de tudo o mais que está no ponto.
@@ -7884,7 +7886,7 @@ function regVendaRemota(consigId){
 }
 function regVisita(consigId){
   const c=getItem(DB.consignados,consigId);if(!c)return;
-  const hoje=new Date().toISOString().slice(0,10);
+  const hoje=hojeLocalStr();
   const valorLoja=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
   // Aviso preventivo: se já tem venda registrada sem repasse completo, mostra
   // isso bem visível — reduz o esquecimento de marcar o recebimento depois
@@ -8867,7 +8869,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-console.log('Morfê ERP carregado. Versão Google Sheets.');
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </body>
@@ -8875,8 +8876,7 @@ console.log('Morfê ERP carregado. Versão Google Sheets.');
 
 <style>#ped-status{color:#fff!important}#ped-status option{background:#fff!important;color:#021024!important}</style>
 <script>
-async function baixarOrcamentoImagem(){const area=document.getElementById('orc-print-area');if(typeof html2canvas==='undefined'){toast('Carregando ferramenta de imagem, tenta de novo em 2s...','error');return;}toast('Gerando imagem...','success');try{const fonte=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();await fonte;await new Promise(r=>setTimeout(r,120));const canvas=await html2canvas(area,{scale:3,backgroundColor:'#ffffff',useCORS:true,logging:false}),nome='orcamento_'+new Date().toISOString().slice(0,10)+'.png',blob=await new Promise((ok,erro)=>canvas.toBlob(b=>b?ok(b):erro(new Error('Imagem indisponível')),'image/png',1)),touch=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||navigator.maxTouchPoints>0,arquivo=typeof File!=='undefined'?new File([blob],nome,{type:'image/png'}):null;if(touch&&arquivo&&navigator.canShare&&navigator.canShare({files:[arquivo]})){try{await navigator.share({files:[arquivo],title:'Orçamento Morfê Personalizados'});toast('Escolha “Salvar imagem” ou “Salvar em Arquivos”.');return;}catch(e){if(e&&e.name==='AbortError'){toast('Compartilhamento cancelado.');return;}}}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=nome;a.style.display='none';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);toast('Imagem baixada!');}catch(e){console.error(e);toast('Erro ao gerar imagem','error');}}
-function formCompra(c={}){const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join(''),mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} (estoque atual: ${m.estoque||0} ${m.unidade||'un'})`})),tipo=c.tipo||(c.materia_prima_id?'estoque':'despesa'),e=tipo==='estoque';return`<div class="form-grid"><div class="form-group full"><label class="form-label">Esta compra é para</label><select class="form-select" id="f-ctipo" onchange="atualizarTipoCompra()"><option value="despesa" ${!e?'selected':''}>🔧 Despesa, manutenção ou uso interno</option><option value="estoque" ${e?'selected':''}>📦 Reposição de estoque</option></select></div><div class="form-group full" id="compra-materia-group" style="display:${e?'flex':'none'}"><label class="form-label">Matéria-prima que vai receber estoque</label>${sselHTML('c-mp',mpOpts,c.materia_prima_id||'','Buscar matéria-prima...','autoPreencherCompra(value)')}</div><div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-cdata" type="date" value="${c.data||new Date().toISOString().slice(0,10)}"></div><div class="form-group"><label class="form-label">Fornecedor</label><select class="form-select" id="f-cforn"><option value="">—</option>${fo}</select></div><div class="form-group full"><label class="form-label" id="f-cprod-label">${e?'Descrição do item de estoque':'Descrição da despesa'}</label><input class="form-input" id="f-cprod" value="${c.produto||''}"></div><div class="form-group"><label class="form-label" id="f-cqtd-label">${e?'Quantidade':'Quantidade (1 despesa)'}</label><input class="form-input" id="f-cqtd" type="number" inputmode="decimal" value="${e?(c.qtd||1):1}" ${e?'':'readonly'} oninput="compraValores('qtd')"></div><div class="form-group" id="compra-total-group" style="display:${e?'flex':'none'}"><label class="form-label">Valor total pago (R$)</label><input class="form-input" id="f-ctot" type="number" inputmode="decimal" step="any" placeholder="Ex.: 42,50" value="${e&&c.custo?+((c.qtd||1)*c.custo).toFixed(2):''}" oninput="compraValores('total')"></div><div class="form-group"><label class="form-label" id="f-ccu-label">${e?'Custo por unidade (R$)':'Valor total (R$)'}</label><input class="form-input" id="f-ccu" type="number" inputmode="decimal" step="any" value="${c.custo?+(+c.custo).toFixed(4):''}" oninput="compraValores('unit')"></div><div class="form-group full" id="compra-conta" style="font-size:12px;color:var(--cinza-med);margin-top:-6px;display:${e?'block':'none'}"></div><div class="form-group full compra-medio" id="compra-medio" data-edit="${c.id||''}" data-mp-orig="${c.estoque_aplicado?.mpId||''}" style="display:none"></div><div class="form-group"><label class="form-label">Forma</label><select class="form-select" id="f-cforma">${['PIX','Débito','Crédito','Boleto','Dinheiro'].map(f=>`<option ${c.forma===f?'selected':''}>${f}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Status</label><select class="form-select" id="f-cst">${['Pago','Em aberto','Atrasado'].map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}</select></div><div class="form-group full" id="compra-aviso-estoque" style="background:${e?'var(--verde-claro)':'var(--azul-claro)'};color:${e?'var(--txt-verde)':'var(--azul)'};padding:9px 11px;border-radius:6px;font-size:11.5px">${e?'📦 Ao salvar, esta compra soma a quantidade à matéria-prima escolhida e mexe no Caixa Disponível se marcar “Pago”.':'🔧 Esta despesa não altera o estoque. Ao marcar “Pago”, ela reduz o Caixa Disponível normalmente.'}</div></div>`;}
+function formCompra(c={}){const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join(''),mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} (estoque atual: ${m.estoque||0} ${m.unidade||'un'})`})),tipo=c.tipo||(c.materia_prima_id?'estoque':'despesa'),e=tipo==='estoque';return`<div class="form-grid"><div class="form-group full"><label class="form-label">Esta compra é para</label><select class="form-select" id="f-ctipo" onchange="atualizarTipoCompra()"><option value="despesa" ${!e?'selected':''}>🔧 Despesa, manutenção ou uso interno</option><option value="estoque" ${e?'selected':''}>📦 Reposição de estoque</option></select></div><div class="form-group full" id="compra-materia-group" style="display:${e?'flex':'none'}"><label class="form-label">Matéria-prima que vai receber estoque</label>${sselHTML('c-mp',mpOpts,c.materia_prima_id||'','Buscar matéria-prima...','autoPreencherCompra(value)')}</div><div class="form-group"><label class="form-label">Data</label><input class="form-input" id="f-cdata" type="date" value="${c.data||hojeLocalStr()}"></div><div class="form-group"><label class="form-label">Fornecedor</label><select class="form-select" id="f-cforn"><option value="">—</option>${fo}</select></div><div class="form-group full"><label class="form-label" id="f-cprod-label">${e?'Descrição do item de estoque':'Descrição da despesa'}</label><input class="form-input" id="f-cprod" value="${c.produto||''}"></div><div class="form-group"><label class="form-label" id="f-cqtd-label">${e?'Quantidade':'Quantidade (1 despesa)'}</label><input class="form-input" id="f-cqtd" type="number" inputmode="decimal" value="${e?(c.qtd||1):1}" ${e?'':'readonly'} oninput="compraValores('qtd')"></div><div class="form-group" id="compra-total-group" style="display:${e?'flex':'none'}"><label class="form-label">Valor total pago (R$)</label><input class="form-input" id="f-ctot" type="number" inputmode="decimal" step="any" placeholder="Ex.: 42,50" value="${e&&c.custo?+((c.qtd||1)*c.custo).toFixed(2):''}" oninput="compraValores('total')"></div><div class="form-group"><label class="form-label" id="f-ccu-label">${e?'Custo por unidade (R$)':'Valor total (R$)'}</label><input class="form-input" id="f-ccu" type="number" inputmode="decimal" step="any" value="${c.custo?+(+c.custo).toFixed(4):''}" oninput="compraValores('unit')"></div><div class="form-group full" id="compra-conta" style="font-size:12px;color:var(--cinza-med);margin-top:-6px;display:${e?'block':'none'}"></div><div class="form-group full compra-medio" id="compra-medio" data-edit="${c.id||''}" data-mp-orig="${c.estoque_aplicado?.mpId||''}" style="display:none"></div><div class="form-group"><label class="form-label">Forma</label><select class="form-select" id="f-cforma">${['PIX','Débito','Crédito','Boleto','Dinheiro'].map(f=>`<option ${c.forma===f?'selected':''}>${f}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Status</label><select class="form-select" id="f-cst">${['Pago','Em aberto','Atrasado'].map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}</select></div><div class="form-group full" id="compra-aviso-estoque" style="background:${e?'var(--verde-claro)':'var(--azul-claro)'};color:${e?'var(--txt-verde)':'var(--azul)'};padding:9px 11px;border-radius:6px;font-size:11.5px">${e?'📦 Ao salvar, esta compra soma a quantidade à matéria-prima escolhida e mexe no Caixa Disponível se marcar “Pago”.':'🔧 Esta despesa não altera o estoque. Ao marcar “Pago”, ela reduz o Caixa Disponível normalmente.'}</div></div>`;}
 function autoPreencherCompra(id){const m=getItem(DB.materias,id),p=document.getElementById('f-cprod');if(m&&p&&!p.value.trim())p.value=m.nome;atualizarAvisoCompra();desenharCustoMedioCompra();}
 // Quantidade, total e custo por unidade andam juntos: digitou o total, calcula a unidade (e vice-versa).
 function compraValores(origem){
@@ -8941,7 +8941,7 @@ async function gerarImagemOrcamento(){
     const largura=650,altura=Math.max(copia.scrollHeight,copia.offsetHeight,1);
     const escala=Math.max(1,Math.min(2,Math.sqrt(14000000/(largura*altura))));
     const canvas=await html2canvas(copia,{scale:escala,width:largura,windowWidth:largura,backgroundColor:'#ffffff',useCORS:true,logging:false});
-    const nome='orcamento_'+new Date().toISOString().slice(0,10)+'.png';
+    const nome='orcamento_'+hojeLocalStr()+'.png';
     const blob=await new Promise((ok,erro)=>canvas.toBlob(b=>b?ok(b):erro(new Error('Imagem indisponível')),'image/png',1));
     return {blob,nome,arquivo:typeof File!=='undefined'?new File([blob],nome,{type:'image/png'}):null};
   } finally { if(copia) copia.remove(); }
@@ -8962,7 +8962,7 @@ async function baixarOrcamentoImagem(){
     const escala=Math.max(1,Math.min(2,Math.sqrt(14000000/(largura*altura))));
     const canvas=await html2canvas(copia,{scale:escala,width:largura,windowWidth:largura,backgroundColor:'#ffffff',useCORS:true,logging:false});
     copia.remove();copia=null;
-    const nome='orcamento_'+new Date().toISOString().slice(0,10)+'.png';
+    const nome='orcamento_'+hojeLocalStr()+'.png';
     const blob=await new Promise((ok,erro)=>canvas.toBlob(b=>b?ok(b):erro(new Error('Imagem indisponível')),'image/png',1));
     const touch=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||navigator.maxTouchPoints>0;
     const arquivo=typeof File!=='undefined'?new File([blob],nome,{type:'image/png'}):null;
