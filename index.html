@@ -652,6 +652,23 @@ body.tema-escuro .csg-tipos button.ativo{background:var(--cinza-claro)}
 .vis-campos input{width:54px;padding:6px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:15px;font-weight:700;text-align:center;background:var(--bg-input);color:var(--cinza-escuro)}
 .vis-campos input.vis-restou{border-color:var(--verde-med)}
 @media(max-width:420px){.csg-tipos button{font-size:12px;padding:8px 4px}}
+.csg-st{margin:8px 14px 0;font-size:12px;display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:baseline}
+.csg-st .ve-barra{grid-column:1/-1}
+.ve-lista{padding:8px 16px 14px}
+.ve-linha{padding:7px 0;border-bottom:1px solid var(--cinza-claro)}
+.ve-linha:last-child{border-bottom:none}
+.ve-rot{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.ve-rot span{min-width:0;overflow-wrap:anywhere}
+.ve-barra{height:7px;background:var(--cinza-ultra);border-radius:4px;overflow:hidden;margin-top:4px}
+.ve-barra i{display:block;height:100%;background:var(--s2);border-radius:4px}
+.ve-num{font-size:11.5px;color:var(--cinza-med);margin-top:3px}
+.ve-tag{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px;white-space:nowrap}
+.ve-bom{background:var(--verde-claro);color:var(--txt-verde)}
+.ve-ruim{background:var(--azul-tint);color:var(--txt-azul)}
+.csg-parada{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--cinza-claro);flex-wrap:wrap}
+.csg-parada:last-child{border-bottom:none}
+.csg-parada>div{display:flex;flex-direction:column;min-width:0;font-size:13px}
+.csg-parada span{font-size:11.5px;color:var(--cinza-med)}
 </style>
 <!-- Login com Google (Fase 2) — só é usado se GOOGLE_CLIENT_ID for configurado
      no bloco de JavaScript principal mais abaixo. Carregar essa biblioteca
@@ -1261,7 +1278,7 @@ async function sincronizarSheets() {
       _sessaoExpirada = false;
       if (Array.isArray(data.dados.mp_pagamentos)) guardarPagsMP(data.dados.mp_pagamentos);
       render(currentSection);
-      if (!conferirVersaoApp()) { aplicarPagamentosMP(); corrigirBaixasPendentes(); corrigirDadosAuditoria(); }
+      if (!conferirVersaoApp()) { aplicarPagamentosMP(); corrigirBaixasPendentes(); corrigirDadosAuditoria(); juntarPaperStoryUmaVez(); }
     } else {
       const erro = data.erro || 'Resposta inválida';
       // Distingue "token do Google vencido" de erro de rede/servidor de
@@ -1743,7 +1760,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026111104;
+const VERSAO_APP=2026111105;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -3091,6 +3108,7 @@ function painelHojeHtml(criticosMP){
     [n.arte,n.arte,n.arte===1?'arte a resolver':'artes a resolver',"abrirPedidosFiltrados({arte:'pendente'})",false],
     [n.produzir,n.produzir,n.produzir===1?'pedido para produzir':'pedidos para produzir',"_pedVisao='quadro';abrirPedidosFiltrados({})",false],
     [n.prontos,n.prontos,n.prontos===1?'pronto para entregar':'prontos para entregar',"abrirPedidosFiltrados({etapa:'Pronto'})",false],
+    ...avisosConsignadoHoje(),
     [contas.length,contas.length,contas.length===1?'conta vence em 7 dias':'contas vencem em 7 dias',"abrirAPFiltrado('breve')",false],
   ].filter(i=>i[0]>0);
   return `<div class="panel"><div class="panel-header"><span class="panel-title">☀️ Hoje</span></div>
@@ -7426,60 +7444,88 @@ function wppKit(kitId){
 // com muitos parceiros deixar tudo aberto de cara vira bagunça. Guarda no
 // localStorage pra lembrar da preferência entre uma visita e outra.
 let _csgExpandidos = new Set(JSON.parse(localStorage.getItem('morfe_csg_expandidos') || '[]'));
-// Cada peça entregue termina em um destes: ainda lá, vendida, voltou para você ou se perdeu.
+// Cada peça entregue termina em um destes: ainda lá, vendida, voltou para você, se perdeu,
+// foi levada para outro ponto ou (nas peças prontas em casa) saiu porque você vendeu/usou.
 // (Perda que o parceiro paga conta como vendida: ele te deve o repasse.)
-function qtdVendidaCSG(it){ return Math.max(0,(+it.qtd_inicial||0)-(+it.qtd_atual||0)-(+it.qtd_devolvida||0)-(+it.qtd_perdida||0)); }
+function qtdVendidaCSG(it){ return Math.max(0,(+it.qtd_inicial||0)-(+it.qtd_atual||0)-(+it.qtd_devolvida||0)-(+it.qtd_perdida||0)-(+it.qtd_usada||0)-(+it.qtd_transferida||0)); }
 const MOTIVOS_PERDA_CSG={sumiu:'🔍 Sumiu / extraviou',quebrou:'💔 Quebrou / estragou',defeito:'🛠️ Defeito de fabricação'};
 function nomeItemCSG(it){ return escHtml(nomeProd(it.prod)||it.prod)+(it.variante?' 🔀 '+escHtml(it.variante):''); }
-// Registra o que aconteceu com peças de um ponto (venda, devolução ou perda) e guarda no histórico.
-// mov: [{idx,qtd}] · tipo: 'venda' | 'devolucao' | 'perda' · quem (perda): 'parceiro' | 'eu'
-function aplicarMovimentoCSG(c,mov,tipo,{data,obs,recebido=0,motivo='',quem='parceiro'}={}){
+// Parceiros de verdade (sem o cadastro "Peças prontas comigo")
+function pontosCSG(){ return DB.consignados.filter(c=>!c.casa); }
+// Peças prontas que voltaram e ficam com você: um "ponto" especial, criado na primeira vez.
+function casaCSG(){
+  let c=DB.consignados.find(x=>x.casa);
+  if(!c){ c={id:'CSG-CASA',nome:'🏠 Peças prontas comigo',casa:true,ativo:true,itens:[],visitas:[],criado_em:new Date().toISOString()}; DB.consignados.push(c); }
+  return c;
+}
+function dataEntregaCSG(c,it){ return it.data_entrega||(c.criado_em?String(c.criado_em).slice(0,10):null); }
+function diasParadoCSG(c,it){ const d=dataEntregaCSG(c,it); return d?Math.floor((Date.now()-new Date(d+'T00:00:00').getTime())/86400000):null; }
+// Registra o que aconteceu com peças de um ponto e guarda no histórico.
+// mov: [{idx,qtd}] · tipo: 'venda' | 'devolucao' | 'perda' | 'transferir' | 'usado' · quem (perda): 'parceiro' | 'eu'
+function aplicarMovimentoCSG(c,mov,tipo,{data,obs,recebido=0,motivo='',quem='parceiro',destinoNome=''}={}){
   const linhas=[];
   for(const {idx,qtd} of mov){
     const it=c.itens[idx]; if(!it||!(qtd>0)) continue;
     if(qtd>(+it.qtd_atual||0)) throw new Error(`${nomeProd(it.prod)}: só tem ${it.qtd_atual} lá`);
-    it.qtd_atual=(+it.qtd_atual||0)-qtd;
-    const base={idx,prod:it.prod,variante:it.variante||'',qtd,preco_repasse:+it.preco||0,custo_snapshot:custoItemPedidoAoVivo({prod:it.prod})};
-    if(tipo==='devolucao') it.qtd_devolvida=(+it.qtd_devolvida||0)+qtd;
-    if(tipo==='perda'&&quem==='eu') it.qtd_perdida=(+it.qtd_perdida||0)+qtd;
-    linhas.push(base);
+    linhas.push({idx,prod:it.prod,variante:it.variante||'',qtd,preco_repasse:+it.preco||0,custo_snapshot:custoItemPedidoAoVivo({prod:it.prod})});
   }
   if(!linhas.length) throw new Error('Informe pelo menos uma peça');
+  const campo={devolucao:'qtd_devolvida',transferir:'qtd_transferida',usado:'qtd_usada'}[tipo]||(tipo==='perda'&&quem==='eu'?'qtd_perdida':null);
+  linhas.forEach(l=>{ const it=c.itens[l.idx]; it.qtd_atual=(+it.qtd_atual||0)-l.qtd; if(campo) it[campo]=(+it[campo]||0)+l.qtd; });
   const valor=linhas.reduce((s,l)=>s+l.qtd*l.preco_repasse,0);
   if(!c.visitas) c.visitas=[];
-  const v={data:data||hojeLocalStr(),obs:obs||'',valor_vendido:0,valor_recebido:+recebido||0};
+  const v={data:data||hojeLocalStr(),obs:obs||'',valor_vendido:0,valor_recebido:+recebido||0,mov_id:'MV'+Date.now()+Math.floor(Math.random()*1000)};
   if(tipo==='venda'||(tipo==='perda'&&quem==='parceiro')){
     v.valor_vendido=valor; v.itens_vendidos=linhas.map(l=>tipo==='perda'?{...l,motivo}:l);
     v.tipo=tipo==='perda'?'perda_cobrada':(v.valor_recebido>0.004?'venda+repasse':'venda');
-  }else if(tipo==='devolucao'){ v.tipo='devolucao'; v.itens_devolvidos=linhas; }
+  }else if(tipo==='devolucao'){ v.tipo='devolucao'; v.itens_devolvidos=linhas; if(destinoNome) v.destino_nome=destinoNome; }
+  else if(tipo==='transferir'){ v.tipo='transferencia'; v.itens_transferidos=linhas; v.destino_nome=destinoNome; }
+  else if(tipo==='usado'){ v.tipo='usado'; v.itens_usados=linhas; }
   else { v.tipo='perda'; v.itens_perdidos=linhas.map(l=>({...l,motivo})); }
   c.visitas.push(v);
-  return {valor,qtd:linhas.reduce((s,l)=>s+l.qtd,0)};
+  return {valor,qtd:linhas.reduce((s,l)=>s+l.qtd,0),linhas,v};
 }
-// Uma janela só para "saiu do ponto": venda, devolução ou perda — escolhe as peças e quantidades.
-function movimentarCSG(consigId,tipo='devolucao',soIdx=null){
+// Peças que mudam de lugar entram no destino como já prontas (sem gastar matéria-prima de novo).
+function enviarPecasCSG(dest,origem,linhas,data,movId){
+  if(!dest.itens) dest.itens=[];
+  linhas.forEach(l=>{ const it=origem.itens[l.idx]||{}; dest.itens.push({prod:l.prod,variante:l.variante,qtd_inicial:l.qtd,qtd_atual:l.qtd,preco:+it.preco||l.preco_repasse,jaProduzida:true,arte:!!it.arte,consumo_insumos:{},data_entrega:data,veio_de:origem.nome,mov_origem:movId}); });
+}
+const TIPOS_MOV_CSG={
+  ponto:[['venda','💰 Vendeu'],['devolucao','↩️ Voltou para mim'],['perda','⚠️ Sumiu ou quebrou']],
+  casa:[['transferir','🤝 Levar para um ponto'],['usado','🛒 Vendi ou usei'],['perda','🗑️ Estragou']]
+};
+// Uma janela só para "saiu do lugar": venda, devolução, perda, levar para outro ponto, vendi/usei.
+function movimentarCSG(consigId,tipo,soIdx=null){
   const c=getItem(DB.consignados,consigId); if(!c) return;
+  const tipos=c.casa?TIPOS_MOV_CSG.casa:TIPOS_MOV_CSG.ponto;
+  if(!tipos.some(t=>t[0]===tipo)) tipo=tipos[0][0];
   const lista=(c.itens||[]).map((it,idx)=>({it,idx})).filter(x=>(+x.it.qtd_atual||0)>0&&(soIdx===null||x.idx===soIdx));
-  if(!lista.length){ toast('Não tem peça nesse ponto','error'); return; }
+  if(!lista.length){ toast('Não tem peça aqui','error'); return; }
+  const outros=pontosCSG().filter(p=>p.id!==c.id&&p.ativo!==false);
   openModal(`📦 O que aconteceu com as peças — ${escHtml(c.nome)}`,`
     <div class="csg-mov">
       <div class="csg-tipos" role="group" aria-label="O que aconteceu">
-        ${[['venda','💰 Vendeu'],['devolucao','↩️ Voltou para mim'],['perda','⚠️ Sumiu ou quebrou']].map(([k,l])=>`<button type="button" data-tipo="${k}" class="${tipo===k?'ativo':''}" aria-pressed="${tipo===k}" onclick="tipoMovCSG('${k}')">${l}</button>`).join('')}
+        ${tipos.map(([k,l])=>`<button type="button" data-tipo="${k}" class="${tipo===k?'ativo':''}" aria-pressed="${tipo===k}" onclick="tipoMovCSG('${k}')">${l}</button>`).join('')}
       </div>
-      <div id="csg-mov-perda" class="form-grid" style="display:${tipo==='perda'?'grid':'none'};margin-top:10px">
+      <div id="csg-mov-perda" class="form-grid" style="display:none;margin-top:10px">
         <div class="form-group"><label class="form-label">O que houve?</label><select class="form-select" id="mv-motivo">${Object.entries(MOTIVOS_PERDA_CSG).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></div>
-        <div class="form-group"><label class="form-label">Quem paga?</label><select class="form-select" id="mv-quem" onchange="atualizarMovCSG()"><option value="parceiro">🏪 O parceiro (cobro o repasse)</option><option value="eu">👤 Eu (prejuízo meu)</option></select></div>
+        ${c.casa?'':`<div class="form-group"><label class="form-label">Quem paga?</label><select class="form-select" id="mv-quem" onchange="atualizarMovCSG()"><option value="parceiro">🏪 O parceiro (cobro o repasse)</option><option value="eu">👤 Eu (prejuízo meu)</option></select></div>`}
       </div>
+      <div id="csg-mov-destino" class="form-group" style="display:none;margin-top:10px"><label class="form-label">Para onde vão as peças?</label>
+        <select class="form-select" id="mv-destino" onchange="atualizarMovCSG()">
+          ${c.casa?'':'<option value="casa">🏠 Ficam comigo (peças prontas)</option>'}
+          ${outros.map(p=>`<option value="${p.id}">🤝 Levar para ${escHtml(p.nome)}</option>`).join('')}
+        </select></div>
       <div class="csg-mov-lista">${lista.map(({it,idx})=>`
         <div class="csg-mov-item">
-          <div class="csg-mov-nome"><strong>${nomeItemCSG(it)}</strong><span>tem ${it.qtd_atual} lá · ${R$(it.preco)}/un</span></div>
+          <div class="csg-mov-nome"><strong>${nomeItemCSG(it)}</strong><span>tem ${it.qtd_atual} · ${R$(it.preco)}/un</span></div>
           <div class="csg-mov-qtd">
             <button type="button" aria-label="Menos" onclick="passoMovCSG(${idx},-1,${it.qtd_atual})">−</button>
             <input type="number" inputmode="numeric" min="0" max="${it.qtd_atual}" value="${soIdx===idx?1:0}" id="mv-q-${idx}" data-idx="${idx}" data-preco="${+it.preco||0}" data-max="${it.qtd_atual}" oninput="atualizarMovCSG()" aria-label="Quantidade de ${escHtml(nomeProd(it.prod))}">
             <button type="button" aria-label="Mais" onclick="passoMovCSG(${idx},1,${it.qtd_atual})">+</button>
           </div>
         </div>`).join('')}</div>
-      ${lista.length>1?'<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" onclick="document.querySelectorAll(\'.csg-mov-qtd input\').forEach(i=>i.value=i.dataset.max);atualizarMovCSG()">Todas as peças</button>':''}
+      ${lista.length>1?`<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" onclick="document.querySelectorAll('.csg-mov-qtd input').forEach(i=>i.value=i.dataset.max);atualizarMovCSG()">Todas as peças</button>`:''}
       <div class="form-grid" style="margin-top:12px">
         <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="mv-data" type="date" value="${hojeLocalStr()}"></div>
         <div class="form-group" id="mv-receb-grupo"><label class="form-label">Já recebeu quanto? (R$)</label><input class="form-input" id="mv-receb" type="number" step="0.01" inputmode="decimal" placeholder="0,00"></div>
@@ -7487,42 +7533,202 @@ function movimentarCSG(consigId,tipo='devolucao',soIdx=null){
       </div>
       <div class="csg-mov-resumo" id="mv-resumo"></div>
     </div>`,()=>salvarMovCSG(consigId),'💾 Registrar');
-  window._movCSG={tipo};
-  atualizarMovCSG();
+  window._movCSG={tipo,casa:!!c.casa,temOutros:outros.length>0};
+  tipoMovCSG(tipo);
 }
 function tipoMovCSG(tipo){
-  window._movCSG={tipo};
+  window._movCSG={...(window._movCSG||{}),tipo};
   document.querySelectorAll('.csg-tipos button').forEach(b=>{ const a=b.dataset.tipo===tipo; b.classList.toggle('ativo',a); b.setAttribute('aria-pressed',a); });
   document.getElementById('csg-mov-perda').style.display=tipo==='perda'?'grid':'none';
+  document.getElementById('csg-mov-destino').style.display=tipo==='devolucao'||tipo==='transferir'?'flex':'none';
   atualizarMovCSG();
 }
 function passoMovCSG(idx,d,max){ const i=document.getElementById('mv-q-'+idx); if(!i) return; i.value=Math.min(max,Math.max(0,(parseInt(i.value)||0)+d)); atualizarMovCSG(); }
 function atualizarMovCSG(){
-  const tipo=window._movCSG?.tipo||'devolucao', quem=document.getElementById('mv-quem')?.value||'parceiro';
+  const m=window._movCSG||{}, tipo=m.tipo, quem=m.casa?'eu':(document.getElementById('mv-quem')?.value||'parceiro');
+  const dSel=document.getElementById('mv-destino'), destino=dSel?.value||'', destNome=dSel?.selectedOptions[0]?.textContent.replace(/^\S+\s(Levar para |Ficam comigo )?/,'')||'';
   let qtd=0, valor=0;
   document.querySelectorAll('.csg-mov-qtd input').forEach(i=>{ const q=Math.min(+i.dataset.max,Math.max(0,parseInt(i.value)||0)); qtd+=q; valor+=q*(+i.dataset.preco||0); });
   const cobra=tipo==='venda'||(tipo==='perda'&&quem==='parceiro');
   const g=document.getElementById('mv-receb-grupo'); if(g) g.style.display=cobra?'flex':'none';
   const r=document.getElementById('mv-resumo'); if(!r) return;
-  const pc=qtd===1?'1 peça':qtd+' peças';
+  const pc=qtd===1?'1 peça':qtd+' peças', s=qtd>1?'s':'';
   r.innerHTML=!qtd?'Escolha a quantidade de cada peça.'
-    :tipo==='venda'?`💰 ${pc} vendida${qtd>1?'s':''}: o parceiro te deve <strong>${R$(valor)}</strong> de repasse.`
-    :tipo==='devolucao'?`↩️ ${pc} volta${qtd>1?'m':''} para você. <strong>Não conta como venda</strong> e o parceiro não te deve nada por elas.`
-    :quem==='parceiro'?`⚠️ ${pc} perdida${qtd>1?'s':''} com o parceiro: ele te deve <strong>${R$(valor)}</strong> (preço de repasse).`
-    :`⚠️ ${pc} perdida${qtd>1?'s':''}, prejuízo seu: entra como despesa no lucro pelo custo de produção.`;
+    :tipo==='venda'?`💰 ${pc} vendida${s}: o parceiro te deve <strong>${R$(valor)}</strong> de repasse.`
+    :tipo==='devolucao'?`↩️ ${pc} volta${qtd>1?'m':''} ${destino==='casa'?'para você e fica'+(qtd>1?'m':'')+' em <strong>🏠 Peças prontas</strong>':'e vai'+(qtd>1?'o':'')+' direto para <strong>'+escHtml(destNome)+'</strong>'}. <strong>Não conta como venda</strong> e o parceiro não te deve nada por ela${s}.`
+    :tipo==='transferir'?(m.temOutros?`🤝 ${pc} vai${qtd>1?'o':''} para <strong>${escHtml(destNome)}</strong> como peça${s} já pronta${s} (sem gastar matéria-prima de novo).`:'Cadastre outro ponto de consignação para levar as peças.')
+    :tipo==='usado'?`🛒 ${pc} sai${qtd>1?'em':''} das peças prontas. Se vendeu num pedido, marque <strong>“já pronta”</strong> no item do pedido para não gastar matéria-prima de novo.`
+    :quem==='parceiro'?`⚠️ ${pc} perdida${s} com o parceiro: ele te deve <strong>${R$(valor)}</strong> (preço de repasse).`
+    :`⚠️ ${pc} perdida${s}, prejuízo seu: entra como despesa no lucro pelo custo de produção.`;
 }
 async function salvarMovCSG(consigId){
   const c=getItem(DB.consignados,consigId); if(!c) return;
-  const tipo=window._movCSG?.tipo||'devolucao';
-  const mov=[...document.querySelectorAll('.csg-mov-qtd input')].map(i=>({idx:+i.dataset.idx,qtd:Math.max(0,parseInt(i.value)||0)})).filter(m=>m.qtd>0);
-  const quem=document.getElementById('mv-quem')?.value||'parceiro', motivo=document.getElementById('mv-motivo')?.value||'';
+  const m=window._movCSG||{}, tipo=m.tipo;
+  const mov=[...document.querySelectorAll('.csg-mov-qtd input')].map(i=>({idx:+i.dataset.idx,qtd:Math.max(0,parseInt(i.value)||0)})).filter(x=>x.qtd>0);
+  const quem=m.casa?'eu':(document.getElementById('mv-quem')?.value||'parceiro'), motivo=document.getElementById('mv-motivo')?.value||'';
   const cobra=tipo==='venda'||(tipo==='perda'&&quem==='parceiro');
+  const muda=tipo==='devolucao'||tipo==='transferir';
+  const destinoId=muda?document.getElementById('mv-destino')?.value||'':'';
+  if(muda&&!destinoId){ toast('Escolha para onde vão as peças','error'); return; }
+  const dest=!muda?null:destinoId==='casa'?casaCSG():getItem(DB.consignados,destinoId);
+  if(muda&&!dest){ toast('Destino não encontrado','error'); return; }
+  const data=document.getElementById('mv-data').value||hojeLocalStr();
   let r;
-  try{ r=aplicarMovimentoCSG(c,mov,tipo,{data:document.getElementById('mv-data').value,obs:document.getElementById('mv-obs').value.trim(),recebido:cobra?parseFloat(document.getElementById('mv-receb').value)||0:0,motivo,quem}); }
+  try{ r=aplicarMovimentoCSG(c,mov,tipo,{data,obs:document.getElementById('mv-obs').value.trim(),recebido:cobra?parseFloat(document.getElementById('mv-receb').value)||0:0,motivo,quem,destinoNome:dest?dest.nome:''}); }
   catch(e){ toast(e.message,'error'); return; }
+  if(dest){ r.v.destino_id=dest.id; enviarPecasCSG(dest,c,r.linhas,data,r.v.mov_id); await salvarItem('consignados',dest); }
   await salvarItem('consignados',c);
-  toast(tipo==='venda'?`Venda registrada: ${r.qtd} peça(s) · ${R$(r.valor)}`:tipo==='devolucao'?`Devolução registrada: ${r.qtd} peça(s) voltaram`:quem==='parceiro'?`Perda registrada: parceiro te deve ${R$(r.valor)}`:`Perda registrada: ${r.qtd} peça(s), prejuízo seu`);
+  toast(tipo==='venda'?`Venda registrada: ${r.qtd} peça(s) · ${R$(r.valor)}`
+    :tipo==='devolucao'?`Devolução registrada: ${r.qtd} peça(s) → ${dest.nome}`
+    :tipo==='transferir'?`${r.qtd} peça(s) levadas para ${dest.nome}`
+    :tipo==='usado'?`${r.qtd} peça(s) saíram das peças prontas`
+    :quem==='parceiro'?`Perda registrada: parceiro te deve ${R$(r.valor)}`:`Perda registrada: ${r.qtd} peça(s), prejuízo seu`);
   closeModal(); render('consignados');
+}
+// Registros com quantidades guardam a linha (idx): excluir devolve as peças ao lugar de origem.
+// Se as peças foram para outro lugar e lá já foram mexidas, não dá para desfazer.
+function desfazerMovimentoCSG(c,v){
+  let dest=null;
+  if(v.mov_id&&v.destino_id){
+    dest=getItem(DB.consignados,v.destino_id);
+    const levadas=dest?(dest.itens||[]).filter(i=>i.mov_origem===v.mov_id):[];
+    if(levadas.some(i=>(+i.qtd_atual||0)<(+i.qtd_inicial||0))) return {ok:false,msg:`As peças já foram mexidas em ${dest.nome}. Desfaça lá primeiro.`};
+    if(dest) dest.itens=(dest.itens||[]).filter(i=>i.mov_origem!==v.mov_id);
+  }
+  const volta=(lista,campo)=>(lista||[]).forEach(l=>{
+    if(l.idx==null) return;
+    const it=c.itens[l.idx]&&c.itens[l.idx].prod===l.prod?c.itens[l.idx]:(c.itens||[]).find(i=>i.prod===l.prod&&(i.variante||'')===(l.variante||''));
+    if(!it) return;
+    it.qtd_atual=Math.min(+it.qtd_inicial||0,(+it.qtd_atual||0)+(+l.qtd||0));
+    if(campo) it[campo]=Math.max(0,(+it[campo]||0)-(+l.qtd||0));
+  });
+  if(v.tipo==='devolucao') volta(v.itens_devolvidos,'qtd_devolvida');
+  else if(v.tipo==='perda') volta(v.itens_perdidos,'qtd_perdida');
+  else if(v.tipo==='transferencia') volta(v.itens_transferidos,'qtd_transferida');
+  else if(v.tipo==='usado') volta(v.itens_usados,'qtd_usada');
+  else volta(v.itens_vendidos,null);
+  return {ok:true,dest};
+}
+// Junta cadastros do mesmo parceiro: peças e histórico vêm com as datas de cada entrega.
+async function juntarPontosCSG(destId,origIds){
+  const d=getItem(DB.consignados,destId); if(!d) return false;
+  const dataDe=c=>c.criado_em?String(c.criado_em).slice(0,10):'';
+  d.itens=(d.itens||[]).map(it=>({...it,data_entrega:it.data_entrega||dataDe(d)}));
+  d.visitas=d.visitas||[];
+  const juntados=[];
+  for(const oid of origIds){
+    const o=getItem(DB.consignados,oid); if(!o||o.id===d.id||o.casa) continue;
+    const off=d.itens.length;
+    d.itens.push(...(o.itens||[]).map(it=>({...it,data_entrega:it.data_entrega||dataDe(o)})));
+    d.visitas.push(...(o.visitas||[]).map(v=>{ const nv={...v}; ['itens_vendidos','itens_devolvidos','itens_perdidos','itens_usados','itens_transferidos'].forEach(k=>{ if(Array.isArray(v[k])) nv[k]=v[k].map(x=>x.idx!=null?{...x,idx:x.idx+off}:x); }); return nv; }));
+    ['telefone','endereco','responsavel','obs'].forEach(k=>{ if(!d[k]&&o[k]) d[k]=o[k]; });
+    if(o.criado_em&&(!d.criado_em||o.criado_em<d.criado_em)) d.criado_em=o.criado_em;
+    juntados.push(o.id);
+  }
+  if(!juntados.length) return false;
+  d.visitas.sort((a,b)=>String(a.data||'').localeCompare(String(b.data||'')));
+  DB.consignados.forEach(c=>(c.visitas||[]).forEach(v=>{ if(juntados.includes(v.destino_id)) v.destino_id=d.id; }));
+  await salvarItem('consignados',d);
+  for(const oid of juntados) await excluirItem_db('consignados',oid);
+  return true;
+}
+async function juntarCSGUI(destId){
+  const oid=document.getElementById('cg-juntar')?.value; if(!oid) { toast('Escolha qual ponto juntar','error'); return; }
+  const o=getItem(DB.consignados,oid), d=getItem(DB.consignados,destId);
+  if(!confirm(`Juntar "${o.nome}" em "${d.nome}"?\n\nAs peças e o histórico de "${o.nome}" vêm para cá, cada entrega com a sua data. O cadastro "${o.nome}" deixa de existir.`)) return;
+  await juntarPontosCSG(destId,[oid]);
+  toast('Pontos juntados!'); closeModal(); render('consignados');
+}
+// O cadastro "Paper Story" estava em 3 pontos (um por entrega). Junta em um só, uma vez.
+let _juntandoPaper=false;
+async function juntarPaperStoryUmaVez(){
+  const FLAG='juntar-paper-story';
+  if(_juntandoPaper||!_isLoggedIn||!DB.config) return;
+  const feitas=Array.isArray(DB.config.migracoes)?DB.config.migracoes:[];
+  if(feitas.includes(FLAG)||_tabelasBloqueadasPorSeguranca.length) return;
+  _juntandoPaper=true;
+  try{
+    const ids=['CSG-001','CSG-002','CSG-003'], cs=ids.map(id=>getItem(DB.consignados,id));
+    if(cs.every(c=>c&&/paper\s*story/i.test(c.nome||''))){
+      await juntarPontosCSG('CSG-001',['CSG-002','CSG-003']);
+      const d=getItem(DB.consignados,'CSG-001'); d.nome='Paper Story'; await salvarItem('consignados',d);
+      toast('🤝 Os 3 cadastros da Paper Story agora são um só');
+      if(currentSection==='consignados') render('consignados');
+    }
+    DB.config.migracoes=[...(Array.isArray(DB.config.migracoes)?DB.config.migracoes:[]),FLAG]; salvarConfigCaixa();
+  } finally { _juntandoPaper=false; }
+}
+// ── Números do parceiro ──
+function resumoPontoCSG(c){
+  const its=c.itens||[];
+  const levou=its.reduce((s,i)=>s+(+i.qtd_inicial||0),0), vendeu=its.reduce((s,i)=>s+qtdVendidaCSG(i),0);
+  const vs=c.visitas||[], deve=vs.reduce((s,v)=>s+(+v.valor_vendido||0),0)-vs.reduce((s,v)=>s+(+v.valor_recebido||0),0);
+  const datas=[...vs.map(v=>v.data),...its.map(i=>dataEntregaCSG(c,i))].filter(Boolean).sort();
+  const ultimo=datas[datas.length-1]||null;
+  const diasSemContato=ultimo?Math.floor((Date.now()-new Date(ultimo+'T00:00:00').getTime())/86400000):null;
+  const pecas=its.reduce((s,i)=>s+(+i.qtd_atual||0),0);
+  return {levou,vendeu,pct:levou?vendeu/levou*100:0,deve,diasSemContato,pecas};
+}
+function pecasParadasCSG(dias=60){
+  const l=[];
+  pontosCSG().forEach(c=>(c.itens||[]).forEach((it,idx)=>{ const d=diasParadoCSG(c,it); if((+it.qtd_atual||0)>0&&d!==null&&d>=dias) l.push({c,it,idx,dias:d}); }));
+  return l.sort((a,b)=>b.dias-a.dias);
+}
+function avisosConsignadoHoje(){
+  const ps=pontosCSG().filter(c=>c.ativo!==false).map(c=>({c,r:resumoPontoCSG(c)}));
+  const devendo=ps.filter(x=>x.r.deve>0.004), semVisita=ps.filter(x=>x.r.pecas>0&&x.r.diasSemContato!==null&&x.r.diasSemContato>=30);
+  const parados=pecasParadasCSG(60), qtdParadas=parados.reduce((s,x)=>s+(+x.it.qtd_atual||0),0);
+  return [
+    [devendo.length,R$(devendo.reduce((s,x)=>s+x.r.deve,0)),devendo.length===1?`de repasse a receber de ${devendo[0].c.nome}`:`de repasse a receber de ${devendo.length} parceiros`,"goTo('consignados')",false],
+    [semVisita.length,semVisita.length,semVisita.length===1?`parceiro sem visita há 30+ dias (${semVisita[0].c.nome})`:'parceiros sem visita há 30+ dias',"goTo('consignados')",false],
+    [qtdParadas,qtdParadas,qtdParadas===1?'peça parada há 60+ dias em consignado':'peças paradas há 60+ dias em consignado',"goTo('consignados')",false]
+  ];
+}
+// ── O que vende e o que encalha (todos os parceiros) ──
+function vendeEncalhaCSGHtml(){
+  const g={};
+  pontosCSG().forEach(c=>(c.itens||[]).forEach(it=>{
+    const k=it.prod+'|'+(it.variante||''); const x=g[k]||(g[k]={it,levou:0,vendeu:0,voltou:0,perdeu:0,la:0,dias:0});
+    x.levou+=+it.qtd_inicial||0; x.vendeu+=qtdVendidaCSG(it); x.voltou+=(+it.qtd_devolvida||0)+(+it.qtd_transferida||0); x.perdeu+=+it.qtd_perdida||0; x.la+=+it.qtd_atual||0;
+    if((+it.qtd_atual||0)>0) x.dias=Math.max(x.dias,diasParadoCSG(c,it)||0);
+  }));
+  const l=Object.values(g).filter(x=>x.levou>0).map(x=>({...x,pct:x.vendeu/x.levou*100})).sort((a,b)=>b.pct-a.pct||b.vendeu-a.vendeu);
+  if(!l.length) return '';
+  return `<div class="panel"><div class="panel-header"><span class="panel-title">📊 O que vende e o que encalha</span><span style="font-size:11.5px;color:var(--cinza-med)">das peças que você levou, quantas venderam</span></div>
+    <div class="ve-lista">${l.map(x=>{ const tag=x.pct>=50?'<span class="ve-tag ve-bom">🔥 vende bem</span>':(x.levou>=2&&x.pct<20&&x.dias>=30)||(x.voltou>=2&&x.vendeu===0)?'<span class="ve-tag ve-ruim">🧊 encalha</span>':'';
+      return `<div class="ve-linha"><div class="ve-rot"><span>${nomeItemCSG(x.it)} ${tag}</span><strong>${x.pct.toFixed(0)}%</strong></div>
+        <div class="ve-barra" aria-hidden="true"><i style="width:${Math.max(2,x.pct).toFixed(0)}%"></i></div>
+        <div class="ve-num">levou ${x.levou} · vendeu ${x.vendeu}${x.voltou?` · voltou ${x.voltou}`:''}${x.perdeu?` · perdeu ${x.perdeu}`:''}${x.la?` · lá agora ${x.la}`:''}</div></div>`; }).join('')}</div></div>`;
+}
+function paradosCSGHtml(){
+  const l=pecasParadasCSG(60); if(!l.length) return '';
+  return `<div class="panel"><div class="panel-header"><span class="panel-title">⏱️ Paradas há mais de 60 dias</span><span style="font-size:11.5px;color:var(--cinza-med)">vale recolher ou levar para outro ponto</span></div>
+    <div style="padding:6px 16px 12px">${l.map(x=>`<div class="csg-parada"><div><strong>${nomeItemCSG(x.it)}</strong><span>${escHtml(x.c.nome)} · ${x.it.qtd_atual} peça${x.it.qtd_atual>1?'s':''} · há ${x.dias} dias</span></div><button type="button" class="btn btn-outline btn-sm" onclick="movimentarCSG('${x.c.id}','devolucao',${x.idx})">↩️ Recolher</button></div>`).join('')}</div></div>`;
+}
+// ── Termo de consignação para o parceiro concordar pelo WhatsApp ──
+function textoTermoCSG(c,soHoje){
+  const hoje=hojeLocalStr();
+  const its=(c.itens||[]).filter(i=>(+i.qtd_atual||0)>0&&(!soHoje||dataEntregaCSG(c,i)===hoje));
+  const linhas=its.map(i=>`• ${i.qtd_atual}x ${nomeProd(i.prod)}${i.variante?' ('+i.variante+')':''} — repasse ${R$(i.preco)} cada (${R$((+i.qtd_atual||0)*(+i.preco||0))})`).join('\n');
+  const total=its.reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0), qtd=its.reduce((s,i)=>s+(+i.qtd_atual||0),0);
+  return `📄 *TERMO DE CONSIGNAÇÃO — ${DB.config?.empresa||'Morfê Personalizados'}*\n\nParceiro: *${c.nome}*${c.responsavel?' ('+c.responsavel+')':''}\nData: ${formatarDataBR(hoje)}\n\n*Peças ${soHoje?'entregues hoje':'em consignação com você'}:*\n${linhas||'• (nenhuma peça)'}\n\n*Total: ${qtd} peça${qtd===1?'':'s'} · ${R$(total)} em repasse*\n\n*Combinado:*\n1. As peças continuam sendo da ${DB.config?.empresa||'Morfê'} até serem vendidas.\n2. Você vende pelo preço que quiser e me repassa o valor de repasse de cada peça vendida.\n3. O acerto (contagem das peças e repasse) é feito a cada 30 dias, ou antes se preferir.\n4. Peças que sumirem, forem roubadas ou quebrarem na loja são pagas pelo valor de repasse.\n5. Defeito de fabricação: eu troco sem custo.\n6. Peças que não venderem podem ser devolvidas a qualquer momento, sem custo.\n\nPode responder com um *OK* para confirmar? 🙏`;
+}
+function termoCSG(consigId){
+  const c=getItem(DB.consignados,consigId); if(!c) return;
+  const temHoje=(c.itens||[]).some(i=>(+i.qtd_atual||0)>0&&dataEntregaCSG(c,i)===hojeLocalStr());
+  openModal(`📄 Termo de consignação — ${escHtml(c.nome)}`,`
+    ${temHoje?`<div class="csg-tipos" style="grid-template-columns:1fr 1fr;margin-bottom:10px" role="group" aria-label="Quais peças">
+      <button type="button" class="ativo" data-hoje="1" aria-pressed="true" onclick="trocarTermoCSG('${c.id}',true)">Só a entrega de hoje</button>
+      <button type="button" data-hoje="0" aria-pressed="false" onclick="trocarTermoCSG('${c.id}',false)">Tudo que está lá</button></div>`:''}
+    <label class="form-label" for="termo-txt">Mensagem (pode editar antes de mandar)</label>
+    <textarea class="form-textarea" id="termo-txt" style="min-height:300px;font-size:13px;line-height:1.45">${escHtml(textoTermoCSG(c,temHoje))}</textarea>
+    <p style="font-size:11.5px;color:var(--cinza-med);margin-top:6px">Quando o parceiro responder “OK”, fica combinado por escrito quem paga peça perdida ou quebrada.</p>`,
+    ()=>{ abrirWPP(c.telefone,document.getElementById('termo-txt').value); closeModal(); },'💬 Mandar no WhatsApp');
+}
+function trocarTermoCSG(consigId,soHoje){
+  const c=getItem(DB.consignados,consigId); if(!c) return;
+  document.querySelectorAll('[data-hoje]').forEach(b=>{ const a=(b.dataset.hoje==='1')===soHoje; b.classList.toggle('ativo',a); b.setAttribute('aria-pressed',a); });
+  document.getElementById('termo-txt').value=textoTermoCSG(c,soHoje);
 }
 function toggleCSGDetalhes(id){
   if(_csgExpandidos.has(id)) _csgExpandidos.delete(id); else _csgExpandidos.add(id);
@@ -7539,18 +7745,18 @@ function filtrarCSG(){
   });
 }
 SECTIONS.consignados = () => {
-  const totalPecas=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0),s),0);
-  const totalCusto=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),s),0);
-  const totalValor=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+i.preco||0),s),0);
-  const totalVendido=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+qtdVendidaCSG(i)*(+i.preco||0),s),0);
-  const totalLucro=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>{
+  const totalPecas=pontosCSG().reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0),s),0);
+  const totalCusto=pontosCSG().reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),s),0);
+  const totalValor=pontosCSG().reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+i.preco||0),s),0);
+  const totalVendido=pontosCSG().reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+qtdVendidaCSG(i)*(+i.preco||0),s),0);
+  const totalLucro=pontosCSG().reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>{
     const custo=+(getProd(i.prod)?.custo)||0; const lucroUn=(+i.preco||0)-custo;
     return ss+qtdVendidaCSG(i)*lucroUn;
   },s),0);
   const totalLucroParado=totalValor-totalCusto;
   return`
   <div class="kpi-grid">
-    <div class="kpi-card verde"><div class="kpi-label">Pontos</div><div class="kpi-value">${DB.consignados.length}</div></div>
+    <div class="kpi-card verde"><div class="kpi-label">Pontos</div><div class="kpi-value">${pontosCSG().length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Peças em Loja</div><div class="kpi-value">${totalPecas}</div></div>
     <div class="kpi-card" style="background:var(--laranja-claro)"><div class="kpi-label" style="color:var(--txt-laranja)">💸 Custo Parado (produção)</div><div class="kpi-value" style="color:var(--txt-laranja)">${R$(totalCusto)}</div></div>
     <div class="kpi-card laranja"><div class="kpi-label">Valor em Loja (repasse)</div><div class="kpi-value">${R$(totalValor)}</div></div>
@@ -7562,8 +7768,8 @@ SECTIONS.consignados = () => {
     💡 <strong>Custo Parado</strong> é quanto custou de verdade produzir o que ainda não vendeu (matéria-prima) — diferente do <strong>Valor em Loja</strong>, que já é o preço de repasse (com sua margem embutida). Clique em ✏️ num item pra ajustar o repasse, quantidade ou trocar o produto.
   </div>
   ${(()=>{
-    if(DB.consignados.length<2) return '';
-    const ranking=DB.consignados.map(c=>{
+    if(pontosCSG().length<2) return '';
+    const ranking=pontosCSG().map(c=>{
       const vendido=(c.itens||[]).reduce((s,i)=>s+qtdVendidaCSG(i)*(+i.preco||0),0);
       const lucro=(c.itens||[]).reduce((s,i)=>{const custo=+(getProd(i.prod)?.custo)||0;return s+qtdVendidaCSG(i)*((+i.preco||0)-custo);},0);
       return {c,vendido,lucro};
@@ -7586,6 +7792,8 @@ SECTIONS.consignados = () => {
       </div>
     </div>`;
   })()}
+  ${vendeEncalhaCSGHtml()}
+  ${paradosCSGHtml()}
   <div class="panel"><div class="panel-header">
       <span class="panel-title">🤝 Pontos de Consignação</span>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -7596,7 +7804,7 @@ SECTIONS.consignados = () => {
     <div style="padding:16px">
       ${DB.consignados.length===0?`<div class="empty-state"><div class="empty-icon">🤝</div>Nenhum ponto de consignação cadastrado.</div>`:
       `<div id="csg-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">
-        ${ordNome(DB.consignados).map(c=>{
+        ${[...DB.consignados.filter(c=>c.casa&&(c.itens||[]).some(i=>(+i.qtd_atual||0)>0)),...ordNome(pontosCSG())].map(c=>{
           const pecas=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0),0);
           const custoParado=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),0);
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
@@ -7617,7 +7825,8 @@ SECTIONS.consignados = () => {
               </div>
               <span class="badge badge-${c.ativo?'ok':'gray'}">${c.ativo?'Ativo':'Inativo'}</span>
             </div>
-            <div style="padding:10px 14px 0">
+            ${c.casa?'<div style="padding:10px 14px 0;font-size:12px;color:var(--cinza-med)">Peças que voltaram dos parceiros. Dá para levar para outro ponto ou marcar que vendeu/usou.</div>':''}
+            <div style="padding:10px 14px 0;${c.casa?'display:none':''}">
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px">
                 <div style="background:var(--cinza-ultra);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--cinza-med)">Peças lá</div><div style="font-size:18px;font-weight:900;color:var(--txt-azul)">${pecas}</div></div>
                 <div style="background:var(--laranja-claro);border-radius:6px;padding:8px;text-align:center"><div style="font-size:10px;color:var(--txt-laranja)">Custo parado</div><div style="font-size:13px;font-weight:800;color:var(--txt-laranja)">${R$(custoParado)}</div></div>
@@ -7627,6 +7836,7 @@ SECTIONS.consignados = () => {
                 <div style="background:var(--amarelo-claro,#FFF3D6);border-radius:6px;padding:8px;text-align:center" title="Lucro já realizado do que já vendeu"><div style="font-size:10px;color:var(--txt-amarelo)">Lucro vendido</div><div style="font-size:13px;font-weight:800;color:var(--txt-amarelo)">${R$(lucroVendido)}</div></div>
               </div>
             </div>
+            ${c.casa?'':(()=>{ const r=resumoPontoCSG(c); return r.levou?`<div class="csg-st"><span>📈 Vendeu <strong>${r.vendeu} de ${r.levou}</strong> peças que levou</span><strong>${r.pct.toFixed(0)}%</strong><div class="ve-barra" aria-hidden="true"><i style="width:${Math.max(2,r.pct).toFixed(0)}%"></i></div></div>`:''; })()}
             <div id="csg-det-${c.id}" style="display:${expandido?'':'none'};padding:10px 14px">
               ${(()=>{ const dv=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_devolvida||0),0), pd=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_perdida||0),0); return dv||pd?`<div style="font-size:11px;margin-bottom:6px;color:var(--cinza-med)">${dv?`↩️ Voltaram ${dv} peça${dv>1?'s':''}`:''}${dv&&pd?' · ':''}${pd?`⚠️ Perdidas ${pd} (prejuízo seu)`:''}</div>`:''; })()}
               <div style="font-size:10px;color:var(--cinza-med);margin-bottom:8px">📍 ${c.endereco||'Endereço não informado'}${repassado>0?` · Repassado até agora: <strong>${R$(repassado)}</strong>`:''}</div>
@@ -7641,7 +7851,7 @@ SECTIONS.consignados = () => {
                 const dataEntregaIt=it.data_entrega||(c.criado_em?String(c.criado_em).slice(0,10):null);
                 const diasParado=dataEntregaIt?Math.floor((Date.now()-new Date(dataEntregaIt+'T00:00:00').getTime())/86400000):null;
                 const paradoTxt=diasParado===null?null:diasParado<=0?'chegou hoje':diasParado===1?'há 1 dia':`há ${diasParado} dias`;
-                const paradoAlerta=diasParado!==null&&diasParado>=30;
+                const paradoAlerta=!c.casa&&diasParado!==null&&diasParado>=30;
                 return`
                 <div style="padding:7px 0;border-bottom:1px solid var(--cinza-claro);font-size:12px">
                   <div style="display:flex;align-items:center;gap:8px">
@@ -7649,7 +7859,7 @@ SECTIONS.consignados = () => {
                     <button onclick="editarItemCSG('${c.id}',${idx})" style="background:var(--azul-claro);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">✏️</button>
                     <button onclick="excluirItemCSG('${c.id}',${idx})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">🗑️</button>
                   </div>
-                  <div class="csg-situacao">Levou ${it.qtd_inicial} · vendeu ${qtdVendidaCSG(it)}${(+it.qtd_devolvida||0)?` · <span class="dev">voltou ${it.qtd_devolvida}</span>`:''}${(+it.qtd_perdida||0)?` · <span class="perd">perdeu ${it.qtd_perdida}</span>`:''}</div>
+                  <div class="csg-situacao">Levou ${it.qtd_inicial} · vendeu ${qtdVendidaCSG(it)}${(+it.qtd_devolvida||0)?` · <span class="dev">voltou ${it.qtd_devolvida}</span>`:''}${(+it.qtd_perdida||0)?` · <span class="perd">perdeu ${it.qtd_perdida}</span>`:''}${(+it.qtd_transferida||0)?` · levou p/ outro ponto ${it.qtd_transferida}`:''}${(+it.qtd_usada||0)?` · vendeu/usou ${it.qtd_usada}`:''}${it.veio_de?` · <span title="Peça já pronta">veio de ${escHtml(it.veio_de)}</span>`:''}</div>
                   <div style="font-size:10.5px;color:var(--cinza-med);margin:3px 0">Repasse: <strong style="color:var(--cinza-escuro)">${R$(it.preco)}</strong> · Custo: ${R$(custo)} · Lucro/un: <strong style="color:${lucroUn>=0?'var(--txt-verde)':'var(--txt-vermelho)'}">${R$(lucroUn)} (${margemPct.toFixed(0)}%)</strong></div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <div style="display:flex;align-items:center;gap:5px">
@@ -7682,12 +7892,15 @@ SECTIONS.consignados = () => {
               ${(c.visitas||[]).length>0?`<button onclick="verHistoricoVisitas('${c.id}')" style="margin-top:8px;background:var(--roxo-claro);border:none;color:var(--txt-roxo);font-weight:700;border-radius:5px;padding:6px 10px;font-size:11.5px;cursor:pointer;width:100%">📋 Ver histórico de visitas (${(c.visitas||[]).length})</button>`:''}
             </div>
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:6px;flex-wrap:wrap">
+              ${c.casa?`<button class="btn btn-primary btn-sm" onclick="movimentarCSG('${c.id}','transferir')" style="flex:1">🤝 Levar para um ponto</button>
+              <button class="btn btn-outline btn-sm" onclick="movimentarCSG('${c.id}','usado')" style="flex:1">🛒 Vendi ou usei</button>`:`
               <button class="btn btn-primary btn-sm" onclick="regVisita('${c.id}')" style="flex:1">📝 Visita</button>
               <button class="btn btn-warning btn-sm" onclick="regVendaRemota('${c.id}')" style="flex:1" title="Parceiro vendeu sem você estar lá e te repassou por PIX">💸 Venda Remota</button>
               <button class="btn btn-outline btn-sm" onclick="movimentarCSG('${c.id}','devolucao')" style="flex:1" title="Peças que voltaram, sumiram ou quebraram">↩️ Devolução / perda</button>
               <button class="btn btn-success btn-sm" onclick="addItemCSG('${c.id}')" style="flex:1">+ Item</button>
               <button class="btn btn-outline btn-sm" onclick="editCSG('${c.id}')">✏️</button>
-              <button class="btn btn-outline btn-sm" onclick="wppCSG('${c.id}')">💬</button>
+              <button class="btn btn-outline btn-sm" onclick="wppCSG('${c.id}')" aria-label="Relatório no WhatsApp">💬</button>
+              <button class="btn btn-outline btn-sm" onclick="termoCSG('${c.id}')" title="Termo de consignação para o parceiro confirmar">📄 Termo</button>`}
             </div>
           </div>`;}).join('')}
       </div>`}
@@ -7786,10 +7999,11 @@ function abrirFormCSG(editId=null){
       <div class="form-group"><label class="form-label">Telefone/WhatsApp</label><input class="form-input" id="cg-tel" value="${c.telefone||''}"></div>
       <div class="form-group full"><label class="form-label">Endereço</label><input class="form-input" id="cg-end" value="${c.endereco||''}"></div>
       <div class="form-group full"><label class="form-label">Observações</label><textarea class="form-textarea" id="cg-obs">${c.obs||''}</textarea></div>
+      ${editId&&pontosCSG().some(p=>p.id!==editId)?`<div class="form-group full csg-juntar"><label class="form-label" for="cg-juntar">Juntar outro ponto neste</label><div style="display:flex;gap:6px;flex-wrap:wrap"><select class="form-select" id="cg-juntar" style="flex:1;min-width:0"><option value="">Escolha...</option>${ordNome(pontosCSG().filter(p=>p.id!==editId)).map(p=>`<option value="${p.id}">${escHtml(p.nome)} (${p.id})</option>`).join('')}</select><button type="button" class="btn btn-outline" onclick="juntarCSGUI('${editId}')">🔗 Juntar</button></div><span style="font-size:11.5px;color:var(--cinza-med)">Use quando o mesmo parceiro está cadastrado mais de uma vez. As peças e o histórico vêm para cá, cada entrega com a sua data.</span></div>`:''}
       <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="cg-at"><option value="1" ${c.ativo?'selected':''}>Ativo</option><option value="0" ${!c.ativo?'selected':''}>Inativo</option></select></div>
     </div>`,
     async()=>{
-      const obj={id:editId||nextId(DB.consignados,'CSG'),nome:document.getElementById('cg-nome').value.trim(),responsavel:document.getElementById('cg-resp').value.trim(),telefone:document.getElementById('cg-tel').value.trim(),endereco:document.getElementById('cg-end').value.trim(),obs:document.getElementById('cg-obs').value.trim(),ativo:document.getElementById('cg-at').value==='1',itens:editId?c.itens||[]:[],visitas:editId?c.visitas||[]:[],criado_em:editId?c.criado_em:new Date().toISOString()};
+      const obj={...(editId?getItem(DB.consignados,editId):{}),id:editId||nextId(DB.consignados,'CSG'),nome:document.getElementById('cg-nome').value.trim(),responsavel:document.getElementById('cg-resp').value.trim(),telefone:document.getElementById('cg-tel').value.trim(),endereco:document.getElementById('cg-end').value.trim(),obs:document.getElementById('cg-obs').value.trim(),ativo:document.getElementById('cg-at').value==='1',itens:editId?c.itens||[]:[],visitas:editId?c.visitas||[]:[],criado_em:editId?c.criado_em:new Date().toISOString()};
       if(!obj.nome){toast('Informe o nome','error');return;}
       await salvarItem('consignados',obj);
       toast(editId?'Atualizado!':'Cadastrado!');closeModal();render('consignados');
@@ -7874,7 +8088,7 @@ function resumoItensVendidos(v){
 function verHistoricoVisitas(consigId){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const vs=[...(c.visitas||[])].map((v,i)=>({...v,_idxOriginal:i})).reverse(); // mais recente primeiro
-  const CORES_TIPO={venda:'var(--txt-verde)','venda+repasse':'var(--txt-roxo)',repasse:'var(--txt-azul)',visita:'var(--cinza-med)',devolucao:'var(--txt-azul)',perda:'var(--txt-vermelho)',perda_cobrada:'var(--txt-laranja)'};
+  const CORES_TIPO={venda:'var(--txt-verde)','venda+repasse':'var(--txt-roxo)',repasse:'var(--txt-azul)',visita:'var(--cinza-med)',devolucao:'var(--txt-azul)',perda:'var(--txt-vermelho)',perda_cobrada:'var(--txt-laranja)',transferencia:'var(--txt-azul)',usado:'var(--cinza-med)'};
   openModal(`📋 Histórico de Visitas — ${c.nome}`,
     `<div class="tbl-wrap"><table>
       <thead><tr><th>Data</th><th>Tipo</th><th>O que foi vendido</th><th class="text-center">Vendido</th><th class="text-center">Recebido</th><th></th></tr></thead>
@@ -7885,12 +8099,12 @@ function verHistoricoVisitas(consigId){
         // como "Visita (sem venda)", o que é literalmente falso e confuso.
         const houveVenda=(+v.valor_vendido||0)>0.004;
         const tipo=v.tipo||(houveVenda?'venda':'visita');
-        const tipoLabel={'venda':'💰 Venda','repasse':'🏦 Repasse','venda+repasse':'💰🏦 Venda+Repasse','visita':'📝 Visita (sem venda)','devolucao':'↩️ Devolução','perda':'⚠️ Perda (sua)','perda_cobrada':'⚠️ Perda (parceiro paga)'}[tipo]||'📝 Visita';
+        const tipoLabel={'venda':'💰 Venda','repasse':'🏦 Repasse','venda+repasse':'💰🏦 Venda+Repasse','visita':'📝 Visita (sem venda)','devolucao':'↩️ Devolução','perda':'⚠️ Perda (sua)','perda_cobrada':'⚠️ Perda (parceiro paga)','transferencia':'🤝 Levada para outro ponto','usado':'🛒 Vendi ou usei'}[tipo]||'📝 Visita';
         const cor=CORES_TIPO[tipo]||'var(--cinza-med)';
-        const itensTxt=resumoItensVendidos(v)||resumoItensVendidos({itens_vendidos:v.itens_devolvidos||v.itens_perdidos});
+        const itensTxt=(resumoItensVendidos(v)||resumoItensVendidos({itens_vendidos:v.itens_devolvidos||v.itens_perdidos||v.itens_transferidos||v.itens_usados}))+(v.destino_nome?' → '+escHtml(v.destino_nome):'');
         return `<tr style="border-left:3px solid ${cor}">
           <td>${formatarDataBR(v.data)}</td>
-          <td style="font-size:11px;color:${cor};font-weight:600">${tipoLabel}${v.itens_vendidos?.length||v.itens_devolvidos?.length||v.itens_perdidos?.length||!houveVenda?'':' <span style="color:var(--cinza-med);font-weight:400">(estimado)</span>'}</td>
+          <td style="font-size:11px;color:${cor};font-weight:600">${tipoLabel}${v.itens_vendidos?.length||v.itens_devolvidos?.length||v.itens_perdidos?.length||v.itens_transferidos?.length||v.itens_usados?.length||!houveVenda?'':' <span style="color:var(--cinza-med);font-weight:400">(estimado)</span>'}</td>
           <td style="font-size:12px">${itensTxt||'<span style="color:var(--cinza-med)">— sem detalhe (visita antiga ou só repasse)</span>'}</td>
           <td class="text-center">${R$(v.valor_vendido||0)}</td>
           <td class="text-center">${R$(v.valor_recebido||0)}</td>
@@ -7929,19 +8143,6 @@ function editarVisita(consigId,idx){
       setTimeout(()=>verHistoricoVisitas(consigId),200);
     },'💾 Salvar');
 }
-// Registros feitos pela janela de movimento guardam a linha (idx): excluir devolve as peças.
-function desfazerMovimentoCSG(c,v){
-  const volta=(lista,campo)=>(lista||[]).forEach(l=>{
-    if(l.idx==null) return;
-    const it=c.itens[l.idx]&&c.itens[l.idx].prod===l.prod?c.itens[l.idx]:(c.itens||[]).find(i=>i.prod===l.prod&&(i.variante||'')===(l.variante||''));
-    if(!it) return;
-    it.qtd_atual=Math.min(+it.qtd_inicial||0,(+it.qtd_atual||0)+(+l.qtd||0));
-    if(campo) it[campo]=Math.max(0,(+it[campo]||0)-(+l.qtd||0));
-  });
-  if(v.tipo==='devolucao') volta(v.itens_devolvidos,'qtd_devolvida');
-  else if(v.tipo==='perda') volta(v.itens_perdidos,'qtd_perdida');
-  else volta(v.itens_vendidos,null);
-}
 async function excluirVisita(consigId,idx){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const v=c.visitas?.[idx];if(!v)return;
@@ -7950,7 +8151,9 @@ async function excluirVisita(consigId,idx){
      <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">Vendido: ${R$(v.valor_vendido||0)} · Recebido: ${R$(v.valor_recebido||0)}</p>
      <p style="font-size:11.5px;color:var(--txt-vermelho);margin-top:8px">⚠️ Isso NÃO devolve peças pro estoque em loja — se precisar corrigir a quantidade, use os botões +/- do produto depois.</p>`,
     async()=>{
-      desfazerMovimentoCSG(c,v);
+      const dz=desfazerMovimentoCSG(c,v);
+      if(!dz.ok){ toast(dz.msg,'error'); return; }
+      if(dz.dest) await salvarItem('consignados',dz.dest);
       c.visitas.splice(idx,1);
       await salvarItem('consignados',c);
       toast('Visita excluída!');closeModal();
