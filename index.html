@@ -456,7 +456,7 @@ details.panel[open]>summary .panel-title::before{content:'▾ '}
   .tbl-cards tbody td{display:block;padding:0}
   .tbl-cards tbody td[colspan]{grid-column:1/-1}
   .tbl-cards td[data-label]::before{content:attr(data-label);display:block;font-size:10px;font-weight:600;color:var(--cinza-med);margin-bottom:1px}
-  .tbl-cards .pc-id{grid-column:span 2;order:1;font-size:14px}
+  .tbl-cards .pc-id{grid-column:1/-1;order:1;font-size:14px}
   .tbl-cards .pc-status{order:2;text-align:right}
   .tbl-cards .pc-status::before{display:none!important}
   .tbl-cards .pc-cliente{grid-column:1/-1;order:3;font-size:14px}
@@ -472,7 +472,7 @@ details.panel[open]>summary .panel-title::before{content:'▾ '}
   .tbl-cards .etapa-sel{min-height:38px;text-transform:none;letter-spacing:0;max-width:100%}
   .tbl-cards .etapa-wrap{max-width:100%}
   #ped-lista-corpo .pc-id{grid-column:span 1}
-  #ped-lista-corpo .pc-status{grid-column:span 2}
+  #ped-lista-corpo .pc-status{grid-column:1/-1}
 }
 /* FORMULÁRIO DO PEDIDO — no celular cada item vira um bloco, sem rolagem lateral */
 @media(max-width:640px){
@@ -632,6 +632,26 @@ body.tema-escuro .saida-para button.ativo{background:var(--cinza-claro)}
 @media(max-width:560px){.pof{padding:10px 12px 14px}.pof-resumo strong{font-size:14px}}
 .fichas-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px;align-items:start}
 @media(max-width:768px){.fichas-layout{grid-template-columns:minmax(0,1fr)}}
+.csg-tipos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.csg-tipos button{border:1.5px solid var(--cinza-claro);background:var(--bg-input);color:var(--cinza-escuro);border-radius:10px;padding:10px 6px;font:inherit;font-weight:700;font-size:13px;cursor:pointer;min-height:48px}
+.csg-tipos button.ativo{border-color:var(--azul-claro);background:var(--azul-tint);box-shadow:inset 0 0 0 1px var(--azul-claro)}
+body.tema-escuro .csg-tipos button.ativo{background:var(--cinza-claro)}
+.csg-mov-lista{margin-top:12px;border-top:1px solid var(--cinza-claro)}
+.csg-mov-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--cinza-claro)}
+.csg-mov-nome{display:flex;flex-direction:column;min-width:0;font-size:13px}
+.csg-mov-nome span{font-size:11.5px;color:var(--cinza-med)}
+.csg-mov-qtd{display:flex;align-items:center;gap:4px;flex:none}
+.csg-mov-qtd button{width:36px;height:36px;border-radius:8px;border:1.5px solid var(--cinza-claro);background:var(--bg-input);color:var(--cinza-escuro);font-size:18px;font-weight:700;cursor:pointer}
+.csg-mov-qtd input{width:52px;height:36px;text-align:center;font-size:16px;font-weight:700;border:1.5px solid var(--cinza-claro);border-radius:8px;background:var(--bg-input);color:var(--cinza-escuro)}
+.csg-mov-resumo{background:var(--cinza-ultra);border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.5;margin-top:4px}
+.csg-situacao{font-size:10.5px;color:var(--cinza-med);margin-top:2px}
+.csg-situacao .dev{color:var(--txt-azul);font-weight:700}
+.csg-situacao .perd{color:var(--txt-vermelho);font-weight:700}
+.vis-campos{display:flex;gap:6px}
+.vis-campos label{display:flex;flex-direction:column;align-items:center;font-size:10px;color:var(--cinza-med);gap:2px}
+.vis-campos input{width:54px;padding:6px;border:1.5px solid var(--cinza-claro);border-radius:5px;font-size:15px;font-weight:700;text-align:center;background:var(--bg-input);color:var(--cinza-escuro)}
+.vis-campos input.vis-restou{border-color:var(--verde-med)}
+@media(max-width:420px){.csg-tipos button{font-size:12px;padding:8px 4px}}
 </style>
 <!-- Login com Google (Fase 2) — só é usado se GOOGLE_CLIENT_ID for configurado
      no bloco de JavaScript principal mais abaixo. Carregar essa biblioteca
@@ -1723,7 +1743,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026111103;
+const VERSAO_APP=2026111104;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -6629,7 +6649,9 @@ function despesasVariaveisNoPeriodo(ini,fim){
   DB.pedidos.forEach(p=>(p.entradas||[]).forEach(e=>{ if(dentro(e.data||p.data)) taxas+=(+e.taxa||0); }));
   DB.compras.filter(c=>c.status==='Pago'&&dentro(c.data)&&(c.tipo==='despesa'||(!c.tipo&&!c.materia_prima_id))).forEach(c=>avulsas+=(+c.qtd||0)*(+c.custo||0));
   DB.apagar.filter(x=>!x.custo_fixo_id&&(+x.pago||0)>0&&dentro(x.pago_em||x.venc||x.data)).forEach(x=>contas+=(+x.pago||0));
-  return {taxas,avulsas,contas,total:taxas+avulsas+contas};
+  let perdas=0;
+  DB.consignados.forEach(c=>(c.visitas||[]).filter(v=>v.tipo==='perda'&&dentro(v.data)).forEach(v=>(v.itens_perdidos||[]).forEach(l=>perdas+=(+l.qtd||0)*(+l.custo_snapshot||0))));
+  return {taxas,avulsas,contas,perdas,total:taxas+avulsas+contas+perdas};
 }
 SECTIONS.dre = () => {
   const per=getPeriodoAtual(_drePeriodo,_dreCustomIni,_dreCustomFim);
@@ -6662,6 +6684,7 @@ SECTIONS.dre = () => {
       ${dv.taxas?`<div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Taxas do Mercado Pago</span><span>${R$(dv.taxas)}</span></div>`:''}
       ${dv.avulsas?`<div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Despesas avulsas (saídas da loja)</span><span>${R$(dv.avulsas)}</span></div>`:''}
       ${dv.contas?`<div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Contas avulsas (A Pagar)</span><span>${R$(dv.contas)}</span></div>`:''}
+      ${dv.perdas?`<div class="dre-row"><span style="padding-left:20px;color:var(--cinza-med)">Peças perdidas em consignado</span><span>${R$(dv.perdas)}</span></div>`:''}
       <div class="dre-row lucro"><span>💰 LUCRO LÍQUIDO</span><span>${R$(ll)}</span></div>
     </div>
   </div>`;
@@ -7403,6 +7426,104 @@ function wppKit(kitId){
 // com muitos parceiros deixar tudo aberto de cara vira bagunça. Guarda no
 // localStorage pra lembrar da preferência entre uma visita e outra.
 let _csgExpandidos = new Set(JSON.parse(localStorage.getItem('morfe_csg_expandidos') || '[]'));
+// Cada peça entregue termina em um destes: ainda lá, vendida, voltou para você ou se perdeu.
+// (Perda que o parceiro paga conta como vendida: ele te deve o repasse.)
+function qtdVendidaCSG(it){ return Math.max(0,(+it.qtd_inicial||0)-(+it.qtd_atual||0)-(+it.qtd_devolvida||0)-(+it.qtd_perdida||0)); }
+const MOTIVOS_PERDA_CSG={sumiu:'🔍 Sumiu / extraviou',quebrou:'💔 Quebrou / estragou',defeito:'🛠️ Defeito de fabricação'};
+function nomeItemCSG(it){ return escHtml(nomeProd(it.prod)||it.prod)+(it.variante?' 🔀 '+escHtml(it.variante):''); }
+// Registra o que aconteceu com peças de um ponto (venda, devolução ou perda) e guarda no histórico.
+// mov: [{idx,qtd}] · tipo: 'venda' | 'devolucao' | 'perda' · quem (perda): 'parceiro' | 'eu'
+function aplicarMovimentoCSG(c,mov,tipo,{data,obs,recebido=0,motivo='',quem='parceiro'}={}){
+  const linhas=[];
+  for(const {idx,qtd} of mov){
+    const it=c.itens[idx]; if(!it||!(qtd>0)) continue;
+    if(qtd>(+it.qtd_atual||0)) throw new Error(`${nomeProd(it.prod)}: só tem ${it.qtd_atual} lá`);
+    it.qtd_atual=(+it.qtd_atual||0)-qtd;
+    const base={idx,prod:it.prod,variante:it.variante||'',qtd,preco_repasse:+it.preco||0,custo_snapshot:custoItemPedidoAoVivo({prod:it.prod})};
+    if(tipo==='devolucao') it.qtd_devolvida=(+it.qtd_devolvida||0)+qtd;
+    if(tipo==='perda'&&quem==='eu') it.qtd_perdida=(+it.qtd_perdida||0)+qtd;
+    linhas.push(base);
+  }
+  if(!linhas.length) throw new Error('Informe pelo menos uma peça');
+  const valor=linhas.reduce((s,l)=>s+l.qtd*l.preco_repasse,0);
+  if(!c.visitas) c.visitas=[];
+  const v={data:data||hojeLocalStr(),obs:obs||'',valor_vendido:0,valor_recebido:+recebido||0};
+  if(tipo==='venda'||(tipo==='perda'&&quem==='parceiro')){
+    v.valor_vendido=valor; v.itens_vendidos=linhas.map(l=>tipo==='perda'?{...l,motivo}:l);
+    v.tipo=tipo==='perda'?'perda_cobrada':(v.valor_recebido>0.004?'venda+repasse':'venda');
+  }else if(tipo==='devolucao'){ v.tipo='devolucao'; v.itens_devolvidos=linhas; }
+  else { v.tipo='perda'; v.itens_perdidos=linhas.map(l=>({...l,motivo})); }
+  c.visitas.push(v);
+  return {valor,qtd:linhas.reduce((s,l)=>s+l.qtd,0)};
+}
+// Uma janela só para "saiu do ponto": venda, devolução ou perda — escolhe as peças e quantidades.
+function movimentarCSG(consigId,tipo='devolucao',soIdx=null){
+  const c=getItem(DB.consignados,consigId); if(!c) return;
+  const lista=(c.itens||[]).map((it,idx)=>({it,idx})).filter(x=>(+x.it.qtd_atual||0)>0&&(soIdx===null||x.idx===soIdx));
+  if(!lista.length){ toast('Não tem peça nesse ponto','error'); return; }
+  openModal(`📦 O que aconteceu com as peças — ${escHtml(c.nome)}`,`
+    <div class="csg-mov">
+      <div class="csg-tipos" role="group" aria-label="O que aconteceu">
+        ${[['venda','💰 Vendeu'],['devolucao','↩️ Voltou para mim'],['perda','⚠️ Sumiu ou quebrou']].map(([k,l])=>`<button type="button" data-tipo="${k}" class="${tipo===k?'ativo':''}" aria-pressed="${tipo===k}" onclick="tipoMovCSG('${k}')">${l}</button>`).join('')}
+      </div>
+      <div id="csg-mov-perda" class="form-grid" style="display:${tipo==='perda'?'grid':'none'};margin-top:10px">
+        <div class="form-group"><label class="form-label">O que houve?</label><select class="form-select" id="mv-motivo">${Object.entries(MOTIVOS_PERDA_CSG).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="form-label">Quem paga?</label><select class="form-select" id="mv-quem" onchange="atualizarMovCSG()"><option value="parceiro">🏪 O parceiro (cobro o repasse)</option><option value="eu">👤 Eu (prejuízo meu)</option></select></div>
+      </div>
+      <div class="csg-mov-lista">${lista.map(({it,idx})=>`
+        <div class="csg-mov-item">
+          <div class="csg-mov-nome"><strong>${nomeItemCSG(it)}</strong><span>tem ${it.qtd_atual} lá · ${R$(it.preco)}/un</span></div>
+          <div class="csg-mov-qtd">
+            <button type="button" aria-label="Menos" onclick="passoMovCSG(${idx},-1,${it.qtd_atual})">−</button>
+            <input type="number" inputmode="numeric" min="0" max="${it.qtd_atual}" value="${soIdx===idx?1:0}" id="mv-q-${idx}" data-idx="${idx}" data-preco="${+it.preco||0}" data-max="${it.qtd_atual}" oninput="atualizarMovCSG()" aria-label="Quantidade de ${escHtml(nomeProd(it.prod))}">
+            <button type="button" aria-label="Mais" onclick="passoMovCSG(${idx},1,${it.qtd_atual})">+</button>
+          </div>
+        </div>`).join('')}</div>
+      ${lista.length>1?'<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" onclick="document.querySelectorAll(\'.csg-mov-qtd input\').forEach(i=>i.value=i.dataset.max);atualizarMovCSG()">Todas as peças</button>':''}
+      <div class="form-grid" style="margin-top:12px">
+        <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="mv-data" type="date" value="${hojeLocalStr()}"></div>
+        <div class="form-group" id="mv-receb-grupo"><label class="form-label">Já recebeu quanto? (R$)</label><input class="form-input" id="mv-receb" type="number" step="0.01" inputmode="decimal" placeholder="0,00"></div>
+        <div class="form-group full"><label class="form-label">Observação</label><input class="form-input" id="mv-obs" placeholder="Ex.: não teve saída, cliente desistiu..."></div>
+      </div>
+      <div class="csg-mov-resumo" id="mv-resumo"></div>
+    </div>`,()=>salvarMovCSG(consigId),'💾 Registrar');
+  window._movCSG={tipo};
+  atualizarMovCSG();
+}
+function tipoMovCSG(tipo){
+  window._movCSG={tipo};
+  document.querySelectorAll('.csg-tipos button').forEach(b=>{ const a=b.dataset.tipo===tipo; b.classList.toggle('ativo',a); b.setAttribute('aria-pressed',a); });
+  document.getElementById('csg-mov-perda').style.display=tipo==='perda'?'grid':'none';
+  atualizarMovCSG();
+}
+function passoMovCSG(idx,d,max){ const i=document.getElementById('mv-q-'+idx); if(!i) return; i.value=Math.min(max,Math.max(0,(parseInt(i.value)||0)+d)); atualizarMovCSG(); }
+function atualizarMovCSG(){
+  const tipo=window._movCSG?.tipo||'devolucao', quem=document.getElementById('mv-quem')?.value||'parceiro';
+  let qtd=0, valor=0;
+  document.querySelectorAll('.csg-mov-qtd input').forEach(i=>{ const q=Math.min(+i.dataset.max,Math.max(0,parseInt(i.value)||0)); qtd+=q; valor+=q*(+i.dataset.preco||0); });
+  const cobra=tipo==='venda'||(tipo==='perda'&&quem==='parceiro');
+  const g=document.getElementById('mv-receb-grupo'); if(g) g.style.display=cobra?'flex':'none';
+  const r=document.getElementById('mv-resumo'); if(!r) return;
+  const pc=qtd===1?'1 peça':qtd+' peças';
+  r.innerHTML=!qtd?'Escolha a quantidade de cada peça.'
+    :tipo==='venda'?`💰 ${pc} vendida${qtd>1?'s':''}: o parceiro te deve <strong>${R$(valor)}</strong> de repasse.`
+    :tipo==='devolucao'?`↩️ ${pc} volta${qtd>1?'m':''} para você. <strong>Não conta como venda</strong> e o parceiro não te deve nada por elas.`
+    :quem==='parceiro'?`⚠️ ${pc} perdida${qtd>1?'s':''} com o parceiro: ele te deve <strong>${R$(valor)}</strong> (preço de repasse).`
+    :`⚠️ ${pc} perdida${qtd>1?'s':''}, prejuízo seu: entra como despesa no lucro pelo custo de produção.`;
+}
+async function salvarMovCSG(consigId){
+  const c=getItem(DB.consignados,consigId); if(!c) return;
+  const tipo=window._movCSG?.tipo||'devolucao';
+  const mov=[...document.querySelectorAll('.csg-mov-qtd input')].map(i=>({idx:+i.dataset.idx,qtd:Math.max(0,parseInt(i.value)||0)})).filter(m=>m.qtd>0);
+  const quem=document.getElementById('mv-quem')?.value||'parceiro', motivo=document.getElementById('mv-motivo')?.value||'';
+  const cobra=tipo==='venda'||(tipo==='perda'&&quem==='parceiro');
+  let r;
+  try{ r=aplicarMovimentoCSG(c,mov,tipo,{data:document.getElementById('mv-data').value,obs:document.getElementById('mv-obs').value.trim(),recebido:cobra?parseFloat(document.getElementById('mv-receb').value)||0:0,motivo,quem}); }
+  catch(e){ toast(e.message,'error'); return; }
+  await salvarItem('consignados',c);
+  toast(tipo==='venda'?`Venda registrada: ${r.qtd} peça(s) · ${R$(r.valor)}`:tipo==='devolucao'?`Devolução registrada: ${r.qtd} peça(s) voltaram`:quem==='parceiro'?`Perda registrada: parceiro te deve ${R$(r.valor)}`:`Perda registrada: ${r.qtd} peça(s), prejuízo seu`);
+  closeModal(); render('consignados');
+}
 function toggleCSGDetalhes(id){
   if(_csgExpandidos.has(id)) _csgExpandidos.delete(id); else _csgExpandidos.add(id);
   localStorage.setItem('morfe_csg_expandidos', JSON.stringify([..._csgExpandidos]));
@@ -7421,10 +7542,10 @@ SECTIONS.consignados = () => {
   const totalPecas=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0),s),0);
   const totalCusto=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),s),0);
   const totalValor=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+(+i.qtd_atual||0)*(+i.preco||0),s),0);
-  const totalVendido=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),s),0);
+  const totalVendido=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>ss+qtdVendidaCSG(i)*(+i.preco||0),s),0);
   const totalLucro=DB.consignados.reduce((s,c)=>(c.itens||[]).reduce((ss,i)=>{
     const custo=+(getProd(i.prod)?.custo)||0; const lucroUn=(+i.preco||0)-custo;
-    return ss+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*lucroUn;
+    return ss+qtdVendidaCSG(i)*lucroUn;
   },s),0);
   const totalLucroParado=totalValor-totalCusto;
   return`
@@ -7443,8 +7564,8 @@ SECTIONS.consignados = () => {
   ${(()=>{
     if(DB.consignados.length<2) return '';
     const ranking=DB.consignados.map(c=>{
-      const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
-      const lucro=(c.itens||[]).reduce((s,i)=>{const custo=+(getProd(i.prod)?.custo)||0;return s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*((+i.preco||0)-custo);},0);
+      const vendido=(c.itens||[]).reduce((s,i)=>s+qtdVendidaCSG(i)*(+i.preco||0),0);
+      const lucro=(c.itens||[]).reduce((s,i)=>{const custo=+(getProd(i.prod)?.custo)||0;return s+qtdVendidaCSG(i)*((+i.preco||0)-custo);},0);
       return {c,vendido,lucro};
     }).sort((a,b)=>b.vendido-a.vendido);
     const maiorVendido=Math.max(...ranking.map(r=>r.vendido),1);
@@ -7479,8 +7600,8 @@ SECTIONS.consignados = () => {
           const pecas=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0),0);
           const custoParado=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+(getProd(i.prod)?.custo)||0),0);
           const valor=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_atual||0)*(+i.preco||0),0);
-          const vendido=(c.itens||[]).reduce((s,i)=>s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*(+i.preco||0),0);
-          const lucroVendido=(c.itens||[]).reduce((s,i)=>{const custoU=+(getProd(i.prod)?.custo)||0;return s+((+i.qtd_inicial||0)-(+i.qtd_atual||0))*((+i.preco||0)-custoU);},0);
+          const vendido=(c.itens||[]).reduce((s,i)=>s+qtdVendidaCSG(i)*(+i.preco||0),0);
+          const lucroVendido=(c.itens||[]).reduce((s,i)=>{const custoU=+(getProd(i.prod)?.custo)||0;return s+qtdVendidaCSG(i)*((+i.preco||0)-custoU);},0);
           const lucroParado=valor-custoParado; // quanto ainda pode lucrar do que está lá, se vender tudo
           const repassado=(c.visitas||[]).reduce((s,v)=>s+(+v.valor_recebido||0),0);
           const ultVis=(c.visitas||[]).slice(-1)[0];
@@ -7507,6 +7628,7 @@ SECTIONS.consignados = () => {
               </div>
             </div>
             <div id="csg-det-${c.id}" style="display:${expandido?'':'none'};padding:10px 14px">
+              ${(()=>{ const dv=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_devolvida||0),0), pd=(c.itens||[]).reduce((s,i)=>s+(+i.qtd_perdida||0),0); return dv||pd?`<div style="font-size:11px;margin-bottom:6px;color:var(--cinza-med)">${dv?`↩️ Voltaram ${dv} peça${dv>1?'s':''}`:''}${dv&&pd?' · ':''}${pd?`⚠️ Perdidas ${pd} (prejuízo seu)`:''}</div>`:''; })()}
               <div style="font-size:10px;color:var(--cinza-med);margin-bottom:8px">📍 ${c.endereco||'Endereço não informado'}${repassado>0?` · Repassado até agora: <strong>${R$(repassado)}</strong>`:''}</div>
               <div style="font-size:10px;font-weight:700;color:var(--cinza-med);text-transform:uppercase;margin-bottom:4px">Produtos na loja</div>
               ${(c.itens||[]).length===0?`<div style="font-size:12px;color:var(--cinza-med);padding:8px 0">Nenhum produto entregue ainda.</div>`:
@@ -7527,10 +7649,11 @@ SECTIONS.consignados = () => {
                     <button onclick="editarItemCSG('${c.id}',${idx})" style="background:var(--azul-claro);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">✏️</button>
                     <button onclick="excluirItemCSG('${c.id}',${idx})" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:11px">🗑️</button>
                   </div>
+                  <div class="csg-situacao">Levou ${it.qtd_inicial} · vendeu ${qtdVendidaCSG(it)}${(+it.qtd_devolvida||0)?` · <span class="dev">voltou ${it.qtd_devolvida}</span>`:''}${(+it.qtd_perdida||0)?` · <span class="perd">perdeu ${it.qtd_perdida}</span>`:''}</div>
                   <div style="font-size:10.5px;color:var(--cinza-med);margin:3px 0">Repasse: <strong style="color:var(--cinza-escuro)">${R$(it.preco)}</strong> · Custo: ${R$(custo)} · Lucro/un: <strong style="color:${lucroUn>=0?'var(--txt-verde)':'var(--txt-vermelho)'}">${R$(lucroUn)} (${margemPct.toFixed(0)}%)</strong></div>
                   <div style="display:flex;align-items:center;gap:8px">
                     <div style="display:flex;align-items:center;gap:5px">
-                      <button onclick="ajustCSG('${c.id}',${idx},-1)" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:14px;font-weight:700">−</button>
+                      <button onclick="movimentarCSG('${c.id}','venda',${idx})" title="Saiu 1 peça: vendeu, voltou ou se perdeu" aria-label="Saiu peça de ${escHtml(nomeProd(it.prod))}" style="background:var(--vermelho);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:14px;font-weight:700">−</button>
                       <span style="font-weight:900;font-size:14px;min-width:24px;text-align:center;color:${it.qtd_atual===0?'var(--txt-vermelho)':it.qtd_atual<=2?'var(--txt-amarelo)':'var(--txt-verde)'}">${it.qtd_atual}</span>
                       <button onclick="ajustCSG('${c.id}',${idx},1)" style="background:var(--verde-med);color:white;border:none;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:14px;font-weight:700">+</button>
                       <span style="font-size:10px;color:var(--cinza-med)">/${it.qtd_inicial}</span>
@@ -7561,6 +7684,7 @@ SECTIONS.consignados = () => {
             <div style="padding:10px 14px;border-top:1px solid var(--cinza-claro);display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-primary btn-sm" onclick="regVisita('${c.id}')" style="flex:1">📝 Visita</button>
               <button class="btn btn-warning btn-sm" onclick="regVendaRemota('${c.id}')" style="flex:1" title="Parceiro vendeu sem você estar lá e te repassou por PIX">💸 Venda Remota</button>
+              <button class="btn btn-outline btn-sm" onclick="movimentarCSG('${c.id}','devolucao')" style="flex:1" title="Peças que voltaram, sumiram ou quebraram">↩️ Devolução / perda</button>
               <button class="btn btn-success btn-sm" onclick="addItemCSG('${c.id}')" style="flex:1">+ Item</button>
               <button class="btn btn-outline btn-sm" onclick="editCSG('${c.id}')">✏️</button>
               <button class="btn btn-outline btn-sm" onclick="wppCSG('${c.id}')">💬</button>
@@ -7610,7 +7734,7 @@ function editarItemCSG(consigId, idx){
       const avisoFalta=verificarEstoqueInsuficiente(novoConsumo);
       if(Object.keys(novoConsumo).length>0) await aplicarBaixaEstoque(novoConsumo);
 
-      c.itens[idx]={prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI, jaProduzida:novaJaProduzida, arte:novaArte, consumo_insumos:novoConsumo, data_entrega:it.data_entrega};
+      c.itens[idx]={...it, prod:novoProd, variante:novaVariante, preco:novoPreco, qtd_atual:novaQA, qtd_inicial:novaQI, jaProduzida:novaJaProduzida, arte:novaArte, consumo_insumos:novoConsumo, data_entrega:it.data_entrega};
       await salvarItem('consignados', c);
       if(avisoFalta.length>0) toast('⚠️ Item atualizado, mas estoque insuficiente: '+avisoFalta.join(', '),'error');
       else toast('Item atualizado!');
@@ -7682,7 +7806,7 @@ function addItemCSG(consigId){
       <div class="form-group"><label class="form-label">Preço de Repasse (R$)</label><input class="form-input" id="ci-pr" type="number" step="0.01"><div id="ci-preco-ref" style="font-size:11px;color:var(--cinza-med);margin-top:3px"></div></div>
       <div class="form-group full"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="ci-japronta" style="width:16px;height:16px;cursor:pointer"> 🏭 Essas peças já estavam prontas antes (não abater do estoque)</label></div>
       <div class="form-group full"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="ci-arte" onchange="toggleArteCSG()" style="width:16px;height:16px;cursor:pointer"> 🎨 Teve arte criada do zero pra essa peça (+${R$(+(DB.config?.taxa_arte??5))} no repasse)</label></div>
-      <div style="grid-column:span 2;background:var(--dourado-claro);color:var(--txt-dourado);padding:10px;border-radius:6px;font-size:12px">💡 <strong>Preço de repasse</strong> é o que você cobra do parceiro — geralmente menor que o preço normal, pra ele ter margem pra revender. Ex: você vende a R$35, repassa a R$25.<br>📦 Se não marcar "já estava pronta", isso abate automaticamente o estoque do insumo (se o produto tiver Ficha Técnica configurada).</div>
+      <div style="grid-column:1/-1;background:var(--dourado-claro);color:var(--txt-dourado);padding:10px;border-radius:6px;font-size:12px">💡 <strong>Preço de repasse</strong> é o que você cobra do parceiro — geralmente menor que o preço normal, pra ele ter margem pra revender. Ex: você vende a R$35, repassa a R$25.<br>📦 Se não marcar "já estava pronta", isso abate automaticamente o estoque do insumo (se o produto tiver Ficha Técnica configurada).</div>
     </div>`,
     async()=>{
       const prod=document.getElementById('ci-p_val').value;
@@ -7750,7 +7874,7 @@ function resumoItensVendidos(v){
 function verHistoricoVisitas(consigId){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const vs=[...(c.visitas||[])].map((v,i)=>({...v,_idxOriginal:i})).reverse(); // mais recente primeiro
-  const CORES_TIPO={venda:'var(--txt-verde)','venda+repasse':'var(--txt-roxo)',repasse:'var(--txt-azul)',visita:'var(--cinza-med)'};
+  const CORES_TIPO={venda:'var(--txt-verde)','venda+repasse':'var(--txt-roxo)',repasse:'var(--txt-azul)',visita:'var(--cinza-med)',devolucao:'var(--txt-azul)',perda:'var(--txt-vermelho)',perda_cobrada:'var(--txt-laranja)'};
   openModal(`📋 Histórico de Visitas — ${c.nome}`,
     `<div class="tbl-wrap"><table>
       <thead><tr><th>Data</th><th>Tipo</th><th>O que foi vendido</th><th class="text-center">Vendido</th><th class="text-center">Recebido</th><th></th></tr></thead>
@@ -7761,12 +7885,12 @@ function verHistoricoVisitas(consigId){
         // como "Visita (sem venda)", o que é literalmente falso e confuso.
         const houveVenda=(+v.valor_vendido||0)>0.004;
         const tipo=v.tipo||(houveVenda?'venda':'visita');
-        const tipoLabel={'venda':'💰 Venda','repasse':'🏦 Repasse','venda+repasse':'💰🏦 Venda+Repasse','visita':'📝 Visita (sem venda)'}[tipo]||'📝 Visita';
+        const tipoLabel={'venda':'💰 Venda','repasse':'🏦 Repasse','venda+repasse':'💰🏦 Venda+Repasse','visita':'📝 Visita (sem venda)','devolucao':'↩️ Devolução','perda':'⚠️ Perda (sua)','perda_cobrada':'⚠️ Perda (parceiro paga)'}[tipo]||'📝 Visita';
         const cor=CORES_TIPO[tipo]||'var(--cinza-med)';
-        const itensTxt=resumoItensVendidos(v);
+        const itensTxt=resumoItensVendidos(v)||resumoItensVendidos({itens_vendidos:v.itens_devolvidos||v.itens_perdidos});
         return `<tr style="border-left:3px solid ${cor}">
           <td>${formatarDataBR(v.data)}</td>
-          <td style="font-size:11px;color:${cor};font-weight:600">${tipoLabel}${v.itens_vendidos?.length?'':' <span style="color:var(--cinza-med);font-weight:400">(estimado)</span>'}</td>
+          <td style="font-size:11px;color:${cor};font-weight:600">${tipoLabel}${v.itens_vendidos?.length||v.itens_devolvidos?.length||v.itens_perdidos?.length||!houveVenda?'':' <span style="color:var(--cinza-med);font-weight:400">(estimado)</span>'}</td>
           <td style="font-size:12px">${itensTxt||'<span style="color:var(--cinza-med)">— sem detalhe (visita antiga ou só repasse)</span>'}</td>
           <td class="text-center">${R$(v.valor_vendido||0)}</td>
           <td class="text-center">${R$(v.valor_recebido||0)}</td>
@@ -7777,7 +7901,7 @@ function verHistoricoVisitas(consigId){
         </tr>`;
       }).join('')}</tbody>
     </table></div>
-    <p style="font-size:11px;color:var(--cinza-med);margin-top:10px">⚠️ Editar ou excluir uma visita <strong>não mexe no estoque</strong> em loja automaticamente — ajuste com os botões +/- do produto se precisar.</p>`,
+    <p style="font-size:11px;color:var(--cinza-med);margin-top:10px">Excluir uma <strong>devolução, perda ou venda registrada pela janela "O que aconteceu"</strong> devolve as peças para o ponto. Visitas antigas não mexem nas quantidades — ajuste com o + do produto se precisar.</p>`,
     null, ''); // sem botão de salvar — essa tela é só consulta/exclusão
   document.getElementById('modal-save-btn').style.display='none';
 }
@@ -7805,6 +7929,19 @@ function editarVisita(consigId,idx){
       setTimeout(()=>verHistoricoVisitas(consigId),200);
     },'💾 Salvar');
 }
+// Registros feitos pela janela de movimento guardam a linha (idx): excluir devolve as peças.
+function desfazerMovimentoCSG(c,v){
+  const volta=(lista,campo)=>(lista||[]).forEach(l=>{
+    if(l.idx==null) return;
+    const it=c.itens[l.idx]&&c.itens[l.idx].prod===l.prod?c.itens[l.idx]:(c.itens||[]).find(i=>i.prod===l.prod&&(i.variante||'')===(l.variante||''));
+    if(!it) return;
+    it.qtd_atual=Math.min(+it.qtd_inicial||0,(+it.qtd_atual||0)+(+l.qtd||0));
+    if(campo) it[campo]=Math.max(0,(+it[campo]||0)-(+l.qtd||0));
+  });
+  if(v.tipo==='devolucao') volta(v.itens_devolvidos,'qtd_devolvida');
+  else if(v.tipo==='perda') volta(v.itens_perdidos,'qtd_perdida');
+  else volta(v.itens_vendidos,null);
+}
 async function excluirVisita(consigId,idx){
   const c=getItem(DB.consignados,consigId);if(!c)return;
   const v=c.visitas?.[idx];if(!v)return;
@@ -7813,6 +7950,7 @@ async function excluirVisita(consigId,idx){
      <p style="font-size:12px;color:var(--cinza-med);margin-top:8px">Vendido: ${R$(v.valor_vendido||0)} · Recebido: ${R$(v.valor_recebido||0)}</p>
      <p style="font-size:11.5px;color:var(--txt-vermelho);margin-top:8px">⚠️ Isso NÃO devolve peças pro estoque em loja — se precisar corrigir a quantidade, use os botões +/- do produto depois.</p>`,
     async()=>{
+      desfazerMovimentoCSG(c,v);
       c.visitas.splice(idx,1);
       await salvarItem('consignados',c);
       toast('Visita excluída!');closeModal();
@@ -7910,12 +8048,15 @@ function regVisita(consigId){
         <div class="form-group"><label class="form-label">Valor Recebido (R$)</label><input class="form-input" id="vis-v" type="number" step="0.01" placeholder="0,00"></div>
         <div class="form-group full"><label class="form-label">Atualize a quantidade que restou de cada produto:</label></div>
         ${(c.itens||[]).map((it,idx)=>`
-          <div class="form-group" style="grid-column:span 2">
+          <div class="form-group" style="grid-column:1/-1">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--cinza-ultra);border-radius:6px">
               <div><div style="font-size:13px;font-weight:600">${nomeProd(it.prod)}${it.variante?` <span style="color:var(--txt-dourado)">🔀 ${it.variante}</span>`:''}</div><div style="font-size:11px;color:var(--cinza-med)">Estava: ${it.qtd_atual} · ${R$(it.preco)}/un</div></div>
               <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                <div style="font-size:10px;color:var(--cinza-med)">Qtd que restou</div>
-                <input type="number" min="0" max="${it.qtd_atual}" value="${it.qtd_atual}" id="vis-q-${idx}" style="width:70px;padding:6px;border:1.5px solid var(--verde-med);border-radius:5px;font-size:16px;font-weight:700;text-align:center">
+                <div class="vis-campos">
+                  <label>Restou<input type="number" inputmode="numeric" min="0" max="${it.qtd_atual}" value="${it.qtd_atual}" id="vis-q-${idx}" class="vis-restou"></label>
+                  <label>Voltou<input type="number" inputmode="numeric" min="0" max="${it.qtd_atual}" value="0" id="vis-dv-${idx}"></label>
+                  <label>Perdeu<input type="number" inputmode="numeric" min="0" max="${it.qtd_atual}" value="0" id="vis-pd-${idx}"></label>
+                </div>
                 <div style="font-size:10px;color:var(--txt-verde)">Vendidas: <strong id="vnd-${idx}">0</strong></div>
               </div>
             </div>
@@ -7926,17 +8067,29 @@ function regVisita(consigId){
             <strong>não mexa nas quantidades</strong> — assim não conta venda nova.
           </div>
         </div>
+        <div class="form-group full" id="vis-perda-quem" style="display:none"><label class="form-label">⚠️ Peças perdidas (sumiram ou quebraram): quem paga?</label><select class="form-select" id="vis-quem"><option value="parceiro">🏪 O parceiro (cobro o repasse)</option><option value="eu">👤 Eu (prejuízo meu)</option></select></div>
         <div class="form-group full"><label class="form-label">Observações</label><textarea class="form-textarea" id="vis-obs"></textarea></div>
       </div>
     </div>`,
     async()=>{
       const data=document.getElementById('vis-d').value;
+      // Primeiro o que voltou e o que se perdeu; o resto que saiu é venda.
+      const dev=[], perd=[];
+      for(const [idx,it] of (c.itens||[]).entries()){
+        const antes=+it.qtd_atual||0, rest=Math.max(0,parseInt(document.getElementById('vis-q-'+idx)?.value)||0);
+        const dv=Math.max(0,parseInt(document.getElementById('vis-dv-'+idx)?.value)||0), pd=Math.max(0,parseInt(document.getElementById('vis-pd-'+idx)?.value)||0);
+        if(rest+dv+pd>antes){ toast(`${nomeProd(it.prod)}: restou + voltou + perdeu passa do que tinha (${antes})`,'error'); return; }
+        if(dv) dev.push({idx,qtd:dv}); if(pd) perd.push({idx,qtd:pd});
+      }
+      const quemPerda=document.getElementById('vis-quem')?.value||'parceiro';
+      if(dev.length) aplicarMovimentoCSG(c,dev,'devolucao',{data,obs:'Na visita'});
+      if(perd.length) aplicarMovimentoCSG(c,perd,'perda',{data,obs:'Na visita',quem:quemPerda,motivo:'sumiu'});
       const valR=parseFloat(document.getElementById('vis-v').value)||0;
       const obs=document.getElementById('vis-obs').value;
       let vendido=0;
       const itensVendidos=[];
       (c.itens||[]).forEach((it,idx)=>{
-        const nq=parseInt(document.getElementById('vis-q-'+idx)?.value)??it.qtd_atual;
+        const nq=Math.min(+it.qtd_atual||0,parseInt(document.getElementById('vis-q-'+idx)?.value)??it.qtd_atual);
         const qtdAntes=+it.qtd_atual||0;
         const qtdDepois=Math.max(0,nq);
         const qtdVendida=Math.max(0,qtdAntes-qtdDepois);
@@ -7962,7 +8115,11 @@ function regVisita(consigId){
     (c.itens||[]).forEach((it,idx)=>{
       const inp=document.getElementById('vis-q-'+idx);
       const spn=document.getElementById('vnd-'+idx);
-      if(inp&&spn){inp.oninput=()=>{spn.textContent=(+it.qtd_atual||0)-Math.max(0,+inp.value);};}
+      const dvI=document.getElementById('vis-dv-'+idx), pdI=document.getElementById('vis-pd-'+idx);
+      const calc=()=>{ const v=(+it.qtd_atual||0)-Math.max(0,+inp.value||0)-Math.max(0,+dvI.value||0)-Math.max(0,+pdI.value||0); spn.textContent=v; spn.style.color=v<0?'var(--txt-vermelho)':''; const temPerda=[...document.querySelectorAll('[id^="vis-pd-"]')].some(x=>+x.value>0); const q=document.getElementById('vis-perda-quem'); if(q) q.style.display=temPerda?'flex':'none'; };
+      // Ao marcar que voltou/perdeu, tira do "restou" para a conta fechar sozinha
+      const mexer=(campo)=>()=>{ const total=(+it.qtd_atual||0)-Math.max(0,+dvI.value||0)-Math.max(0,+pdI.value||0); if((+inp.value||0)>total) inp.value=Math.max(0,total); calc(); };
+      if(inp&&spn&&dvI&&pdI){ inp.oninput=calc; dvI.oninput=mexer(dvI); pdI.oninput=mexer(pdI); }
     });
   },150);
 }
@@ -8032,8 +8189,8 @@ function calcPC(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
         <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Custo Total</div><div style="font-size:18px;font-weight:800">${R$(custoT)}</div></div>
         <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Seu Lucro no Repasse</div><div style="font-size:18px;font-weight:800">${R$(lucroRepasse)}</div></div>
-        <div style="background:rgba(255,255,255,0.22);border-radius:8px;padding:12px;grid-column:span 2;text-align:center"><div style="font-size:11px;opacity:.8">✅ PREÇO DE REPASSE SUGERIDO</div><div style="font-size:30px;font-weight:900">${R$(repasse)}</div></div>
-        <div style="background:rgba(255,255,255,0.10);border-radius:8px;padding:10px;grid-column:span 2;text-align:center;font-size:12px">📈 Preço final estimado ao consumidor (com a margem do parceiro): <strong>${R$(precoFinalEstimado)}</strong></div>
+        <div style="background:rgba(255,255,255,0.22);border-radius:8px;padding:12px;grid-column:1/-1;text-align:center"><div style="font-size:11px;opacity:.8">✅ PREÇO DE REPASSE SUGERIDO</div><div style="font-size:30px;font-weight:900">${R$(repasse)}</div></div>
+        <div style="background:rgba(255,255,255,0.10);border-radius:8px;padding:10px;grid-column:1/-1;text-align:center;font-size:12px">📈 Preço final estimado ao consumidor (com a margem do parceiro): <strong>${R$(precoFinalEstimado)}</strong></div>
       </div>`;
   } else {
     const taxa=parseFloat(document.getElementById('pc-forma')?.value)||0;
@@ -8047,7 +8204,7 @@ function calcPC(){
         <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Custo Total</div><div style="font-size:18px;font-weight:800">${R$(custoT)}</div></div>
         <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Markup</div><div style="font-size:18px;font-weight:800">${markup.toFixed(2)}x</div></div>
         <div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px"><div style="font-size:10px;opacity:.7">Lucro</div><div style="font-size:18px;font-weight:800">${R$(lucro)}</div></div>
-        <div style="background:rgba(255,255,255,0.22);border-radius:8px;padding:12px;grid-column:span 2;text-align:center"><div style="font-size:11px;opacity:.8">✅ PREÇO SUGERIDO</div><div style="font-size:30px;font-weight:900">${R$(preco)}</div></div>
+        <div style="background:rgba(255,255,255,0.22);border-radius:8px;padding:12px;grid-column:1/-1;text-align:center"><div style="font-size:11px;opacity:.8">✅ PREÇO SUGERIDO</div><div style="font-size:30px;font-weight:900">${R$(preco)}</div></div>
       </div>`;
   }
 }
