@@ -504,7 +504,18 @@ function mpGerarLink(d) {
   return { id: String(pref.id), valor: valor, link: pref.init_point, vence: mpDataIso(vence) };
 }
 
-function mpLinhaPagamento(p) {
+// Numero da sua conta no Mercado Pago (guardado na primeira vez) para saber se o dinheiro entrou ou saiu.
+function mpMeuId() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('MP_USER_ID');
+  if (!id) {
+    try { id = String(mpChamar('get', '/users/me').id || ''); } catch (e) { id = ''; }
+    if (id) props.setProperty('MP_USER_ID', id);
+  }
+  return id;
+}
+
+function mpLinhaPagamento(p, meuId) {
   var taxa = 0;
   // So as taxas pagas por voce; juros de parcelamento pagos pelo cliente nao entram.
   (p.fee_details || []).forEach(function (f) { if (f.fee_payer !== 'payer') taxa += Number(f.amount) || 0; });
@@ -525,18 +536,20 @@ function mpLinhaPagamento(p) {
     referencia: p.external_reference || '',
     descricao: p.description || '',
     pagador: nome || pagador.email || '',
-    atualizado: p.date_last_updated || ''
+    atualizado: p.date_last_updated || '',
+    // 'saida' = voce pagou alguem (ex.: Uber, compra); 'entrada' = alguem te pagou
+    sentido: meuId && p.collector_id != null ? (String(p.collector_id) === meuId ? 'entrada' : 'saida') : ''
   };
 }
 
 // Busca no Mercado Pago o que mudou nos ultimos dias e guarda na aba mp_pagamentos.
 function mpBuscarPagamentos(ss, dias) {
-  var novos = [];
+  var novos = [], meuId = mpMeuId();
   for (var offset = 0; offset < 500; offset += 50) {
     var r = mpChamar('get', '/v1/payments/search?sort=date_last_updated&criteria=desc&range=date_last_updated' +
       '&begin_date=NOW-' + (dias || 3) + 'DAYS&end_date=NOW&limit=50&offset=' + offset);
     var lista = r.results || [];
-    for (var i = 0; i < lista.length; i++) novos.push(mpLinhaPagamento(lista[i]));
+    for (var i = 0; i < lista.length; i++) novos.push(mpLinhaPagamento(lista[i], meuId));
     if (lista.length < 50) break;
   }
   var cobrancas = mpConferirCobrancas(ss);
@@ -568,6 +581,7 @@ function mpSincronizar() {
 // Ela confere a chave, busca os ultimos 30 dias e liga a busca a cada 5 minutos.
 function instalarMercadoPago() {
   var eu = mpChamar('get', '/users/me');
+  if (eu.id) PropertiesService.getScriptProperties().setProperty('MP_USER_ID', String(eu.id));
   Logger.log('Conta Mercado Pago conectada: ' + (eu.nickname || eu.email || eu.id));
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'mpSincronizar') ScriptApp.deleteTrigger(t);

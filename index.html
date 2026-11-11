@@ -597,6 +597,39 @@ details.panel[open]>summary .panel-title::before{content:'▾ '}
 .compra-medio .cm-hist{margin-top:6px;font-size:11.5px}
 .compra-medio .cm-hist summary{cursor:pointer;color:var(--txt-azul);font-weight:600}
 .compra-medio .cm-hist ul{margin:4px 0 0 16px;padding:0}
+.saida-para{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.saida-para button{border:1.5px solid var(--cinza-claro);background:var(--bg-input);color:var(--cinza-escuro);border-radius:10px;padding:10px 8px;font:inherit;font-weight:700;font-size:14px;cursor:pointer;min-height:56px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.saida-para button span{font-weight:400;font-size:11.5px;color:var(--cinza-med)}
+.saida-para button.ativo{border-color:var(--azul-claro);background:var(--azul-tint);box-shadow:inset 0 0 0 1px var(--azul-claro)}
+body.tema-escuro .saida-para button.ativo{background:var(--cinza-claro)}
+.saida-explica{background:var(--cinza-ultra);border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.5;display:block}
+.saida-conf{background:var(--amarelo-claro);border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.45;color:var(--cinza-escuro)}
+.pof{padding:12px 18px 16px}
+.pof-alerta{background:var(--amarelo-claro);border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+.saida-mp{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--cinza-claro)}
+.saida-mp-info{display:flex;flex-direction:column;min-width:0}
+.saida-mp-info span{font-size:12px;color:var(--cinza-med);overflow-wrap:anywhere}
+.saida-mp-acoes{display:flex;gap:6px;flex-wrap:wrap}
+.pof-resumo{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.pof-resumo div{background:var(--cinza-ultra);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pof-resumo span{font-size:11.5px;color:var(--cinza-med)}
+.pof-resumo strong{font-size:16px;overflow-wrap:anywhere}
+.pof-resumo .pof-sem{background:var(--vermelho-claro)}
+.pof-resumo .pof-sem strong{color:var(--txt-vermelho)}
+.pof-linha{margin:7px 0}
+.pof-rot{display:flex;justify-content:space-between;gap:10px;font-size:12.5px}
+.pof-rot span{min-width:0;overflow-wrap:anywhere}
+.pof-barra{height:8px;background:var(--cinza-ultra);border-radius:4px;margin-top:3px;overflow:hidden}
+.pof-barra i{display:block;height:100%;background:var(--s1);border-radius:4px}
+.pof-barra i.pessoal{background:var(--s5)}
+.pof-barra i.sem{background:var(--vermelho)}
+.pof-dica{font-size:12px;color:var(--cinza-med);margin:6px 0 0}
+.pof-sub{font-weight:700;font-size:13px;margin:16px 0 6px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.pof-sub span{font-weight:400;font-size:11.5px;color:var(--cinza-med)}
+.pof-potes td,.pof-potes th{font-size:12.5px;white-space:nowrap}
+.pof-potes td:first-child{white-space:normal}
+@media(max-width:560px){.pof-potes td,.pof-potes th{padding:7px 6px;font-size:12px}}
+@media(max-width:560px){.pof{padding:10px 12px 14px}.pof-resumo strong{font-size:14px}}
 </style>
 <!-- Login com Google (Fase 2) — só é usado se GOOGLE_CLIENT_ID for configurado
      no bloco de JavaScript principal mais abaixo. Carregar essa biblioteca
@@ -1679,7 +1712,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026111101;
+const VERSAO_APP=2026111102;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -1883,6 +1916,7 @@ function excluirItem(tabela, id) {
       if(vaiRestaurarPedido){ await reverterBaixaEstoque(pdRef.consumo_insumos||{}); }
       if(isPedido) esquecerPagamentosDoPedido(id,pdRef);
       if(vaiRestaurarCompra){ await reverterEntradaEstoque({[cpRef.estoque_aplicado.mpId]:cpRef.estoque_aplicado.qtd}); }
+      if(cpRef?.conf_id){ ajustarConferenciaPorSaida(cpRef.conf_id,(+cpRef.custo||0)*(+cpRef.qtd||1),-1); salvarConfigCaixa(); }
       if(custoDaConta){ custoDaConta.meses_pulados=[...(Array.isArray(custoDaConta.meses_pulados)?custoDaConta.meses_pulados:[]),apRef.mes_ref]; await salvarItem('custos_fixos',custoDaConta); }
       await excluirItem_db(tabela, id);
       toast('Item excluído!'+(vaiRestaurarPedido?' Estoque devolvido.':vaiRestaurarCompra?' Estoque retirado de volta.':''));
@@ -2292,7 +2326,7 @@ function movimentosCaixa(){
   DB.pedidos.forEach(p=>(p.entradas||[]).filter(e=>Math.abs(+e.taxa||0)>0.004).forEach(e=>l.push(e.taxa>0?{data:dt(e.data||p.data),tipo:'saida',despesa:true,origem:'Taxa',desc:'Taxa Mercado Pago · '+p.id,valor:+e.taxa,abrir:"abrirResumoPedido('"+p.id+"')"}:{data:dt(e.data||p.data),tipo:'entrada',origem:'Taxa',desc:'Sobra da taxa do cartão · '+p.id,valor:-e.taxa,abrir:"abrirResumoPedido('"+p.id+"')"})));
   DB.areceber.filter(x=>(+x.recebido||0)!==0).forEach(x=>l.push({data:dt(x.recebido_em||x.venc||x.data),aprox:!x.recebido_em,tipo:'entrada',origem:'A Receber',desc:(x.descricao||x.id)+(x.cliente?' · '+nomeCli(x.cliente):''),valor:+x.recebido||0,abrir:"editarAR('"+x.id+"')"}));
   DB.consignados.forEach(c=>(c.visitas||[]).filter(v=>(+v.valor_recebido||0)!==0).forEach(v=>l.push({data:dt(v.data),tipo:'entrada',origem:'Consignado',desc:c.nome||c.parceiro||c.loja||c.id,valor:+v.valor_recebido||0,abrir:"verHistoricoVisitas('"+c.id+"')"})));
-  DB.compras.filter(c=>c.status==='Pago').forEach(c=>l.push({data:dt(c.data),tipo:'saida',despesa:c.tipo==='despesa'||(!c.tipo&&!c.materia_prima_id),origem:'Compra',desc:c.produto||c.id,valor:(+c.qtd||0)*(+c.custo||0),abrir:"editarCompra('"+c.id+"')"}));
+  DB.compras.filter(c=>c.status==='Pago').forEach(c=>l.push({data:dt(c.data),tipo:'saida',despesa:c.tipo==='despesa'||(!c.tipo&&!c.materia_prima_id),origem:c.tipo==='retirada'?'Pessoal':c.saida?'Saída':'Compra',desc:(c.produto||c.id)+(c.saida&&c.tipo!=='retirada'&&c.categoria?' · '+nomeCatSaida(c.categoria).replace(/^\S+\s/,''):''),valor:(+c.qtd||0)*(+c.custo||0),abrir:"editarCompra('"+c.id+"')"}));
   DB.apagar.filter(x=>(+x.pago||0)!==0).forEach(x=>l.push({data:dt(x.pago_em||x.venc||x.data),aprox:!x.pago_em,tipo:'saida',despesa:true,origem:'A Pagar',desc:x.credor||x.descricao||x.id,valor:+x.pago||0,abrir:"editarAP('"+x.id+"')"}));
   return l;
 }
@@ -2622,11 +2656,190 @@ function resumoCaixa(ini,fim){
   const entradas=noPer.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+m.valor,0), saidas=noPer.filter(m=>m.tipo==='saida').reduce((s,m)=>s+m.valor,0), ajustes=cPer.reduce((s,c)=>s+(+c.diferenca||0),0);
   return {inicial,entradas,saidas,ajustes,final:inicial+entradas-saidas+ajustes,noPer,cPer};
 }
+// ═══════════════════════════════════════════════════════════════
+// SAÍDAS JUSTIFICADAS — todo dinheiro que sai do caixa sem ser compra/conta
+// ganha nome: foi da loja (despesa, com categoria e caixinha) ou pessoal
+// (retirada: tira do caixa, mas não é gasto da loja e não diminui o lucro).
+// Ficam guardadas em "compras" (saida:true) para entrar no caixa como as outras.
+// ═══════════════════════════════════════════════════════════════
+const CATS_SAIDA=[
+  {id:'frete_compra',nome:'🚚 Frete/Uber de compra (trazer material)',pote:/estoque/i},
+  {id:'entrega',nome:'🛵 Entrega para cliente',pote:/reserva|giro/i},
+  {id:'material',nome:'📦 Material ou embalagem avulsa',pote:/estoque/i},
+  {id:'marketing',nome:'📣 Marketing e anúncios',pote:/marketing|venda/i},
+  {id:'equipamento',nome:'🛠️ Equipamento ou ferramenta',pote:/investimento|crescimento/i},
+  {id:'manutencao',nome:'🔧 Conserto e manutenção',pote:/reserva|giro/i},
+  {id:'servicos',nome:'💡 Contas, apps e serviços',pote:/reserva|giro/i},
+  {id:'taxas',nome:'🏦 Taxas e tarifas',pote:/reserva|giro/i},
+  {id:'teste',nome:'🧪 Teste ou novidade',pote:/oportunidade|teste/i},
+  {id:'outros',nome:'❓ Outros da loja',pote:null}
+];
+const CAT_PESSOAL={id:'pessoal',nome:'👤 Pessoal / retirada'};
+function nomeCatSaida(id){ return id==='pessoal'?CAT_PESSOAL.nome:(CATS_SAIDA.find(c=>c.id===id)?.nome||'🔧 Outras despesas'); }
+function poteSugerido(cat){
+  const c=CATS_SAIDA.find(x=>x.id===cat), potes=getDivisaoBuckets();
+  if(cat==='pessoal') return potes.find(b=>/retirada|pessoal|pr[oó].?labore/i.test(b.nome))?.nome||'';
+  return c&&c.pote?(potes.find(b=>c.pote.test(b.nome))?.nome||''):'';
+}
+// A conferência que já "engoliu" uma saída antiga: a primeira feita no dia da saída ou depois.
+function conferenciaDaSaida(data){ return conferenciasCaixa().filter(c=>c.data>=data).sort((a,b)=>a.data.localeCompare(b.data))[0]||null; }
+// Saída que já estava dentro de uma falta conferida: explica a falta em vez de tirar de novo do caixa.
+function ajustarConferenciaPorSaida(confId,valor,sinal){
+  const c=conferenciasCaixa().find(x=>x.id===confId); if(!c) return;
+  c.diferenca=+((+c.diferenca||0)+sinal*valor).toFixed(2);
+  c.explicado=+((+c.explicado||0)+sinal*valor).toFixed(2);
+  DB.config.ajuste_caixa=+((+DB.config.ajuste_caixa||0)+sinal*valor).toFixed(2);
+}
+let _saidaForm={};
+function abrirSaida(op={}){
+  const ex=op.id?getItem(DB.compras,op.id):null;
+  const pessoal=ex?ex.tipo==='retirada':!!op.pessoal;
+  const cat=ex?.categoria||op.categoria||'';
+  _saidaForm={id:ex?.id||'',mp_id:ex?.mp_id||op.mp_id||'',conf_id:ex?.conf_id||'',pessoal};
+  const potes=getDivisaoBuckets();
+  const pote=ex?(ex.pote||''):(op.pote??poteSugerido(cat));
+  openModal(ex?'✏️ Editar saída':'➖ Registrar saída de dinheiro',`
+    <div class="form-grid saida-form">
+      <div class="form-group"><label class="form-label">Valor (R$)</label><input class="form-input" id="sd-valor" type="number" inputmode="decimal" step="0.01" value="${ex?(+ex.custo||0)*(+ex.qtd||1):(op.valor||'')}" oninput="atualizarSaidaForm()"></div>
+      <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="sd-data" type="date" value="${ex?.data||op.data||hojeLocalStr()}" onchange="atualizarSaidaForm()"></div>
+      <div class="form-group full"><label class="form-label">O que foi?</label><input class="form-input" id="sd-desc" placeholder="Ex.: Uber para buscar quebra-cabeças" value="${escHtml(ex?.produto||op.desc||'')}"></div>
+      <div class="form-group full"><label class="form-label">Esse dinheiro foi para</label>
+        <div class="saida-para" role="group" aria-label="Para quem foi o dinheiro">
+          <button type="button" id="sd-loja" class="${pessoal?'':'ativo'}" aria-pressed="${!pessoal}" onclick="saidaPara(false)">🏪 A loja<span>gasto do negócio</span></button>
+          <button type="button" id="sd-pessoal" class="${pessoal?'ativo':''}" aria-pressed="${pessoal}" onclick="saidaPara(true)">👤 Mim<span>uso pessoal</span></button>
+        </div></div>
+      <div class="form-group full" id="sd-cat-grupo" style="display:${pessoal?'none':'flex'}"><label class="form-label">Com o quê?</label>
+        <select class="form-select" id="sd-cat" onchange="saidaCategoria()"><option value="">Escolha...</option>${CATS_SAIDA.map(c=>`<option value="${c.id}" ${cat===c.id?'selected':''}>${c.nome}</option>`).join('')}</select></div>
+      <div class="form-group full"><label class="form-label">Saiu de qual caixinha?</label>
+        <select class="form-select" id="sd-pote" onchange="atualizarSaidaForm()"><option value="">Nenhuma / não sei</option>${potes.map(b=>`<option value="${escHtml(b.nome)}" ${pote===b.nome?'selected':''}>${escHtml(b.nome)}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Pago com</label><select class="form-select" id="sd-forma">${['PIX','Saldo Mercado Pago','Débito','Crédito','Dinheiro'].map(f=>`<option ${(ex?.forma||op.forma||'PIX')===f?'selected':''}>${f}</option>`).join('')}</select></div>
+      <div class="form-group full saida-conf" id="sd-conf" style="display:none"></div>
+      <div class="form-group full saida-explica" id="sd-explica"></div>
+    </div>`, ()=>salvarSaida(), '💾 Salvar saída');
+  atualizarSaidaForm();
+}
+function saidaPara(pessoal){
+  _saidaForm.pessoal=pessoal;
+  document.getElementById('sd-loja').classList.toggle('ativo',!pessoal); document.getElementById('sd-loja').setAttribute('aria-pressed',!pessoal);
+  document.getElementById('sd-pessoal').classList.toggle('ativo',pessoal); document.getElementById('sd-pessoal').setAttribute('aria-pressed',pessoal);
+  document.getElementById('sd-cat-grupo').style.display=pessoal?'none':'flex';
+  const p=poteSugerido(pessoal?'pessoal':document.getElementById('sd-cat').value); document.getElementById('sd-pote').value=p;
+  atualizarSaidaForm();
+}
+function saidaCategoria(){ document.getElementById('sd-pote').value=poteSugerido(document.getElementById('sd-cat').value); atualizarSaidaForm(); }
+function atualizarSaidaForm(){
+  const v=parseFloat(document.getElementById('sd-valor')?.value)||0, data=document.getElementById('sd-data')?.value||'';
+  const ex=_saidaForm.id?getItem(DB.compras,_saidaForm.id):null;
+  const exp=document.getElementById('sd-explica');
+  if(exp) exp.innerHTML=_saidaForm.pessoal
+    ?'👤 <strong>Pessoal:</strong> sai do caixa, mas <strong>não é gasto da loja</strong> e não diminui o lucro. Fica separado como dinheiro que você tirou para você.'
+    :'🏪 <strong>Loja:</strong> sai do caixa e entra como <strong>despesa</strong> do negócio (diminui o lucro). A caixinha mostra de onde esse dinheiro deveria ter saído.';
+  // Saída de antes de uma conferência que já contou o dinheiro de verdade
+  const box=document.getElementById('sd-conf'); if(!box) return;
+  const c=data&&conferenciaDaSaida(data);
+  if(!c||!(v>0)){ box.style.display='none'; box.innerHTML=''; return; }
+  const jaMarcada=ex&&ex.conf_id===c.id;
+  const falta=-((+c.diferenca||0)-(jaMarcada?+(ex.custo*ex.qtd):0));
+  const marcar=jaMarcada||(document.getElementById('sd-conf-chk')?document.getElementById('sd-conf-chk').checked:falta>=v-0.005);
+  box.style.display='block';
+  box.innerHTML=`<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="sd-conf-chk" ${marcar?'checked':''} style="margin-top:3px;width:18px;height:18px;flex-shrink:0"><span>Esse dinheiro já tinha saído quando você conferiu o caixa em <strong>${formatarDataBR(c.data)}</strong> (${falta>0.004?'faltaram '+R$(falta):'não faltou nada'}).<br><span style="font-size:11.5px;color:var(--cinza-med)">Marcado: isso <strong>explica a falta</strong> e o caixa não muda. Desmarcado: o caixa diminui ${R$(v)} agora.</span></span></label>`;
+}
+async function salvarSaida(){
+  const v=+(parseFloat(document.getElementById('sd-valor').value)||0).toFixed(2), data=document.getElementById('sd-data').value;
+  const pessoal=!!_saidaForm.pessoal, cat=pessoal?'pessoal':document.getElementById('sd-cat').value;
+  if(!(v>0)){ toast('Informe o valor','error'); return; }
+  if(!data){ toast('Informe a data','error'); return; }
+  if(!pessoal&&!cat){ toast('Escolha com o que foi gasto','error'); return; }
+  const ex=_saidaForm.id?getItem(DB.compras,_saidaForm.id):null;
+  const desc=document.getElementById('sd-desc').value.trim()||nomeCatSaida(cat).replace(/^\S+\s/,'');
+  const chk=document.getElementById('sd-conf-chk'), c=chk&&chk.checked?conferenciaDaSaida(data):null;
+  // desfaz o efeito antigo na conferência e aplica o novo
+  if(ex?.conf_id) ajustarConferenciaPorSaida(ex.conf_id,(+ex.custo||0)*(+ex.qtd||1),-1);
+  if(c) ajustarConferenciaPorSaida(c.id,v,+1);
+  if(ex?.conf_id||c) salvarConfigCaixa();
+  const obj={...(ex||{}),id:ex?.id||nextId(DB.compras,'CMP'),saida:true,tipo:pessoal?'retirada':'despesa',data,produto:desc,qtd:1,custo:v,
+    forma:document.getElementById('sd-forma').value,status:'Pago',categoria:cat,pote:document.getElementById('sd-pote').value||'',
+    mp_id:_saidaForm.mp_id||'',conf_id:c?c.id:'',fornecedor:ex?.fornecedor||'',criado_em:ex?.criado_em||new Date().toISOString()};
+  delete obj.materia_prima_id; delete obj.estoque_aplicado;
+  await salvarItem('compras',obj);
+  closeModal();
+  toast(c?`Saída registrada: explica ${R$(v)} da falta de ${formatarDataBR(c.data)}`:pessoal?`Retirada pessoal de ${R$(v)} registrada`:`Saída de ${R$(v)} registrada`);
+  render(currentSection);
+}
+// ── Mercado Pago: dinheiro que saiu da conta e ainda não tem explicação ──
+function ehSaidaMP(p){
+  if(p.sentido) return p.sentido==='saida';
+  // Linhas antigas (antes do campo "sentido"): pagamento comum sem pagador e sem pedido.
+  return p.fonte!=='order'&&!p.pagador&&p.operacao==='regular_payment'&&!(refPedido(p)&&getItem(DB.pedidos,refPedido(p)));
+}
+// Lista própria: o "Já lancei / não é pedido" dos recebimentos não vale para saídas.
+function mpSaidasOk(){ const a=DB.config?.mp_saidas_ok; return Array.isArray(a)?a.map(String):[]; }
+function mpSaidasPendentes(){
+  const feitas=new Set(DB.compras.filter(c=>c.mp_id).map(c=>String(c.mp_id))), ign=new Set(mpSaidasOk()), ini=DB.config?.mp_inicio||'';
+  return _mpPags.filter(p=>['approved','authorized'].includes(p.status)&&ehSaidaMP(p)&&p.data>=ini&&!feitas.has(String(p.id))&&!ign.has(String(p.id)))
+    .sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
+}
+function justificarSaidaMP(id){
+  const p=_mpPags.find(x=>String(x.id)===String(id)); if(!p) return;
+  abrirSaida({mp_id:p.id,valor:p.valor,data:p.data,desc:(p.descricao||'').replace(/\s+/g,' ').trim(),forma:p.metodo==='account_money'?'Saldo Mercado Pago':p.tipo==='credit_card'?'Crédito':p.tipo==='debit_card'?'Débito':'PIX'});
+}
+function ignorarSaidaMP(id){
+  DB.config.mp_saidas_ok=[...new Set([...mpSaidasOk(),String(id)])].slice(-400);
+  salvarConfigCaixa();
+  toastDesfazer('Ok, essa saída não precisa de explicação',()=>{ DB.config.mp_saidas_ok=mpSaidasOk().filter(x=>x!==String(id)); salvarConfigCaixa(); render(currentSection); if(document.getElementById('mp-saidas-modal')) abrirSaidasMP(); });
+  render(currentSection);
+  if(document.getElementById('mp-saidas-modal')) { if(mpSaidasPendentes().length) abrirSaidasMP(); else closeModal(); }
+}
+function listaSaidasMPHtml(){
+  return mpSaidasPendentes().map(p=>`<div class="saida-mp">
+    <div class="saida-mp-info"><strong>${R$(p.valor)}</strong><span>${formatarDataBR(p.data)} ${p.hora||''} · ${escHtml((p.descricao||'').replace(/\s+/g,' ').trim()||formaMP(p))}${p.status==='authorized'?' · reservado':''}</span></div>
+    <div class="saida-mp-acoes"><button type="button" class="btn btn-primary btn-sm" onclick="justificarSaidaMP('${p.id}')">✍️ Explicar</button><button type="button" class="btn btn-outline btn-sm" onclick="ignorarSaidaMP('${p.id}')">Já lancei</button></div>
+  </div>`).join('');
+}
+function abrirSaidasMP(){
+  openModal('➖ Saídas do Mercado Pago para explicar',`<div id="mp-saidas-modal"><p style="font-size:13px;margin:0 0 10px;line-height:1.5">Dinheiro que saiu da sua conta e ainda não está no sistema. Toque em <strong>Explicar</strong> e diga se foi da loja ou pessoal. Se já lançou (em Compras ou A Pagar), toque em <strong>Já lancei</strong>.</p>${listaSaidasMPHtml()||'<p style="font-size:13px">✅ Nada para explicar.</p>'}</div>`,null);
+  document.getElementById('modal-save-btn').style.display='none';
+}
+// ── Para onde foi o dinheiro (período da tela Caixa) ──
+function paraOndeFoiHtml(ini,fim){
+  const noPer=d=>{ const x=d?normalizarData(d):''; return x>=ini&&x<=fim; };
+  const grupos={}, add=(chave,valor)=>{ if(valor>0.004) grupos[chave]=(grupos[chave]||0)+valor; };
+  let pessoal=0;
+  DB.compras.filter(c=>c.status==='Pago'&&noPer(c.data)).forEach(c=>{
+    const v=(+c.qtd||0)*(+c.custo||0);
+    if(c.tipo==='retirada'){ pessoal+=v; return; }
+    if(c.saida) add(nomeCatSaida(c.categoria),v);
+    else if(c.materia_prima_id) add('📦 Reposição de estoque',v);
+    else add('🔧 Outras despesas (Compras)',v);
+  });
+  DB.apagar.filter(x=>(+x.pago||0)>0&&noPer(x.pago_em||x.venc||x.data)).forEach(x=>add('🧾 Contas (A Pagar)',+x.pago));
+  DB.pedidos.forEach(p=>(p.entradas||[]).forEach(e=>{ if((+e.taxa||0)>0&&noPer(e.data||p.data)) add('🏦 Taxas do Mercado Pago',+e.taxa); }));
+  const semExplicar=-conferenciasCaixa().filter(c=>c.data>=ini&&c.data<=fim&&c.diferenca<0).reduce((s,c)=>s+c.diferenca,0);
+  const loja=Object.values(grupos).reduce((s,v)=>s+v,0);
+  const linhas=Object.entries(grupos).sort((a,b)=>b[1]-a[1]);
+  const maior=Math.max(1,...linhas.map(l=>l[1]),pessoal,semExplicar);
+  const barra=(nome,v,cls)=>`<div class="pof-linha"><div class="pof-rot"><span>${escHtml(nome)}</span><strong>${R$(v)}</strong></div><div class="pof-barra"><i class="${cls||''}" style="width:${Math.max(2,v/maior*100).toFixed(1)}%"></i></div></div>`;
+  // caixinhas: separado (lucro do período × %) x usado (saídas marcadas com a caixinha)
+  const lucro=Math.max(0,todasVendasEfetivas().filter(v=>noPer(v.data)).reduce((s,v)=>s+(v.valorTotal-v.custoTotal),0));
+  const usado={}; DB.compras.filter(c=>c.saida&&c.status==='Pago'&&c.pote&&noPer(c.data)).forEach(c=>usado[c.pote]=(usado[c.pote]||0)+(+c.qtd||0)*(+c.custo||0));
+  const potes=calcularDivisao(lucro);
+  const pendMP=mpSaidasPendentes();
+  return `${pendMP.length?`<div class="pof-alerta">⚠️ <strong>${pendMP.length===1?'1 saída':pendMP.length+' saídas'} do Mercado Pago sem explicação</strong> (${R$(pendMP.reduce((s,p)=>s+p.valor,0))})<div style="margin-top:8px">${listaSaidasMPHtml()}</div></div>`:''}
+    <div class="pof-resumo">
+      <div><span>🏪 Gastos da loja</span><strong>${R$(loja)}</strong></div>
+      <div><span>👤 Pessoal</span><strong>${R$(pessoal)}</strong></div>
+      <div class="${semExplicar>0.004?'pof-sem':''}"><span>❔ Sem explicação</span><strong>${R$(semExplicar)}</strong></div>
+    </div>
+    ${linhas.length||pessoal||semExplicar>0.004?`<div class="pof-lista">${linhas.map(([n,v])=>barra(n,v)).join('')}${pessoal>0.004?barra(CAT_PESSOAL.nome,pessoal,'pessoal'):''}${semExplicar>0.004?barra('❔ Faltas na conferência sem explicação',semExplicar,'sem'):''}</div>`:'<p style="font-size:13px;color:var(--cinza-med);margin:8px 0">Nenhuma saída neste período.</p>'}
+    ${semExplicar>0.004?'<p class="pof-dica">Lembrou para onde foi o dinheiro que faltou? Registre a saída com a data de antes da conferência: ela explica a falta sem tirar de novo do caixa.</p>':''}
+    <div class="pof-sub">🧩 Caixinhas no período <span>lucro de ${R$(lucro)} dividido pelas suas porcentagens</span></div>
+    <div class="tbl-wrap"><table class="pof-potes"><thead><tr><th>Caixinha</th><th class="orc-val">Separado</th><th class="orc-val">Usado</th><th class="orc-val">Sobra</th></tr></thead><tbody>${potes.map(b=>{ const u=usado[b.nome]||0, s=b.valor-u; return `<tr><td>${escHtml(b.nome)} <span style="color:var(--cinza-med);font-size:11px">${b.pct}%</span></td><td class="orc-val">${R$(b.valor)}</td><td class="orc-val">${R$(u)}</td><td class="orc-val" style="color:${s<-0.004?'var(--txt-vermelho)':'var(--txt-verde)'};font-weight:700">${s<-0.004?'−'+R$(-s):R$(s)}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
 SECTIONS.caixa = () => {
   const fm=metricasFinanceiras(), per=caixaPeriodo(), r=resumoCaixa(per.inicio,per.fim), confs=conferenciasCaixa();
   const faltas=confs.filter(c=>c.diferenca<0).reduce((s,c)=>s+c.diferenca,0), sobras=confs.filter(c=>c.diferenca>0).reduce((s,c)=>s+c.diferenca,0);
   const ult=confs[confs.length-1];
-  return '<div class="panel"><div class="panel-header"><span class="panel-title">🏦 Caixa agora: <span id="caixa-agora" style="color:'+(fm.caixaDisponivel>=0?'inherit':'var(--txt-vermelho)')+'">'+R$(fm.caixaDisponivel)+'</span></span><button class="btn btn-primary" onclick="conferirCaixa()">🧮 Conferir com o valor real</button></div>'+
+  return '<div class="panel"><div class="panel-header"><span class="panel-title">🏦 Caixa agora: <span id="caixa-agora" style="color:'+(fm.caixaDisponivel>=0?'inherit':'var(--txt-vermelho)')+'">'+R$(fm.caixaDisponivel)+'</span></span><button class="btn btn-primary" onclick="conferirCaixa()">🧮 Conferir com o valor real</button><button class="btn btn-outline" onclick="abrirSaida()">➖ Registrar saída</button></div>'+
     '<div style="padding:10px 18px;font-size:12.5px;color:var(--cinza-med)">'+(caixaPendente()&&ult?'⚠️ O saldo mudou desde a última conferência. ':'')+(ult?'Última conferência: '+formatarDataBR(ult.data)+' · '+(Math.abs(ult.diferenca)<0.005?'bateu certinho':ult.diferenca<0?'faltaram '+R$(-ult.diferenca):'sobraram '+R$(ult.diferenca)):'Ainda sem conferência. Compare o valor do sistema com o que você tem de verdade.')+'</div></div>'+
     renderSeletorPeriodo('caixa',_caixaPeriodo,_caixaCustomIni,_caixaCustomFim)+
     '<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Saldo inicial</div><div class="kpi-value">'+R$(r.inicial)+'</div><div class="kpi-sub">Em '+formatarDataBR(per.inicio)+'</div></div>'+
@@ -2634,11 +2847,12 @@ SECTIONS.caixa = () => {
     '<div class="kpi-card vermelho"><div class="kpi-label">⬇ Saídas</div><div class="kpi-value text-vermelho">'+R$(r.saidas)+'</div></div>'+
     (Math.abs(r.ajustes)>0.004?'<div class="kpi-card amarelo"><div class="kpi-label">Diferenças conferidas</div><div class="kpi-value">'+(r.ajustes>0?'+':'−')+' '+R$(Math.abs(r.ajustes))+'</div></div>':'')+
     '<div class="kpi-card roxo"><div class="kpi-label">Saldo final</div><div class="kpi-value" id="caixa-final">'+R$(r.final)+'</div><div class="kpi-sub">Em '+formatarDataBR(per.fim)+'</div></div></div>'+
+    '<div class="panel"><div class="panel-header"><span class="panel-title">🧭 Para onde foi o dinheiro</span></div><div class="pof">'+paraOndeFoiHtml(per.inicio,per.fim)+'</div></div>'+
     '<div class="panel" id="fech-painel"><div class="panel-header"><span class="panel-title">📅 Quanto deveria ter em caixa</span><div class="exp-linha" id="fech-grans"></div></div><div class="fech-consulta"><label for="fech-data">Em qual dia?</label><input class="form-input" type="date" id="fech-data" max="'+hojeLocalStr()+'" value="'+_fech.data+'" onchange="_fech.data=this.value;desenharFechamentos()"><span id="fech-resposta" aria-live="polite"></span></div><div style="padding:10px 0 0" id="fech-lista"></div></div>'+
     '<div class="panel"><div class="panel-header"><span class="panel-title">Entradas e saídas no período</span></div><div class="graf" id="caixa-graf"></div><div class="graf-dica">Toque numa barra para ver só aquele período na lista abaixo.</div></div>'+
     '<div class="panel"><div class="panel-header"><span class="panel-title">Movimentos</span></div><div class="filtros-lista"><input class="search-input" type="search" aria-label="Buscar movimentos" placeholder="🔍 Pedido, cliente ou descrição..." value="'+escHtml(_caixaFiltro.q)+'" oninput="_caixaFiltro.q=this.value;_caixaLimite=100;desenharListaCaixa()"><select class="form-select" aria-label="Tipo de movimento" onchange="_caixaFiltro.tipo=this.value;_caixaLimite=100;desenharListaCaixa()">'+opcoesFiltro([['','Tudo'],['entrada','Só entradas'],['saida','Só saídas'],['ajuste','Só conferências']],_caixaFiltro.tipo)+'</select></div><div class="filtros-resumo" id="caixa-resumo" aria-live="polite"></div><div id="caixa-lista"></div></div>'+
     '<details class="panel" '+(window.innerWidth>768?'open':'')+'><summary class="panel-header"><span class="panel-title">🧮 Histórico de conferências ('+confs.length+')</span><span style="font-size:12px">Faltou: <strong style="color:var(--txt-vermelho)">'+R$(-faltas)+'</strong> · Sobrou: <strong style="color:var(--txt-verde)">'+R$(sobras)+'</strong></span></summary>'+
-    (confs.length?confs.slice().reverse().map(c=>{ const bateu=Math.abs(c.diferenca)<0.005; return '<div class="divida-item"><div class="entrega-info"><strong>'+(bateu?'✅ Bateu':c.diferenca<0?'🔻 Faltaram '+R$(-c.diferenca):'🔺 Sobraram '+R$(c.diferenca))+'</strong><div style="font-size:12px;color:var(--cinza-med)">'+formatarDataBR(c.data)+' · Sistema '+R$(c.sistema)+' · Real '+R$(c.contado)+(c.motivo?' · '+escHtml(c.motivo):'')+(c.obs?' · '+escHtml(c.obs):'')+'</div></div><button class="btn btn-outline btn-xs" onclick="excluirConferencia(\''+c.id+'\')" aria-label="Apagar conferência">🗑️</button></div>'; }).join(''):'<p style="padding:14px 18px;margin:0;font-size:13px;color:var(--cinza-med)">Nenhuma conferência registrada.</p>')+'</details>';
+    (confs.length?confs.slice().reverse().map(c=>{ const bateu=Math.abs(c.diferenca)<0.005; return '<div class="divida-item"><div class="entrega-info"><strong>'+(bateu?'✅ Bateu':c.diferenca<0?'🔻 Faltaram '+R$(-c.diferenca):'🔺 Sobraram '+R$(c.diferenca))+'</strong><div style="font-size:12px;color:var(--cinza-med)">'+formatarDataBR(c.data)+' · Sistema '+R$(c.sistema)+' · Real '+R$(c.contado)+(c.motivo?' · '+escHtml(c.motivo):'')+(c.obs?' · '+escHtml(c.obs):'')+((+c.explicado||0)>0.004?' · explicado '+R$(c.explicado):'')+'</div></div>'+(c.diferenca<-0.004?'<button class="btn btn-outline btn-xs" onclick="abrirSaida({data:\''+c.data+'\',valor:'+(-c.diferenca)+'})">✍️ Explicar</button>':'')+'<button class="btn btn-outline btn-xs" onclick="excluirConferencia(\''+c.id+'\')" aria-label="Apagar conferência">🗑️</button></div>'; }).join(''):'<p style="padding:14px 18px;margin:0;font-size:13px;color:var(--cinza-med)">Nenhuma conferência registrada.</p>')+'</details>';
 };
 // Saldo esperado ao fim de um dia: tudo que foi lançado até ele, mais as conferências feitas até ele.
 let _fech={gran:'mes',limite:12,data:''};
@@ -2803,6 +3017,7 @@ function painelHojeHtml(criticosMP){
     [contasVenc.length,R$(contasVenc.reduce((s,x)=>s+saldoAP(x),0)),contasVenc.length===1?'1 conta vencida':contasVenc.length+' contas vencidas',"abrirAPFiltrado('vencidas')",true],
     [criticosMP,criticosMP,criticosMP===1?'insumo em estoque baixo':'insumos em estoque baixo',"goTo('materias')",true],
     [mpEstornados().length,mpEstornados().length,'pagamento devolvido pelo Mercado Pago',"abrirPagamentosMP()",true],
+    [mpSaidasPendentes().length,R$(mpSaidasPendentes().reduce((s,p)=>s+p.valor,0)),mpSaidasPendentes().length===1?'saída do Mercado Pago para explicar':mpSaidasPendentes().length+' saídas do Mercado Pago para explicar',"abrirSaidasMP()",false],
     [pedidosSemBaixa().length,pedidosSemBaixa().length,pedidosSemBaixa().length===1?'pedido sem baixa de estoque':'pedidos sem baixa de estoque',"abrirPedidosSemBaixa()",true],
     [caixaPendente()?1:0,R$(metricasFinanceiras().caixaDisponivel),'confirmar o caixa',"conferirCaixa()",false],
     [mpParaConferir().length,R$(mpParaConferir().reduce((s,p)=>s+p.valor,0)),mpParaConferir().length===1?'pagamento do Mercado Pago para conferir':mpParaConferir().length+' pagamentos do Mercado Pago para conferir',"abrirPagamentosMP()",false],
@@ -4460,7 +4675,7 @@ function pedidoDoPagamentoMP(p){
 }
 function mpParaConferir(){
   const lanc=mpIdsLancados(), ign=new Set(mpIgnorados()), ini=DB.config?.mp_inicio||'';
-  return _mpPags.filter(p=>p.status==='approved'&&p.data>=ini&&!lanc.has(p.id)&&!ign.has(p.id)&&!pedidoDoPagamentoMP(p))
+  return _mpPags.filter(p=>p.status==='approved'&&p.data>=ini&&!lanc.has(p.id)&&!ign.has(p.id)&&!pedidoDoPagamentoMP(p)&&!ehSaidaMP(p))
     .sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
 }
 // Pagamento já lançado que o Mercado Pago devolveu ao cliente: precisa sair do pedido à mão.
@@ -4658,7 +4873,7 @@ function desenharPagamentosMP(){
   const conferir=mpParaConferir(), estornos=mpEstornados();
   const lanc={}; DB.pedidos.forEach(pd=>(pd.entradas||[]).forEach(e=>{ if(e.mp_id) lanc[String(e.mp_id)]=pd.id; }));
   const ign=new Set(mpIgnorados());
-  const recentes=_mpPags.filter(p=>p.status==='approved').sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora)).slice(0,15);
+  const recentes=_mpPags.filter(p=>p.status==='approved'&&!ehSaidaMP(p)).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora)).slice(0,15);
   const linhaInfo=p=>`<div style="font-size:12px;color:var(--cinza-med)">${p.data?formatarDataBR(p.data):''} ${p.hora||''} · ${formaMP(p)}${p.pagador?' · '+escHtml(p.pagador):''}${p.taxa>0?' · taxa '+R$(p.taxa):''}</div>`;
   el.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -5381,7 +5596,7 @@ SECTIONS.compras = () => `
       <tbody>${DB.compras.length===0?`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--cinza-med)">Nenhuma compra.</td></tr>`:
       DB.compras.slice().reverse().map(c=>`<tr>
         <td class="fw-bold text-azul">${c.id}</td><td>${c.data||'—'}</td>
-        <td>${nomeForn(c.fornecedor)}</td><td>${c.produto}${c.materia_prima_id?' <span class="badge badge-ok" style="font-size:9px">📦 estoque</span>':''}</td>
+        <td>${nomeForn(c.fornecedor)}</td><td>${escHtml(c.produto||'')}${c.materia_prima_id?' <span class="badge badge-ok" style="font-size:9px">📦 estoque</span>':''}${c.tipo==='retirada'?' <span class="badge badge-warn" style="font-size:9px">👤 pessoal</span>':c.saida?' <span class="badge badge-info" style="font-size:9px">'+escHtml(nomeCatSaida(c.categoria))+'</span>':''}</td>
         <td class="text-center">${c.qtd}</td>
         <td class="fw-bold text-vermelho">${R$((+c.qtd||0)*(+c.custo||0))}</td>
         <td><span class="badge badge-info">${c.forma||'—'}</span></td>
@@ -5395,7 +5610,7 @@ SECTIONS.compras = () => `
   </div>`;
 
 function novaCompra(){openModal('➕ Nova Compra',formCompra(),()=>salvarCompra());}
-function editarCompra(id){openModal('✏️ Editar',formCompra(getItem(DB.compras,id)),()=>salvarCompra(id));desenharCustoMedioCompra();}
+function editarCompra(id){if(getItem(DB.compras,id)?.saida){abrirSaida({id});return;}openModal('✏️ Editar',formCompra(getItem(DB.compras,id)),()=>salvarCompra(id));desenharCustoMedioCompra();}
 function formCompra(c={}){
   const fo=ordNome(DB.fornecedores).map(f=>`<option value="${f.id}" ${c.fornecedor===f.id?'selected':''}>${f.nome}</option>`).join('');
   const mpOpts=ordNome(DB.materias).map(m=>({value:m.id,label:`${m.nome} (estoque atual: ${m.estoque||0} ${m.unidade||'un'})`}));
