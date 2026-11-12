@@ -675,7 +675,7 @@ body.tema-escuro .csg-tipos button.ativo{background:var(--cinza-claro)}
      não expõe nenhum segredo: o Client ID de OAuth é público por natureza
      (ele identifica o APLICATIVO, não autoriza nada sozinho — quem autoriza
      de verdade é o Apps Script, validando o token do lado do servidor). -->
-<script src="https://accounts.google.com/gsi/client" async defer onload="inicializarLoginGoogle()"></script>
+<script src="https://accounts.google.com/gsi/client" async defer onload="window.inicializarLoginGoogle&&inicializarLoginGoogle()"></script>
 </head>
 <body class="sidebar-hidden">
 <script>if(localStorage.getItem('morfe_tema_escuro')==='1')document.body.classList.add('tema-escuro');</script>
@@ -692,6 +692,7 @@ body.tema-escuro .csg-tipos button.ativo{background:var(--cinza-claro)}
       <div class="login-divisor"></div>
     </div>
     <div id="login-error" class="login-error"></div>
+    <div id="login-auto" role="status" aria-live="polite" style="display:none;text-align:center;font-size:13px;font-weight:600;color:var(--txt-azul);margin-bottom:10px">Entrando…</div>
     <div id="login-google-area" style="margin-top:10px;display:flex;justify-content:center"></div>
     <p style="text-align:center;margin-top:14px;font-size:11px;color:var(--cinza-med)">Morfê Personalizados · Manaus-AM</p>
   </div>
@@ -979,6 +980,7 @@ function salvarLocal() {
 // cima E as Script Properties no Apps Script (ver apps-script/README.md).
 function entrarComGoogle(response){
   _googleIdToken = response.credential;
+  if(_isLoggedIn) return;
   finalizarLogin();
 }
 
@@ -1052,13 +1054,28 @@ function inicializarLoginGoogle(tentativa){
     return;
   }
   try{
-    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: entrarComGoogle });
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: entrarComGoogle, auto_select: true, cancel_on_tap_outside: false, use_fedcm_for_prompt: true });
     google.accounts.id.renderButton(area, { theme:'outline', size:'large', width:280, text:'signin_with' });
     _googleBotaoRenderizado = true;
+    tentarEntradaAutomatica();
   }catch(e){
     console.warn('Não deu pra iniciar o login do Google:', e);
     if(errEl){ errEl.textContent='⚠️ Não deu pra iniciar o login do Google. Recarregue a página.'; errEl.style.display='block'; }
   }
+}
+// Se este aparelho já entrou antes, o Google devolve o login sem clique.
+// Se não der (primeira vez, depois de "Sair", ou o navegador bloquear), o botão continua lá.
+function tentarEntradaAutomatica(){
+  if(_isLoggedIn) return;
+  const aviso=document.getElementById('login-auto');
+  if(aviso) aviso.style.display='block';
+  const esconder=()=>{ if(aviso) aviso.style.display='none'; };
+  setTimeout(esconder, 6000);
+  try{
+    google.accounts.id.prompt((n)=>{
+      if((n.isNotDisplayed&&n.isNotDisplayed())||(n.isSkippedMoment&&n.isSkippedMoment())||(n.isDismissedMoment&&n.isDismissedMoment()&&n.getDismissedReason&&n.getDismissedReason()!=='credential_returned')) esconder();
+    });
+  }catch(e){ esconder(); }
 }
 window.addEventListener('load', ()=>inicializarLoginGoogle());
 
@@ -1071,6 +1088,7 @@ function sair() {
 function sairDeVez() {
   _isLoggedIn = false;
   _googleIdToken = null;
+  try{ google.accounts.id.disableAutoSelect(); }catch(e){}
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
 }
@@ -1760,7 +1778,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026111105;
+const VERSAO_APP=2026111201;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
