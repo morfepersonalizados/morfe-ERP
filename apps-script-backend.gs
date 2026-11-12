@@ -44,6 +44,16 @@ function validarTokenGoogle(idToken) {
     return { ok: false, erro: 'Login com Google ainda nao foi configurado no backend (faltam as Script Properties GOOGLE_CLIENT_ID e AUTHORIZED_EMAIL)' };
   }
 
+  // Login ja conferido ha pouco: responde na hora, sem perguntar de novo ao Google.
+  // Guarda so um resumo (hash) do token, nunca o token em si.
+  var cache = CacheService.getScriptCache();
+  var chaveCache = 'tok_' + Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(idToken), Utilities.Charset.UTF_8));
+  var emailGuardado = cache.get(chaveCache);
+  if (emailGuardado && emailGuardado.toLowerCase() === String(emailAutorizado).toLowerCase()) {
+    return { ok: true, email: emailGuardado };
+  }
+
   try {
     var resposta = UrlFetchApp.fetch(
       'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
@@ -55,6 +65,10 @@ function validarTokenGoogle(idToken) {
     if (dados.aud !== clientIdEsperado) return { ok: false, erro: 'Token nao pertence a este aplicativo' };
     if (dados.email_verified !== 'true' && dados.email_verified !== true) return { ok: false, erro: 'Email do Google nao verificado' };
     if (String(dados.email).toLowerCase() !== String(emailAutorizado).toLowerCase()) return { ok: false, erro: 'Este email do Google nao tem acesso a este sistema' };
+
+    // Lembra ate 1 minuto antes do token vencer (no maximo 50 min).
+    var segundosRestantes = Math.floor(Number(dados.exp) - Date.now() / 1000) - 60;
+    if (segundosRestantes > 30) cache.put(chaveCache, String(dados.email), Math.min(segundosRestantes, 3000));
 
     return { ok: true, email: dados.email };
   } catch (err) {
@@ -147,6 +161,14 @@ function doPost(e) {
     var dados = body.dados;
     var id = body.id;
 
+
+    // Leitura de tudo por POST: o login vai no corpo da mensagem, nao no endereco.
+    if (acao === 'ler_tudo') {
+      var tudo = {};
+      for (var j = 0; j < TABELAS.length; j++) tudo[TABELAS[j]] = lerTabela(ss, TABELAS[j]);
+      tudo.mp_pagamentos = lerTabela(ss, MP_ABA);
+      return jsonResponse({ ok: true, dados: tudo });
+    }
 
     if (acao === 'salvar_tudo') {
       for (var i = 0; i < TABELAS.length; i++) {

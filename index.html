@@ -824,6 +824,23 @@ function credenciaisAuth(){
   return { token: _googleIdToken };
 }
 
+// Lê todas as tabelas mandando o login no corpo da mensagem (POST), e não no
+// endereço: endereços costumam ficar gravados em registros. Enquanto o Apps
+// Script antigo estiver publicado, ele não conhece essa leitura e responde
+// "Acao nao reconhecida" (sem gravar nada); aí usa o jeito antigo.
+async function lerTudoDoServidor(){
+  const auth = credenciaisAuth();
+  let res = await fetch(SHEETS_API_URL, { method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify({ acao:'ler_tudo', ...auth }) });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  let data = await res.json();
+  if (!data.ok && /acao nao reconhecida/i.test(data.erro || '')) {
+    res = await fetch(SHEETS_API_URL + '?acao=ler_tudo&token=' + encodeURIComponent(auth.token || ''), { method:'GET' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+  }
+  return data;
+}
+
 // Renova o token do Google silenciosamente, sem pedir pra ninguém clicar
 // em nada. O ID token do Google dura só cerca de 1h — deixar a aba aberta
 // sem usar por mais tempo que isso fazia a sincronização ficar presa em
@@ -1199,12 +1216,7 @@ async function sincronizarSheets() {
   try {
     if (_pendingQueue.length > 0) await processarFila();
 
-    const _auth = credenciaisAuth();
-    const _authParam = _auth.token ? 'token=' + encodeURIComponent(_auth.token) : 'senha=' + encodeURIComponent(_auth.senha);
-    const url = SHEETS_API_URL + '?acao=ler_tudo&' + _authParam;
-    const res = await fetch(url, { method: 'GET' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
+    const data = await lerTudoDoServidor();
 
     if (data.ok && data.dados) {
       // Tabelas que ainda têm alguma alteração pendente de enviar (mesmo depois
@@ -1778,7 +1790,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026111201;
+const VERSAO_APP=2026111202;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
