@@ -1790,7 +1790,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026112201;
+const VERSAO_APP=2026112202;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -3399,6 +3399,7 @@ SECTIONS.produtos = () => `
             <td class="td-actions">
               <button class="btn btn-outline btn-xs" onclick="irParaFicha('${p.id}')" title="Ver precificação completa">📋 Ficha</button>
               <button class="btn btn-primary btn-xs" onclick="editarProduto('${p.id}')">✏️</button>
+              <button class="btn btn-outline btn-xs" onclick="duplicarProduto('${p.id}')" title="Duplicar (copia a ficha técnica junto)">⧉</button>
               <button class="btn btn-danger btn-xs" onclick="excluirItem('produtos','${p.id}')">🗑️</button>
             </td>
           </tr>`;}).join('')}
@@ -3413,6 +3414,34 @@ function irParaFicha(prodId){
 }
 
 function novoProduto(){openModal('➕ Novo Produto',formProduto(),()=>salvarProduto());}
+// Duplicar: abre o formulário já preenchido com uma cópia; ao salvar, cria o produto novo
+// com a mesma ficha técnica, embalagem e margem, e abre a ficha dele pra ajustar.
+function duplicarProduto(id){
+  const o=getProd(id); if(!o) return;
+  const {id:_x,...semId}=o;
+  openModal('⧉ Duplicar Produto',formProduto({...semId,nome:(o.nome||'')+' (cópia)'})+
+    `<div style="background:var(--cinza-ultra);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12px">📋 A ficha técnica de <strong>${escHtml(o.nome||'')}</strong> vai junto (${DB.fichas.filter(f=>f.produto===id).length} insumos). Troque o nome antes de salvar.</div>`,
+    ()=>salvarDuplicado(id),'⧉ Duplicar');
+}
+async function salvarDuplicado(origemId){
+  const o=getProd(origemId); if(!o){toast('Produto de origem não encontrado','error');return;}
+  const nome=document.getElementById('f-nome').value.trim();
+  if(!nome){toast('Informe o nome do produto','error');return;}
+  if(DB.produtos.some(p=>(p.nome||'').trim().toLowerCase()===nome.toLowerCase())){toast('Já existe um produto com esse nome: mude o nome','error');return;}
+  const agora=new Date().toISOString();
+  const novo={id:nextId(DB.produtos,'PRD'),sku:document.getElementById('f-sku').value.trim(),categoria:document.getElementById('f-cat').value,nome,
+    preco:parseFloat(document.getElementById('f-preco').value)||0,custo:parseFloat(document.getElementById('f-custo').value)||0,
+    embalagem:+o.embalagem||0,status:document.getElementById('f-status').value,criado_em:agora,foto:'',mostrar_na_loja:'',margem_ideal:o.margem_ideal??''};
+  await salvarItem('produtos',novo);
+  for(const f of DB.fichas.filter(x=>x.produto===origemId)){
+    const nf={id:nextId(DB.fichas,'FT'),produto:novo.id,mp:f.mp,qtd:+f.qtd||0,criado_em:agora};
+    if(Array.isArray(f.variantes)&&f.variantes.length) nf.variantes=f.variantes.map(v=>({...v}));
+    await salvarItem('fichas',nf);
+  }
+  await sincronizarCustoProduto(novo.id);
+  toast('Produto duplicado! Agora ajuste a ficha dele');
+  closeModal(); irParaFicha(novo.id);
+}
 function editarProduto(id){openModal('✏️ Editar Produto',formProduto(getProd(id)),()=>salvarProduto(id));}
 function formProduto(p={}){return `<div class="form-grid">
   <div class="form-group"><label class="form-label">SKU</label><input class="form-input" id="f-sku" value="${p.sku||''}"></div>
