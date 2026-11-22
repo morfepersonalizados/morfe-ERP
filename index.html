@@ -1308,7 +1308,7 @@ async function sincronizarSheets() {
       _sessaoExpirada = false;
       if (Array.isArray(data.dados.mp_pagamentos)) guardarPagsMP(data.dados.mp_pagamentos);
       render(currentSection);
-      if (!conferirVersaoApp()) { aplicarPagamentosMP(); corrigirBaixasPendentes(); corrigirDadosAuditoria(); juntarPaperStoryUmaVez(); }
+      if (!conferirVersaoApp()) { aplicarPagamentosMP(); corrigirBaixasPendentes(); corrigirDadosAuditoria(); juntarPaperStoryUmaVez(); cadastrarDtfBocaoUmaVez(); }
     } else {
       const erro = data.erro || 'Resposta inválida';
       // Distingue "token do Google vencido" de erro de rede/servidor de
@@ -1790,7 +1790,7 @@ function openModal(title, bodyHTML, saveFn, saveLabel='Salvar') {
 
 // Aparelho com o sistema aberto há muito tempo fica com a versão velha e pode desfazer correções
 // (ex.: lançar de novo um pagamento já removido). A versão nova avisa as outras para recarregar.
-const VERSAO_APP=2026111202;
+const VERSAO_APP=2026112201;
 function conferirVersaoApp(){
   if(!DB.config) return false;
   const v=+DB.config.versao_app||0;
@@ -7687,6 +7687,47 @@ async function juntarPaperStoryUmaVez(){
     }
     DB.config.migracoes=[...(Array.isArray(DB.config.migracoes)?DB.config.migracoes:[]),FLAG]; salvarConfigCaixa();
   } finally { _juntandoPaper=false; }
+}
+// Cadastro combinado com o dono em 22/11/2026: o DTF UV (terceirizado, Subli Transfer)
+// vira insumo, e a "Caneca Bocão" nasce com a mesma ficha da Caneca Branca + 1 DTF no fundo.
+// Roda uma vez só e não duplica: se o insumo ou o produto já existirem, reaproveita.
+let _cadastrandoBocao=false;
+async function cadastrarDtfBocaoUmaVez(){
+  const FLAG='dtf-bocao-2026-11';
+  if(_cadastrandoBocao||!_isLoggedIn||!DB.config) return;
+  const feitas=Array.isArray(DB.config.migracoes)?DB.config.migracoes:[];
+  if(feitas.includes(FLAG)||_tabelasBloqueadasPorSeguranca.length) return;
+  if(DB.produtos.length<10||DB.materias.length<10||DB.fichas.length<10) return; // dados incompletos: tenta na próxima
+  const base=getProd('PRD-009');
+  const fichaBase=DB.fichas.filter(f=>f.produto==='PRD-009');
+  if(!base||!/caneca\s*branca/i.test(base.nome||'')||fichaBase.length===0) return; // base não confere: não mexe
+  _cadastrandoBocao=true;
+  try{
+    const agora=new Date().toISOString();
+    let dtf=DB.materias.find(m=>/^dtf uv/i.test(String(m.nome||'').trim()));
+    if(!dtf){
+      const forn=DB.fornecedores.find(f=>/subli/i.test(f.nome||''));
+      dtf={id:nextId(DB.materias,'MP'),nome:'DTF UV - fundo de caneca',categoria:'DTF',unidade:'un',fornecedor:forn?forn.id:'',qtd_comprada:15,valor_comprado:48,estoque:0,est_min:0,custo:3.2,criado_em:agora};
+      await salvarItem('materias',dtf);
+    }
+    let bocao=DB.produtos.find(p=>/boc[ãa]o/i.test(p.nome||''));
+    if(!bocao){
+      bocao={id:nextId(DB.produtos,'PRD'),sku:'',categoria:'Caneca',nome:'Caneca Bocão',preco:40,custo:0,embalagem:+base.embalagem||0,status:'Ativo',criado_em:agora,foto:'',mostrar_na_loja:'',margem_ideal:base.margem_ideal??''};
+      await salvarItem('produtos',bocao);
+    }
+    if(!DB.fichas.some(f=>f.produto===bocao.id)){
+      const linhas=[...fichaBase.map(f=>({mp:f.mp,qtd:+f.qtd||0,variantes:f.variantes})),{mp:dtf.id,qtd:1}];
+      for(const l of linhas){
+        const nova={id:nextId(DB.fichas,'FT'),produto:bocao.id,mp:l.mp,qtd:l.qtd,criado_em:agora};
+        if(Array.isArray(l.variantes)&&l.variantes.length) nova.variantes=l.variantes.map(v=>({...v}));
+        await salvarItem('fichas',nova);
+      }
+    }
+    await sincronizarCustoProduto(bocao.id);
+    DB.config.migracoes=[...(Array.isArray(DB.config.migracoes)?DB.config.migracoes:[]),FLAG]; salvarConfigCaixa();
+    toast('☕ Caneca Bocão e insumo DTF UV cadastrados');
+    if(['produtos','materias','fichas'].includes(currentSection)) render(currentSection);
+  } finally { _cadastrandoBocao=false; }
 }
 // ── Números do parceiro ──
 function resumoPontoCSG(c){
